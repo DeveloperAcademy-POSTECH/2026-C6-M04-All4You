@@ -1,0 +1,33 @@
+name: "💻 새로운 기능"
+description: "새로운 기능에 대한 이슈를 작성해주세요!"
+labels: "Feat 💻"
+
+body:
+    - type: input
+      attributes:
+        label: ✨ 개요
+        description: 새로운 기능에 대한 설명을 작성해주세요.
+        placeholder: 꼼꼼하게 적을수록 좋습니다!
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: ✅ 해야 할 일
+        description: 해야 할 일을 작성해주세요.
+        placeholder: |
+            - [ ] Main View UI 구현
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: 🙏🏻 요구사항
+        description: 개발 시 유의해야 할 요구사항을 정리해주세요.
+        placeholder: |
+            - 전화번호는 11자여야 한다.
+        
+    - type: textarea
+      attributes:
+        label: 🙋🏻 덧붙일 말
+        description: 더 하고 싶은 말이 있다면 작성해 주세요.

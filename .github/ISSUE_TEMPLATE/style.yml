@@ -1,0 +1,27 @@
+name: "🖼️ UI 작업"
+description: "UI 작업에 대한 이슈를 작성해주세요!"
+labels: "Style 🖼️"
+
+body:
+    - type: input
+      attributes:
+        label: ✨ 개요
+        description: UI 작업에 대한 설명을 작성해주세요.
+        placeholder: 꼼꼼하게 적을수록 좋습니다!
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: ✅ 해야 할 일
+        description: 해야 할 일을 작성해주세요.
+        placeholder: |
+            - [ ] 버튼 컴포넌트 disabled 상태 UI 구현
+            - [ ] 버튼 컴포넌트 active 상태 UI 구현
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: 🙋🏻 덧붙일 말
+        description: 더 하고 싶은 말이 있다면 작성해 주세요.
