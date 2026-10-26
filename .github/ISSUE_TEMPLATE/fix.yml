@@ -1,0 +1,56 @@
+name: "🔨 버그 수정"
+description: "버그 수정에 대한 이슈를 작성해주세요!"
+labels: "Fix 🔨"
+
+body:
+    - type: textarea
+      attributes:
+        label: 🐞 버그 설명
+        description: 버그에 대한 설명을 작성해주세요.
+        placeholder: 꼼꼼하게 적을수록 좋습니다!
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: 📄 버그 재현 방법
+        description: 버그가 발생하는 경우를 작성해주세요.
+        placeholder: |
+            1. 회원가입을 한다.
+            2. 새로운 창으로 이동한다.
+            3. "로그인을 할 수 없습니다."라는 메시지가 뜬다.
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: ✅ 기대 동작
+        description: 원래 어떻게 동작해야 하나요?
+      validations:
+        required: true
+
+    - type: textarea
+      attributes:
+        label: ❌ 실제 동작
+        description: 실제로 어떻게 동작하나요?
+      validations:
+        required: true
+        
+    - type: textarea
+      attributes:
+        label: 🌏 환경
+        description: 버그가 발생한 환경에 대해 작성해 주세요.
+        placeholder: |
+            Device: iPhone 17
+            OS: iOS 26.5.1
+            
+    - type: textarea
+      attributes:
+        label: 📄 로그
+        description: 로그 있으면 복붙해 주세요.
+        render: shell
+        
+    - type: textarea
+      attributes:
+        label: 🙋🏻 덧붙일 말
+        description: 더 하고 싶은 말이 있다면 작성해 주세요.
