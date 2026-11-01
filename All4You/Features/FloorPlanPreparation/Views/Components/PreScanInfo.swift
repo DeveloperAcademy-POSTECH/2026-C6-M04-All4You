@@ -1,5 +1,5 @@
 //
-//  PreScanCheckList.swift
+//  PreScanInfo.swift
 //  All4You
 //
 //  Created by 채유성 on 11/1/26.
@@ -8,7 +8,7 @@
 // 스캔 전 확인 사항 뷰
 import SwiftUI
 
-struct PreScanChecklist: View {
+struct PreScanInfo: View {
     let onContinue: () -> Void
     
     var body: some View {
@@ -51,7 +51,7 @@ struct PreScanChecklist: View {
 }
 
 #Preview("스캔 전 확인 사항") {
-    PreScanChecklist {}
+    PreScanInfo {}
         .padding()
         .background(.gray)
 }
