@@ -27,8 +27,12 @@ extension View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: onDone) {
                         Label(trailingTitle, systemImage: "checkmark")
+                            .labelStyle(.iconOnly)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
                 }
+
             }
     }
 
@@ -59,7 +63,10 @@ extension View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: onDone) {
                         Label(title, systemImage: "checkmark")
+                            .labelStyle(.iconOnly)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
                 }
             }
     }
