@@ -8,6 +8,53 @@
 import SwiftUI
 
 extension View {
+    // 뒤로가기 + 제목/보조 텍스트 + 완료
+    func titledBothSidesToolbar(
+        title: String,
+        subtitle: String = "",
+        leadingTitle: String = "뒤로",
+        trailingTitle: String = "완료",
+        onBack: @escaping () -> Void,
+        onDone: @escaping () -> Void
+    ) -> some View {
+        self
+            .navigationBarBackButtonHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: onBack) {
+                        Label(leadingTitle, systemImage: "chevron.left")
+                            .labelStyle(.iconOnly)
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarLeading) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        if !subtitle.isEmpty {
+                            Text(subtitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: true)
+                }
+                .titleBackgroundHidden()
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onDone) {
+                        Label(trailingTitle, systemImage: "checkmark")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
+            }
+    }
+
     // 양쪽 버튼: 뒤로가기 + 완료
     func bothSidesToolbar(
         leadingTitle: String = "뒤로",
@@ -72,6 +119,17 @@ extension View {
     }
 }
 
+private extension ToolbarContent {
+    @ToolbarContentBuilder
+    func titleBackgroundHidden() -> some ToolbarContent {
+        if #available(iOS 26.0, macOS 26.0, visionOS 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
 #Preview {
     VStack(spacing: 0) {
         
@@ -106,6 +164,17 @@ extension View {
                 .checkOnlyToolbar(title: "확인") {
                     print("확인")
                 }
+        }
+        
+        // 왼쪽에 제목 있는 버전
+        NavigationStack {
+            Color.white
+                .titledBothSidesToolbar(
+                    title: "압구정동 462-2",
+                    subtitle: "오후 13:30",
+                    onBack: { print("뒤로") },
+                    onDone: { print("완료") }
+                )
         }
     }
 }

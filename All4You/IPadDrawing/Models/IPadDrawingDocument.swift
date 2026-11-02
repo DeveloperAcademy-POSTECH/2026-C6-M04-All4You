@@ -1,40 +1,37 @@
-//
-//  IPadDrawingDocument.swift
-//  All4You
-//
-//  Created by 김가은 on 11/1/26.
-//
-
 import Foundation
 import PencilKit
 
-/// iPad 필기 도면의 데이터. 파일 저장은 부모 화면 또는 저장 계층에서 처리
 struct IPadDrawingDocument: Identifiable {
     let id: UUID
     var address: String
     var time: String
     var drawing: PKDrawing
+    var stickers: [DrawingSticker]
 
     init(
         id: UUID = UUID(),
         address: String,
         time: String,
-        drawing: PKDrawing = PKDrawing()
+        drawing: PKDrawing = PKDrawing(),
+        stickers: [DrawingSticker] = []
     ) {
         self.id = id
         self.address = address
         self.time = time
         self.drawing = drawing
+        self.stickers = stickers
     }
 }
 
-/// 다른 도면 작성 방식에서도 재사용할 수 있는 주석 종류
+struct DrawingSticker: Identifiable {
+    let id = UUID()
+    let category: FloorPlanAnnotationCategory
+    var position: CGPoint
+    var text = ""
+}
+
 enum FloorPlanAnnotationCategory: String, CaseIterable {
-    case ignition
-    case electricity
-    case victim
-    case room
-    case furniture
+    case ignition, electricity, victim, room, furniture
 
     var title: String {
         switch self {
