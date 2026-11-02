@@ -17,7 +17,7 @@ struct FloorPlanMethodSelectionView: View {
     let address: String
     let createdAt: Date
     @Environment(\.dismiss) private var dismiss
-
+    
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
@@ -26,40 +26,40 @@ struct FloorPlanMethodSelectionView: View {
     @State private var isFileImporterPresented = false
     @State private var isCameraPresented = false
     @State private var selectedPhotoItem: PhotosPickerItem?
-
+    
     var body: some View {
         ScrollView {
-          VStack(spacing: 0) {
-
-            VStack(alignment: .leading, spacing: 32) {
-                Text("평면도를 어떻게 준비할까요?")
-                    .font(.title2.bold())
-
-                GlassEffectContainer(spacing: 12) {
-                    VStack(spacing: 14) {
-                        ForEach(FloorPlanSourceType.allCases) { sourceType in
-                            FloorPlanMethodRow(
-                                sourceType: sourceType,
-                                isSelected: selectedSourceType == sourceType
-                            ) {
-                                // 같은 항목을 다시 누르면 선택을 해제하고 계속 버튼도 비활성화
-                                selectedSourceType = selectedSourceType == sourceType ? nil : sourceType
-                                // 외부 가져오기 메뉴는 해당 항목이 선택되어 있을 때만 표시
-                                isImportMenuPresented = selectedSourceType == .externalImport
+            VStack(spacing: 0) {
+                
+                VStack(alignment: .leading, spacing: 32) {
+                    Text("평면도를 어떻게 준비할까요?")
+                        .font(.title2.bold())
+                    
+                    GlassEffectContainer(spacing: 12) {
+                        VStack(spacing: 14) {
+                            ForEach(FloorPlanSourceType.allCases) { sourceType in
+                                FloorPlanMethodRow(
+                                    sourceType: sourceType,
+                                    isSelected: selectedSourceType == sourceType
+                                ) {
+                                    // 같은 항목을 다시 누르면 선택을 해제하고 계속 버튼도 비활성화
+                                    selectedSourceType = selectedSourceType == sourceType ? nil : sourceType
+                                    // 외부 가져오기 메뉴는 해당 항목이 선택되어 있을 때만 표시
+                                    isImportMenuPresented = selectedSourceType == .externalImport
+                                }
                             }
                         }
                     }
                 }
+                
+                continueButton
+                    .padding(.top, 266)
             }
-
-            continueButton
-                .padding(.top, 266)
-          }
-          .padding(.top, 118)
-          .padding(.bottom, 24)
-          .frame(maxWidth: 542)
-          .frame(maxWidth: .infinity)
-          .padding(.horizontal, 24)
+            .padding(.top, 118)
+            .padding(.bottom, 24)
+            .frame(maxWidth: 542)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -112,13 +112,14 @@ struct FloorPlanMethodSelectionView: View {
             isPresented: $isFileImporterPresented,
             allowedContentTypes: [.image, .pdf]
         ) { _ in }
-        .sheet(isPresented: $isCameraPresented) {
-            CameraPicker { _ in
-                // TODO: 도면 변환 로직 연결
+            .fullScreenCover(isPresented: $isCameraPresented) {
+                CameraPicker { _ in
+                    // TODO: 도면 변환 로직 연결
+                }
+                .ignoresSafeArea()
             }
-        }
     }
-
+    
     private var continueButton: some View {
         ContinueButton(isEnabled: selectedSourceType != nil) {
             guard let selectedSourceType else { return }
@@ -136,7 +137,7 @@ struct FloorPlanMethodSelectionView: View {
         .frame(maxWidth: .infinity)
         .background(.background)
     }
-
+    
     private func openCamera() {
         // 카메라가 없는 시뮬레이터에서는 UIImagePickerController 실행 막기 (크래시 방지)
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
