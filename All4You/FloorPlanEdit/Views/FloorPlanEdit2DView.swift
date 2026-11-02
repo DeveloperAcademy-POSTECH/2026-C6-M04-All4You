@@ -7,13 +7,26 @@ struct FloorPlanEdit2DView: View {
     let onBack: () -> Void
     let onDone: () -> Void
 
+    @State private var selectedTool: EditTool?
+
     var body: some View {
         Text(Copy.placeholder)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.quaternary)
+            .overlay(alignment: .topLeading) {
+                toolBar
+            }
             .navigationTitle(Copy.title)
             .navigationBarTitleDisplayMode(.inline)
             .bothSidesToolbar(onBack: onBack, onDone: onDone)
+    }
+}
+
+// 서브 뷰
+extension FloorPlanEdit2DView {
+    private var toolBar: some View {
+        EditToolBar(selectedTool: $selectedTool)
+            .padding()
     }
 }
 
