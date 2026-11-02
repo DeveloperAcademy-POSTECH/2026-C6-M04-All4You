@@ -4,25 +4,17 @@
 enum EditTool: CaseIterable {
     case ignitionPoint, electrical, victim, roomName, furniture, window
 
-    var title: String {
+    private var details: (title: String, iconName: String) {
         switch self {
-        case .ignitionPoint: "발화지점"
-        case .electrical: "전기"
-        case .victim: "피해자"
-        case .roomName: "공간이름"
-        case .furniture: "가구"
-        case .window: "창문"
+        case .ignitionPoint: ("발화지점", "flame.fill")
+        case .electrical:    ("전기", "bolt.fill")
+        case .victim:        ("피해자", "figure.fall")
+        case .roomName:      ("공간이름", "character.textbox")
+        case .furniture:     ("가구", "sofa")
+        case .window:        ("창문", "window.casement")
         }
     }
 
-    var iconName: String {
-        switch self {
-        case .ignitionPoint: "flame.fill"
-        case .electrical: "bolt.fill"
-        case .victim: "figure.fall"
-        case .roomName: "character.textbox"
-        case .furniture: "sofa"
-        case .window: "window.casement"
-        }
-    }
+    var title: String { details.title }
+    var iconName: String { details.iconName }
 }

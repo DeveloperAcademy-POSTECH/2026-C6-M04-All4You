@@ -5,13 +5,14 @@ import SwiftUI
 /// 도구 버튼과 막대 접기 버튼을 가진 상단 도구 막대
 struct EditToolBar: View {
     @Binding var selectedTool: EditTool?
-    var disabledTools: Set<EditTool> = []
+    var hiddenTools: Set<EditTool> = []
 
     @State private var isCollapsed = false
 
-    /// 접으면 가장 왼쪽 도구만 남긴다
+    /// 숨길 도구를 뺀 목록. 접으면 그중 가장 왼쪽 도구만 남긴다
     private var visibleTools: [EditTool] {
-        isCollapsed ? Array(EditTool.allCases.prefix(1)) : EditTool.allCases
+        let tools = EditTool.allCases.filter { !hiddenTools.contains($0) }
+        return isCollapsed ? Array(tools.prefix(1)) : tools
     }
 
     var body: some View {
@@ -38,7 +39,6 @@ extension EditToolBar {
     // 한 개의 도구 버튼
     private func toolButton(for tool: EditTool) -> some View {
         let isSelected = selectedTool == tool
-        let isDisabled = disabledTools.contains(tool)
 
         return Button {
             toggleTool(tool)
@@ -46,8 +46,6 @@ extension EditToolBar {
             toolLabel(for: tool, isSelected: isSelected)
         }
         .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? Layout.disabledOpacity : 1)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -93,7 +91,6 @@ extension EditToolBar {
         static let toolButtonWidth: CGFloat = 76
         static let toolButtonHeight: CGFloat = 54
         static let collapseButtonWidth: CGFloat = 28
-        static let disabledOpacity = 0.35
     }
 }
 
@@ -110,6 +107,6 @@ extension EditToolBar {
 
     VStack(alignment: .leading) {
         EditToolBar(selectedTool: $selectedTool)
-        EditToolBar(selectedTool: $selectedTool, disabledTools: [.roomName, .furniture])
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: [.roomName, .furniture])
     }
 }

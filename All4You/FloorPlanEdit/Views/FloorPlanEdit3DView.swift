@@ -9,8 +9,8 @@ struct FloorPlanEdit3DView: View {
 
     @State private var selectedTool: EditTool?
 
-    /// 3D에서 가구는 보기만 하고 공간 이름은 라벨로만 보여 주므로 두 도구를 막는다
-    private let disabledTools: Set<EditTool> = [.roomName, .furniture]
+    /// 3D에서 가구는 보기만 하고 공간 이름은 라벨로만 보여 주므로 두 도구를 숨긴다
+    private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
         Text(Copy.placeholder)
@@ -28,7 +28,7 @@ struct FloorPlanEdit3DView: View {
 // 서브 뷰
 extension FloorPlanEdit3DView {
     private var toolBar: some View {
-        EditToolBar(selectedTool: $selectedTool, disabledTools: disabledTools)
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: hiddenTools)
             .padding()
     }
 }
