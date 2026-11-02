@@ -40,13 +40,13 @@ struct CaseMainView: View {
 // 상단 바
 // TEMP: 협업 시 글로벌 상단 바로 교체 예정. 뒤로가기만 Global/Toolbar.swift를 쓰고 나머지는 이 화면에 둠
 extension CaseMainView {
-    /// 사건 제목과 부제를 두 줄로 보여 준다
+    /// 사건 제목과 생성 시각을 두 줄로 보여 준다
     private var caseTitle: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             VStack(alignment: .leading) {
-                Text(Copy.caseTitle)
+                Text(Copy.title)
                     .font(.headline)
-                Text(Copy.caseSubtitle)
+                Text(Copy.createdAt)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -63,7 +63,7 @@ extension CaseMainView {
                 // TODO: 조사 차수 선택·추가 메뉴
             } label: {
                 HStack(spacing: Layout.sessionLabelSpacing) {
-                    Text(Copy.session)
+                    Text(Copy.sessionNumber)
                     Image(systemName: "chevron.down")
                 }
                 .font(.subheadline)
@@ -111,9 +111,10 @@ extension CaseMainView {
 extension CaseMainView {
     private enum Copy {
         // TEMP: 사건 데이터가 생기기 전 임시 문구 — 데이터 저장 방식이 정해지면 사건·차수 값으로 바꿔야 함
-        static let caseTitle = "청암로 77"
-        static let caseSubtitle = "오후 13:30"
-        static let session = "1차 조사"
+        // 이름은 ERD 필드를 따름: Investigation.title, Investigation.createdAt, InvestigationSession.sessionNumber
+        static let title = "청암로 77"
+        static let createdAt = "오후 13:30"
+        static let sessionNumber = "1차 조사"
 
         static let addMemo = "메모 추가"
         static let addPhoto = "사진추가"

@@ -6,7 +6,15 @@ import SwiftUI
 /// 필터에서 고른 값 묶음. 화면 선택 상태일 뿐 저장되는 데이터가 아니다
 struct PhotoFilter {
     var isPhotoVisible = true
-    var scope: Scope = .all
+    /// 전체 사진으로 바꾸면 촬영 방향도 함께 끈다
+    var scope: Scope = .all {
+        didSet {
+            if scope == .all {
+                showsShootingDirection = false
+            }
+        }
+    }
+    /// 북마크를 골랐을 때만 켤 수 있다
     var showsShootingDirection = false
 
     /// 도면 위에 보여 줄 사진의 범위
@@ -63,9 +71,11 @@ extension PhotoFilterMenu {
                 optionRow(Copy.bookmarked, isChecked: filter.scope == .bookmarked) {
                     filter.scope = .bookmarked
                 }
+                // 촬영 방향은 북마크한 사진에만 보여 주므로 전체 사진일 때는 고를 수 없게 한다
                 optionRow(Copy.shootingDirection, isChecked: filter.showsShootingDirection) {
                     filter.showsShootingDirection.toggle()
                 }
+                .disabled(filter.scope != .bookmarked)
             }
             .disabled(!filter.isPhotoVisible)
         }
