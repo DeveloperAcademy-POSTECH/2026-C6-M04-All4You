@@ -103,7 +103,7 @@ extension EditToolBar {
 }
 
 #Preview {
-    @Previewable @State var selectedTool: EditTool? = .electrical
+    @Previewable @State var selectedTool: EditTool? = .outlet
 
     VStack(alignment: .leading) {
         EditToolBar(selectedTool: $selectedTool)
