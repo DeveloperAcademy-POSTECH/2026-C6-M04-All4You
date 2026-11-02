@@ -12,7 +12,7 @@ struct FloorPlanPreparationHeader: View {
     let address: String
     let createdAt: Date
     let onBack: () -> Void
-
+    
     var body: some View {
         HStack(spacing: 14) {
             Button(action: onBack) {
@@ -24,7 +24,7 @@ struct FloorPlanPreparationHeader: View {
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: Circle())
             .accessibilityLabel("이전")
-
+            
             VStack(alignment: .leading, spacing: 1) {
                 Text(address)
                     .font(.system(size: 22, weight: .semibold))
@@ -38,6 +38,5 @@ struct FloorPlanPreparationHeader: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.background)
     }
 }

@@ -28,45 +28,54 @@ struct FloorPlanMethodSelectionView: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                
-                VStack(alignment: .leading, spacing: 32) {
-                    Text("평면도를 어떻게 준비할까요?")
-                        .font(.title2.bold())
-                    
-                    GlassEffectContainer(spacing: 12) {
-                        VStack(spacing: 14) {
-                            ForEach(FloorPlanSourceType.allCases) { sourceType in
-                                FloorPlanMethodRow(
-                                    sourceType: sourceType,
-                                    isSelected: selectedSourceType == sourceType
-                                ) {
-                                    // 같은 항목을 다시 누르면 선택을 해제하고 계속 버튼도 비활성화
-                                    selectedSourceType = selectedSourceType == sourceType ? nil : sourceType
-                                    // 외부 가져오기 메뉴는 해당 항목이 선택되어 있을 때만 표시
-                                    isImportMenuPresented = selectedSourceType == .externalImport
+        ZStack(alignment: .top) {
+            Color(uiColor: .systemGray6)
+                .ignoresSafeArea()
+            
+            ScrollView {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 24) {
+                        Text("평면도를 어떻게 준비할까요?")
+                            .font(.title2.bold())
+                        
+                        GlassEffectContainer(spacing: 12) {
+                            VStack(spacing: 15) {
+                                ForEach(FloorPlanSourceType.allCases) { sourceType in
+                                    FloorPlanMethodRow(
+                                        sourceType: sourceType,
+                                        isSelected: selectedSourceType == sourceType
+                                    ) {
+                                        // 같은 항목을 다시 누르면 선택을 해제하고 계속 버튼도 비활성화
+                                        selectedSourceType = selectedSourceType == sourceType ? nil : sourceType
+                                        // 외부 가져오기 메뉴는 해당 항목이 선택되어 있을 때만 표시
+                                        isImportMenuPresented = selectedSourceType == .externalImport
+                                    }
+                                    .frame(height: 80)
                                 }
                             }
                         }
                     }
                 }
-                
-                continueButton
-                    .padding(.top, 266)
+                .frame(maxWidth: 642)
+                .padding(EdgeInsets(top: 169, leading: 24, bottom: 24, trailing: 24))
+                .frame(maxWidth: .infinity)
             }
-            .padding(.top, 118)
-            .padding(.bottom, 24)
-            .frame(maxWidth: 542)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             FloorPlanPreparationHeader(address: address, createdAt: createdAt) {
                 dismiss()
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            continueButton
+                .frame(maxWidth: 642)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity)
         }
         .overlay(alignment: .center) {
             if isImportMenuPresented {
@@ -84,7 +93,7 @@ struct FloorPlanMethodSelectionView: View {
                         isFileImporterPresented = true
                     }
                 )
-                .offset(x: 330, y: 30)
+                .offset(x: 380, y: 100)
                 .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
             }
         }
@@ -133,9 +142,6 @@ struct FloorPlanMethodSelectionView: View {
                 isImportMenuPresented = true
             }
         }
-        .frame(maxWidth: 542)
-        .frame(maxWidth: .infinity)
-        .background(.background)
     }
     
     private func openCamera() {
