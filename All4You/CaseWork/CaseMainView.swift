@@ -12,9 +12,6 @@ struct CaseMainView: View {
     @State private var photoFilter = PhotoFilter()
     @State private var dimension: FloorPlanTabView.Dimension = .twoD
 
-    /// 사진추가 아래 작은 창(사진 촬영하기·사진 불러오기)이 떠 있는지
-    @State private var isAddPhotoOptionsShown = false
-
     var body: some View {
         // 아이콘은 접근성/사이드바에 들어가는 역할이라 불필요하다는 피드백 오면 삭제 예정
         TabView {
@@ -29,112 +26,34 @@ struct CaseMainView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
-        .toolbar {
-            caseTitle
-            sessionMenu
-            actionButtons
-        }
-        .backOnlyToolbar(onBack: onBack)
-    }
-}
-
-// 상단 바
-// TEMP: 협업 시 글로벌 상단 바로 교체 예정. 뒤로가기만 Global/Toolbar.swift를 쓰고 나머지는 이 화면에 둠
-extension CaseMainView {
-    /// 사건 제목을 크게 한 줄로 보여 준다
-    private var caseTitle: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Text(Copy.title)
-                // TEMP: 디자인 시스템에 Figma의 Large Title(34pt 굵게)이 없어 애플 글꼴을 씀 — 팀 글꼴에 추가되면 바꿔야 함
-                .font(.largeTitle.bold())
-                // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
-                .fixedSize()
-        }
-        .sharedBackgroundVisibility(.hidden)
-    }
-    
-    // 조사 차수
-    private var sessionMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                // TODO: 조사 차수 선택·추가 메뉴
-            } label: {
-                HStack(spacing: Layout.sessionLabelSpacing) {
-                    Text(Copy.sessionNumber)
-                    Image(systemName: "chevron.down")
-                }
-                .font(AppTypography.subheadline)
-            }
-        }
-    }
-    
-    // 우측 기능도구들
-    // 한 묶음(ToolbarItemGroup)의 버튼은 유리 캡슐 하나를 함께 쓰므로,
-    // 메모 추가·사진추가는 한 캡슐에 두고 수정·내보내기는 ToolbarSpacer로 떼어 각자 원으로 둔다
-    @ToolbarContentBuilder
-    private var actionButtons: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // 메모 작성
-            Button(Copy.addMemo, systemImage: "plus.bubble") {
+        .caseActionToolbar(
+            onAddMemo: {
                 // TODO: 메모 추가
-            }
-            addPhotoButton
-        }
-        ToolbarSpacer(.fixed, placement: .primaryAction)
-        // 도면 수정
-        ToolbarItem(placement: .primaryAction) {
-            Button(Copy.edit, systemImage: "pencil", action: onEdit)
-        }
-        ToolbarSpacer(.fixed, placement: .primaryAction)
-        // Export
-        ToolbarItem(placement: .primaryAction) {
-            Button(Copy.export, systemImage: "square.and.arrow.up") {
+            },
+            onTakePhoto: {
+                // TODO: 카메라 권한 확인과 요청 (이슈 23), 이후 사진 촬영 화면
+            },
+            onImportPhoto: {
+                // TODO: 사진 앱 권한 확인과 요청 (이슈 23), 이후 사진 불러오기 화면
+            },
+            onEdit: onEdit,
+            onExport: {
                 // TODO: 내보내기
             }
-        }
-    }
-
-    /// 사진추가 아이콘을 누르면 아이콘 아래로 사진을 찍을지 불러올지 고르는 작은 창이 뜬다.
-    /// 기본 Menu는 상단 바 버튼을 덮으며 펼쳐져서, 버튼이 그대로 보이도록 팝오버를 쓴다
-    private var addPhotoButton: some View {
-        Button(Copy.addPhoto, systemImage: "photo.badge.plus") {
-            isAddPhotoOptionsShown = true
-        }
-        .popover(isPresented: $isAddPhotoOptionsShown, arrowEdge: .top) {
-            addPhotoOptions
-        }
-    }
-
-    /// 팝오버 안의 캡슐 버튼 두 개. 하나를 고르면 창을 닫는다
-    private var addPhotoOptions: some View {
-        VStack(spacing: Layout.addPhotoOptionSpacing) {
-            Button {
-                isAddPhotoOptionsShown = false
-                // TODO: 카메라 권한 확인과 요청 (이슈 23), 이후 사진 촬영 화면
-            } label: {
-                Label(Copy.takePhoto, systemImage: "camera")
-                    .frame(maxWidth: .infinity)
+        )
+        .caseTitleToolbar(
+            title: Copy.title,
+            sessionNumber: Copy.sessionNumber,
+            sessionNumbers: Copy.sessionNumbers,
+            onSelectSession: { _ in
+                // TODO: 고른 조사 차수로 바꾸기
+            },
+            onAddSession: {
+                // TODO: 새 조사 차수 만들기
             }
-            Button {
-                isAddPhotoOptionsShown = false
-                // TODO: 사진 앱 권한 확인과 요청 (이슈 23), 이후 사진 불러오기 화면
-            } label: {
-                Label(Copy.importPhoto, systemImage: "photo.on.rectangle")
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .buttonStyle(.bordered)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
-        // Figma의 기본 버튼은 애플 기본 회색 바탕에 검은 글자라 애플 기본 색을 쓴다.
-        // 누른 버튼의 주황 바탕은 창이 바로 닫혀 잠깐만 보이므로 만들지 않는다
-        .tint(.primary)
-        // 두 버튼을 긴 쪽 글자 폭에 맞춰 같은 너비로 만든다
-        .fixedSize(horizontal: true, vertical: false)
-        .padding()
-        // 좁은 화면에서도 아래에서 올라오는 시트로 바뀌지 않고 작은 창으로 뜨게 한다
-        .presentationCompactAdaptation(.popover)
+        )
+        // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
+        .backOnlyToolbar(onBack: onBack)
     }
 }
 
@@ -148,28 +67,14 @@ extension CaseMainView {
     }
 }
 
-// 크기
-extension CaseMainView {
-    private enum Layout {
-        static let sessionLabelSpacing: CGFloat = 4
-        static let addPhotoOptionSpacing: CGFloat = 8
-    }
-}
-
 // 문구
 extension CaseMainView {
     private enum Copy {
-        // TEMP: 사건 데이터가 생기기 전 임시 문구 — 데이터 저장 방식이 정해지면 사건·차수 값으로 바꿔야 함
+        // TEMP: 사건 데이터가 생기기 전 임시 값 — 데이터 저장 방식이 정해지면 사건·차수 값으로 바꿔야 함
         // 이름은 ERD 필드를 따름: Investigation.title, InvestigationSession.sessionNumber
         static let title = "청암로 77"
-        static let sessionNumber = "1차 조사"
-
-        static let addMemo = "메모 추가"
-        static let addPhoto = "사진추가"
-        static let takePhoto = "사진 촬영하기"
-        static let importPhoto = "사진 불러오기"
-        static let edit = "수정"
-        static let export = "내보내기"
+        static let sessionNumber = 1
+        static let sessionNumbers = [1, 2]
 
         static let floorPlanTab = "도면"
         static let albumTab = "앨범"
