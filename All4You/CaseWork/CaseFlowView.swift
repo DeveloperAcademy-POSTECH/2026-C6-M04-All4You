@@ -1,4 +1,4 @@
-// 도면 수정부터 사진 업로드까지의 화면을 확인하기 위해 임시로 이어 둔 화면 흐름
+// 도면 수정부터 사건 작업 메인까지의 화면을 확인하기 위해 임시로 이어 둔 화면 흐름
 // TEMP: 다른 팀원 화면과의 이동 방식이 아직 정해지지 않아 이 파트 확인용으로만 만듦 — 팀 논의 후 바뀌거나 없어질 수 있음
 
 import SwiftUI
@@ -9,7 +9,6 @@ enum CaseRoute: Hashable {
     case conversionLoading
     case edit3D
     case caseMain
-    case photoUpload
 }
 
 /// 2D 수정에서 시작해 화면 더미(path)를 쌓고 빼며 이동한다
@@ -44,9 +43,7 @@ extension CaseFlowView {
         case .edit3D:
             FloorPlanEdit3DView(onBack: goBack, onDone: showCaseMain)
         case .caseMain:
-            CaseMainView(onBack: goBack, onEdit: showEdit2D, onAddPhoto: showPhotoUpload)
-        case .photoUpload:
-            PhotoUploadView(onBack: goBack)
+            CaseMainView(onBack: goBack, onEdit: showEdit2D)
         }
     }
 }
@@ -82,10 +79,6 @@ extension CaseFlowView {
 
     private func showEdit2D() {
         path.append(.edit2D)
-    }
-
-    private func showPhotoUpload() {
-        path.append(.photoUpload)
     }
 }
 
