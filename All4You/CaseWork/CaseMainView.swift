@@ -47,9 +47,9 @@ extension CaseMainView {
         ToolbarItem(placement: .topBarLeading) {
             VStack(alignment: .leading) {
                 Text(Copy.title)
-                    .font(.headline)
+                    .font(AppTypography.headlineEmphasized)
                 Text(Copy.createdAt)
-                    .font(.subheadline)
+                    .font(AppTypography.subheadline)
                     .foregroundStyle(.secondary)
             }
             // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
@@ -68,7 +68,7 @@ extension CaseMainView {
                     Text(Copy.sessionNumber)
                     Image(systemName: "chevron.down")
                 }
-                .font(.subheadline)
+                .font(AppTypography.subheadline)
             }
         }
     }
@@ -131,8 +131,9 @@ extension CaseMainView {
         .buttonStyle(.bordered)
         .buttonBorderShape(.capsule)
         .controlSize(.large)
-        // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 누른 버튼은 포인트 주황색 바탕에 흰 글자)
-        .tint(Color.primary)
+        // Figma의 기본 버튼은 애플 기본 회색 바탕에 검은 글자라 애플 기본 색을 쓴다.
+        // 누른 버튼의 주황 바탕은 창이 바로 닫혀 잠깐만 보이므로 만들지 않는다
+        .tint(.primary)
         // 두 버튼을 긴 쪽 글자 폭에 맞춰 같은 너비로 만든다
         .fixedSize(horizontal: true, vertical: false)
         .padding()
