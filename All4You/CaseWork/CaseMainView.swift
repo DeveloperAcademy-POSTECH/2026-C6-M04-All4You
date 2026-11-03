@@ -42,18 +42,14 @@ struct CaseMainView: View {
 // 상단 바
 // TEMP: 협업 시 글로벌 상단 바로 교체 예정. 뒤로가기만 Global/Toolbar.swift를 쓰고 나머지는 이 화면에 둠
 extension CaseMainView {
-    /// 사건 제목과 생성 시각을 두 줄로 보여 준다
+    /// 사건 제목을 크게 한 줄로 보여 준다
     private var caseTitle: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            VStack(alignment: .leading) {
-                Text(Copy.title)
-                    .font(AppTypography.headlineEmphasized)
-                Text(Copy.createdAt)
-                    .font(AppTypography.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
-            .fixedSize()
+            Text(Copy.title)
+                // TEMP: 디자인 시스템에 Figma의 Large Title(34pt 굵게)이 없어 애플 글꼴을 씀 — 팀 글꼴에 추가되면 바꿔야 함
+                .font(.largeTitle.bold())
+                // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
+                .fixedSize()
         }
         .sharedBackgroundVisibility(.hidden)
     }
@@ -164,9 +160,8 @@ extension CaseMainView {
 extension CaseMainView {
     private enum Copy {
         // TEMP: 사건 데이터가 생기기 전 임시 문구 — 데이터 저장 방식이 정해지면 사건·차수 값으로 바꿔야 함
-        // 이름은 ERD 필드를 따름: Investigation.title, Investigation.createdAt, InvestigationSession.sessionNumber
+        // 이름은 ERD 필드를 따름: Investigation.title, InvestigationSession.sessionNumber
         static let title = "청암로 77"
-        static let createdAt = "오후 13:30"
         static let sessionNumber = "1차 조사"
 
         static let addMemo = "메모 추가"
