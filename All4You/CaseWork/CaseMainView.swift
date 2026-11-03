@@ -4,14 +4,16 @@ import SwiftUI
 
 /// 도면·앨범·메모를 오가며 사건을 작업하는 화면
 struct CaseMainView: View {
-    // 뒤로가기, 편집하기(펜 아이콘), 사진추가
+    // 뒤로가기, 편집하기(펜 아이콘)
     let onBack: () -> Void
     let onEdit: () -> Void
-    let onAddPhoto: () -> Void
 
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
     @State private var dimension: FloorPlanTabView.Dimension = .twoD
+
+    /// 사진추가 아래 작은 창(사진 촬영하기·사진 불러오기)이 떠 있는지
+    @State private var isAddPhotoOptionsShown = false
 
     var body: some View {
         // 아이콘은 접근성/사이드바에 들어가는 역할이라 불필요하다는 피드백 오면 삭제 예정
@@ -72,21 +74,70 @@ extension CaseMainView {
     }
     
     // 우측 기능도구들
+    // 한 묶음(ToolbarItemGroup)의 버튼은 유리 캡슐 하나를 함께 쓰므로,
+    // 메모 추가·사진추가는 한 캡슐에 두고 수정·내보내기는 ToolbarSpacer로 떼어 각자 원으로 둔다
+    @ToolbarContentBuilder
     private var actionButtons: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             // 메모 작성
             Button(Copy.addMemo, systemImage: "plus.bubble") {
                 // TODO: 메모 추가
             }
-            // 사진 추가
-            Button(Copy.addPhoto, systemImage: "photo.badge.plus", action: onAddPhoto)
-            // 도면 수정
+            addPhotoButton
+        }
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+        // 도면 수정
+        ToolbarItem(placement: .primaryAction) {
             Button(Copy.edit, systemImage: "pencil", action: onEdit)
-            // Export
+        }
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+        // Export
+        ToolbarItem(placement: .primaryAction) {
             Button(Copy.export, systemImage: "square.and.arrow.up") {
                 // TODO: 내보내기
             }
         }
+    }
+
+    /// 사진추가 아이콘을 누르면 아이콘 아래로 사진을 찍을지 불러올지 고르는 작은 창이 뜬다.
+    /// 기본 Menu는 상단 바 버튼을 덮으며 펼쳐져서, 버튼이 그대로 보이도록 팝오버를 쓴다
+    private var addPhotoButton: some View {
+        Button(Copy.addPhoto, systemImage: "photo.badge.plus") {
+            isAddPhotoOptionsShown = true
+        }
+        .popover(isPresented: $isAddPhotoOptionsShown, arrowEdge: .top) {
+            addPhotoOptions
+        }
+    }
+
+    /// 팝오버 안의 캡슐 버튼 두 개. 하나를 고르면 창을 닫는다
+    private var addPhotoOptions: some View {
+        VStack(spacing: Layout.addPhotoOptionSpacing) {
+            Button {
+                isAddPhotoOptionsShown = false
+                // TODO: 카메라 권한 확인과 요청 (이슈 23), 이후 사진 촬영 화면
+            } label: {
+                Label(Copy.takePhoto, systemImage: "camera")
+                    .frame(maxWidth: .infinity)
+            }
+            Button {
+                isAddPhotoOptionsShown = false
+                // TODO: 사진 앱 권한 확인과 요청 (이슈 23), 이후 사진 불러오기 화면
+            } label: {
+                Label(Copy.importPhoto, systemImage: "photo.on.rectangle")
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 누른 버튼은 포인트 주황색 바탕에 흰 글자)
+        .tint(Color.primary)
+        // 두 버튼을 긴 쪽 글자 폭에 맞춰 같은 너비로 만든다
+        .fixedSize(horizontal: true, vertical: false)
+        .padding()
+        // 좁은 화면에서도 아래에서 올라오는 시트로 바뀌지 않고 작은 창으로 뜨게 한다
+        .presentationCompactAdaptation(.popover)
     }
 }
 
@@ -104,6 +155,7 @@ extension CaseMainView {
 extension CaseMainView {
     private enum Layout {
         static let sessionLabelSpacing: CGFloat = 4
+        static let addPhotoOptionSpacing: CGFloat = 8
     }
 }
 
@@ -118,6 +170,8 @@ extension CaseMainView {
 
         static let addMemo = "메모 추가"
         static let addPhoto = "사진추가"
+        static let takePhoto = "사진 촬영하기"
+        static let importPhoto = "사진 불러오기"
         static let edit = "수정"
         static let export = "내보내기"
 
@@ -131,6 +185,6 @@ extension CaseMainView {
 
 #Preview {
     NavigationStack {
-        CaseMainView(onBack: {}, onEdit: {}, onAddPhoto: {})
+        CaseMainView(onBack: {}, onEdit: {})
     }
 }
