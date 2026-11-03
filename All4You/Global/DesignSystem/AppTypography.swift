@@ -10,6 +10,7 @@ import SwiftUI
 /// ```swift
 /// Text("사건 등록")
 ///     .font(AppTypography.title1Emphasized)
+///     .foregroundStyle(.brand500)
 /// ```
 enum AppTypography {
 
