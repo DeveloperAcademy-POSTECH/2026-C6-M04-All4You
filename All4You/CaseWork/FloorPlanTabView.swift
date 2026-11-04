@@ -40,6 +40,7 @@ extension FloorPlanTabView {
             Text(Copy.threeD).tag(Dimension.threeD)
         }
         .pickerStyle(.segmented)
+        .controlSize(.extraLarge)
         .frame(width: Layout.dimensionPickerWidth)
         .padding()
     }

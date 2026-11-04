@@ -8,12 +8,13 @@ enum CaseRoute: Hashable {
     case edit2D
     case conversionLoading
     case edit3D
-    case caseMain
 }
 
-/// 2D 수정에서 시작해 화면 더미(path)를 쌓고 빼며 이동한다
+/// 2D 수정에서 시작해 화면 더미(path)를 쌓고 빼며 이동한다.
+/// 메인은 더미에 쌓지 않고 전체 화면으로 덮어 띄운다. 더미 안에 있으면 메인의 탭 막대가 상단 바 아래 줄로 내려가기 때문이다
 struct CaseFlowView: View {
     @State private var path: [CaseRoute] = []
+    @State private var isCaseMainShown = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -21,6 +22,9 @@ struct CaseFlowView: View {
                 .navigationDestination(for: CaseRoute.self) { route in
                     destination(for: route)
                 }
+        }
+        .fullScreenCover(isPresented: $isCaseMainShown) {
+            CaseMainView(onBack: closeCaseMain, onEdit: showEdit2D)
         }
     }
 }
@@ -42,8 +46,6 @@ extension CaseFlowView {
             ConversionLoadingView(onFinished: replaceLoadingWithEdit3D)
         case .edit3D:
             FloorPlanEdit3DView(onBack: goBack, onDone: showCaseMain)
-        case .caseMain:
-            CaseMainView(onBack: goBack, onEdit: showEdit2D)
         }
     }
 }
@@ -67,17 +69,23 @@ extension CaseFlowView {
         path.append(.edit3D)
     }
 
-    /// 메인이 이미 더미에 있으면 그 위 화면을 걷어 내고, 없으면 새로 쌓는다.
-    /// "수정"으로 다시 고치고 돌아올 때마다 메인이 계속 쌓이는 것을 막는다
+    /// 메인을 띄우고, 메인 밑의 더미는 처음 3D 수정까지만 남긴다.
+    /// "수정"으로 다시 고치고 돌아올 때마다 2D·3D 수정이 계속 쌓이는 것을 막는다
     private func showCaseMain() {
-        if let mainIndex = path.firstIndex(of: .caseMain) {
-            path.removeSubrange((mainIndex + 1)...)
-        } else {
-            path.append(.caseMain)
+        if let firstEdit3DIndex = path.firstIndex(of: .edit3D) {
+            path.removeSubrange((firstEdit3DIndex + 1)...)
         }
+        isCaseMainShown = true
     }
 
+    /// 메인을 닫는다. 메인 밑에 있던 3D 수정으로 돌아간다
+    private func closeCaseMain() {
+        isCaseMainShown = false
+    }
+
+    /// 메인을 닫고 2D 수정을 더미에 쌓는다
     private func showEdit2D() {
+        isCaseMainShown = false
         path.append(.edit2D)
     }
 }

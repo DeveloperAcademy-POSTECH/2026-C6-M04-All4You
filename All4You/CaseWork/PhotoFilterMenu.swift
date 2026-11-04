@@ -10,12 +10,12 @@ struct PhotoFilter {
     var scope: Scope = .all {
         didSet {
             if scope == .all {
-                showsShootingDirection = false
+                showsDirection = false
             }
         }
     }
     /// 북마크를 골랐을 때만 켤 수 있다
-    var showsShootingDirection = false
+    var showsDirection = false
 
     /// 도면 위에 보여 줄 사진의 범위
     enum Scope {
@@ -52,10 +52,10 @@ extension PhotoFilterMenu {
                 Image(systemName: "line.3.horizontal.decrease")
                 Text(Copy.filter)
                 Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                    .font(.caption.bold())
+                    .font(AppTypography.label.bold())
             }
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함
-            .foregroundStyle(Color.primary)
+            // 유리 버튼은 기본으로 파란 글자라, Figma처럼 애플 기본 글자색으로 바꾼다
+            .foregroundStyle(.primary)
         }
         .buttonStyle(.glass)
     }
@@ -72,8 +72,8 @@ extension PhotoFilterMenu {
                     filter.scope = .bookmarked
                 }
                 // 촬영 방향은 북마크한 사진에만 보여 주므로 전체 사진일 때는 고를 수 없게 한다
-                optionRow(Copy.shootingDirection, isChecked: filter.showsShootingDirection) {
-                    filter.showsShootingDirection.toggle()
+                optionRow(Copy.direction, isChecked: filter.showsDirection) {
+                    filter.showsDirection.toggle()
                 }
                 .disabled(filter.scope != .bookmarked)
             }
@@ -88,13 +88,12 @@ extension PhotoFilterMenu {
     private var panelHeader: some View {
         HStack {
             Text(Copy.showPhotos)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppTypography.label)
+                .foregroundStyle(.tertiary)
             Spacer()
             Toggle(Copy.showPhotos, isOn: $filter.isPhotoVisible)
                 .labelsHidden()
-                // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 켜짐 색은 주황색)
-                .tint(Color.blue)
+                .tint(.brand500)
                 // 기본 스위치는 Figma보다 커서 그림만 줄이고, 줄인 크기만큼만 자리를 차지하게 한다
                 .scaleEffect(Layout.switchScale)
                 .frame(width: Layout.switchWidth, height: Layout.switchHeight)
@@ -108,10 +107,9 @@ extension PhotoFilterMenu {
         Button(action: action) {
             HStack(spacing: Layout.rowLabelSpacing) {
                 Image(systemName: isChecked ? "checkmark.circle.fill" : "checkmark.circle")
-                    // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 체크 색은 주황색)
-                    .foregroundStyle(isChecked ? Color.blue : Color.secondary)
+                    .foregroundStyle(isChecked ? AnyShapeStyle(.brand500) : AnyShapeStyle(.tertiary))
                 Text(title)
-                    .foregroundStyle(isChecked ? Color.primary : Color.secondary)
+                    .foregroundStyle(isChecked ? .primary : HierarchicalShapeStyle.tertiary)
                 Spacer()
             }
             .padding(.horizontal, Layout.rowPadding)
@@ -147,7 +145,7 @@ extension PhotoFilterMenu {
         static let showPhotos = "사진 표시"
         static let allPhotos = "전체 사진"
         static let bookmarked = "북마크"
-        static let shootingDirection = "촬영 방향"
+        static let direction = "촬영 방향"
     }
 }
 
