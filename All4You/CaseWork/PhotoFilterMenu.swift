@@ -10,12 +10,12 @@ struct PhotoFilter {
     var scope: Scope = .all {
         didSet {
             if scope == .all {
-                showsShootingDirection = false
+                showsDirection = false
             }
         }
     }
     /// 북마크를 골랐을 때만 켤 수 있다
-    var showsShootingDirection = false
+    var showsDirection = false
 
     /// 도면 위에 보여 줄 사진의 범위
     enum Scope {
@@ -72,8 +72,8 @@ extension PhotoFilterMenu {
                     filter.scope = .bookmarked
                 }
                 // 촬영 방향은 북마크한 사진에만 보여 주므로 전체 사진일 때는 고를 수 없게 한다
-                optionRow(Copy.shootingDirection, isChecked: filter.showsShootingDirection) {
-                    filter.showsShootingDirection.toggle()
+                optionRow(Copy.direction, isChecked: filter.showsDirection) {
+                    filter.showsDirection.toggle()
                 }
                 .disabled(filter.scope != .bookmarked)
             }
@@ -145,7 +145,7 @@ extension PhotoFilterMenu {
         static let showPhotos = "사진 표시"
         static let allPhotos = "전체 사진"
         static let bookmarked = "북마크"
-        static let shootingDirection = "촬영 방향"
+        static let direction = "촬영 방향"
     }
 }
 
