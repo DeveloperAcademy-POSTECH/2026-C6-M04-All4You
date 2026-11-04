@@ -1,0 +1,140 @@
+// 사건 화면 왼쪽 사이드바. 도면(2D·3D)·앨범·메모 구역을 접고 펴며 볼 줄을 고른다.
+// 맨 윗줄에 편집과 닫기 버튼이 있다. 열고 닫기는 CaseTabView가 정한다
+
+import SwiftUI
+
+/// 도면·앨범·메모 구역과 그 안의 줄. 고른 줄은 회색 알약 바탕에 파란 글자로 보인다
+struct CaseSidebar: View {
+    @Binding var selection: CaseTabSelection
+    let albumRows: [CaseSidebarRow]
+    let memoRows: [CaseSidebarRow]
+    let onClose: () -> Void
+
+    // 구역마다 펼쳐져 있는지
+    @State private var isFloorPlanExpanded = true
+    @State private var isAlbumExpanded = true
+    @State private var isMemoExpanded = true
+
+    var body: some View {
+        // 사이드바만의 상단 바(편집·닫기)를 두려고 NavigationStack으로 감싼다.
+        // 탭 안이 아니라 탭 옆에 놓이므로 NavigationStack이 겹치지 않는다
+        NavigationStack {
+            List(selection: listSelection) {
+                floorPlanSection
+                albumSection
+                memoSection
+            }
+            .listStyle(.sidebar)
+            .toolbar {
+                sidebarToolbar
+            }
+        }
+        .frame(width: Layout.width)
+    }
+}
+
+// 서브 뷰
+extension CaseSidebar {
+    private var floorPlanSection: some View {
+        Section(CaseTabCopy.floorPlan, isExpanded: $isFloorPlanExpanded) {
+            row(CaseTabCopy.twoD, systemImage: "square.on.square", value: .floorPlan2D)
+            row(CaseTabCopy.threeD, systemImage: "point.3.connected.trianglepath.dotted", value: .floorPlan3D)
+        }
+    }
+
+    private var albumSection: some View {
+        placeSection(CaseTabCopy.album, rows: albumRows, isExpanded: $isAlbumExpanded) { name in
+            .album(name)
+        }
+    }
+
+    private var memoSection: some View {
+        placeSection(CaseTabCopy.memo, rows: memoRows, isExpanded: $isMemoExpanded) { name in
+            .memo(name)
+        }
+    }
+
+    /// 앨범·메모 구역. 두 구역은 모양이 같고, 줄을 골랐을 때의 값(앨범 줄인지 메모 줄인지)만 다르다
+    private func placeSection(
+        _ title: String,
+        rows: [CaseSidebarRow],
+        isExpanded: Binding<Bool>,
+        value: @escaping (String) -> CaseTabSelection
+    ) -> some View {
+        Section(title, isExpanded: isExpanded) {
+            ForEach(rows, id: \.name) { placeRow in
+                row(placeRow.name, systemImage: placeRow.systemImage, value: value(placeRow.name), count: placeRow.count)
+            }
+        }
+    }
+
+    /// 맨 윗줄: 왼쪽 편집, 오른쪽 닫기
+    @ToolbarContentBuilder
+    private var sidebarToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button(CaseTabCopy.edit) {
+                // TODO: 사이드바 편집 모드 (31-2)
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(CaseTabCopy.closeSidebar, systemImage: "sidebar.left", action: onClose)
+        }
+    }
+
+    /// 사이드바 한 줄. 오른쪽 숫자(count)는 앨범·메모 줄에만 있다.
+    /// 탭 옆에 둔 목록은 애플 기본 모양이 줄마다 흰 칸으로 나와서,
+    /// 칸 바탕과 구분선을 끄고 고른 줄만 알약 바탕을 직접 그려 애플 사이드바처럼 보이게 한다.
+    /// 숫자(badge)를 칸 바탕보다 먼저 붙여야 칸 바탕 설정이 줄 전체에 먹는다
+    private func row(_ title: String, systemImage: String, value: CaseTabSelection, count: Int? = nil) -> some View {
+        let isSelected = selection == value
+        return Label(title, systemImage: systemImage)
+            // badge는 0이면 숫자를 숨긴다
+            .badge(count ?? 0)
+            .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            .listRowSeparator(.hidden)
+            .listRowBackground(selectedBackground(isSelected))
+            .tag(value)
+    }
+
+    @ViewBuilder
+    private func selectedBackground(_ isSelected: Bool) -> some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: Layout.selectedCornerRadius)
+                .fill(.gray200)
+                .padding(.horizontal, Layout.selectedInset)
+        }
+    }
+}
+
+// 고른 줄
+extension CaseSidebar {
+    /// 목록은 "고르지 않음"(nil)도 다루지만 사이드바에서는 늘 한 줄이 골라져 있어서, nil은 무시한다
+    private var listSelection: Binding<CaseTabSelection?> {
+        Binding(
+            get: { selection },
+            set: { newSelection in
+                if let newSelection { selection = newSelection }
+            }
+        )
+    }
+}
+
+// 간격
+extension CaseSidebar {
+    private enum Layout {
+        static let width: CGFloat = 320
+        static let selectedCornerRadius: CGFloat = 22
+        static let selectedInset: CGFloat = 12
+    }
+}
+
+#Preview {
+    @Previewable @State var selection = CaseTabSelection.floorPlan2D
+
+    CaseSidebar(
+        selection: $selection,
+        albumRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 89)],
+        memoRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5)],
+        onClose: {}
+    )
+}
