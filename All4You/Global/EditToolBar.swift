@@ -82,15 +82,14 @@ extension EditToolBar {
     private func toolLabel(for tool: EditTool, isSelected: Bool) -> some View {
         VStack(spacing: Layout.labelSpacing) {
             Image(systemName: tool.iconName)
-                .font(.title3)
+                .font(AppTypography.title3)
             Text(tool.title)
-                .font(.caption2)
+                .font(AppTypography.label)
         }
-        // TEMP: 팀 공용 색이 정해지면 바꿔야 함
-        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .foregroundStyle(isSelected ? .white : .black)
         .frame(width: Layout.toolButtonWidth, height: Layout.toolButtonHeight)
-        // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 선택 색은 주황색)
-        .background(isSelected ? Color.blue : Color(uiColor: .systemGray6), in: Capsule())
+        // 디자인 시스템에 Figma의 옅은 회색 바탕과 같은 색이 없어 애플 기본 옅은 바탕을 쓴다
+        .background(isSelected ? AnyShapeStyle(.brand500) : AnyShapeStyle(.fill.tertiary), in: Capsule())
     }
     
     // 접기 펼치기 버튼
@@ -105,11 +104,9 @@ extension EditToolBar {
             .labelStyle(.iconOnly)
             // 화살표 기호를 바꾸면 애니메이션 중에 배경과 따로 움직이므로, 같은 기호를 돌려서 방향만 바꾼다
             .rotationEffect(.degrees(isCollapsed ? 180 : 0))
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함
-            .foregroundStyle(Color.primary)
+            .foregroundStyle(.primary)
             .frame(width: Layout.collapseButtonWidth, height: Layout.toolButtonHeight)
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함
-            .background(Color(uiColor: .systemGray6), in: Capsule())
+            .background(.fill.tertiary, in: Capsule())
         }
         .buttonStyle(.plain)
     }
