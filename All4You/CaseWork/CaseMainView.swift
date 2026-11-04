@@ -10,11 +10,12 @@ struct CaseMainView: View {
 
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
-    @State private var dimension: FloorPlanTabView.Dimension = .twoD
+    // 사이드바에서 고른 줄. 도면의 2D·3D도 여기서 정해진다
+    @State private var selection = CaseTabSelection.floorPlan2D
 
     var body: some View {
-        CaseTabView {
-            withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: $dimension))
+        CaseTabView(selection: $selection, albumRows: Copy.albumRows, memoRows: Copy.memoRows) {
+            withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: dimension))
         } album: {
             withCaseToolbars(emptyTab(Copy.albumPlaceholder))
         } memo: {
@@ -25,6 +26,14 @@ struct CaseMainView: View {
 
 // 탭
 extension CaseMainView {
+    /// 도면 아래 2D·3D 막대와 사이드바의 2D·3D 줄이 같은 값을 보도록 고른 줄에서 만든다
+    private var dimension: Binding<FloorPlanTabView.Dimension> {
+        Binding(
+            get: { selection == .floorPlan3D ? .threeD : .twoD },
+            set: { selection = $0 == .threeD ? .floorPlan3D : .floorPlan2D }
+        )
+    }
+
     /// 탭마다 상단 바가 따로 있어서, 어느 탭에서든 같은 상단 바 버튼이 보이도록 각 탭 내용에 붙인다
     private func withCaseToolbars(_ content: some View) -> some View {
         content
@@ -75,6 +84,21 @@ extension CaseMainView {
         static let title = "청암로 77"
         static let sessionNumber = 1
         static let sessionNumbers = [1, 2]
+
+        // TEMP: 장소·사진·메모 데이터가 생기기 전 임시 값 — 데이터가 생기면 장소별 개수로 바꿔야 함
+        // name은 ERD Room.name. count는 ERD에 없는 계산값으로, 앨범은 evidencePhotoCount, 메모는 memoCount라는 이름으로 쓸 예정 (임시 이름, PR에 명시)
+        static let albumRows = [
+            CaseSidebarRow(name: "위치 미지정", systemImage: "photo.badge.exclamationmark", count: 120),
+            CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 89),
+            CaseSidebarRow(name: "안방", systemImage: "bed.double", count: 42),
+            CaseSidebarRow(name: "주방", systemImage: "fork.knife", count: 83)
+        ]
+        static let memoRows = [
+            CaseSidebarRow(name: "발화지점", systemImage: "flame", count: 3),
+            CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5),
+            CaseSidebarRow(name: "안방", systemImage: "bed.double", count: 2),
+            CaseSidebarRow(name: "방1", systemImage: "fork.knife", count: 6)
+        ]
 
         static let albumPlaceholder = "앨범 자리"
         static let memoPlaceholder = "메모 자리"
