@@ -31,20 +31,15 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     @ViewBuilder let album: Album
     @ViewBuilder let memo: Memo
 
-    // 사이드바 "편집"으로 줄을 숨기거나 순서를 바꾼 상태
-    @State private var customization = TabViewCustomization()
-
     var body: some View {
         TabView(selection: $selection) {
             TabSection(CaseTabCopy.floorPlan) {
                 Tab(CaseTabCopy.twoD, systemImage: "square.on.square", value: CaseTabSelection.floorPlan2D) {
                     NavigationStack { floorPlan }
                 }
-                .customizationID(CaseTabCopy.twoD)
                 Tab(CaseTabCopy.threeD, systemImage: "point.3.connected.trianglepath.dotted", value: CaseTabSelection.floorPlan3D) {
                     NavigationStack { floorPlan }
                 }
-                .customizationID(CaseTabCopy.threeD)
             }
             TabSection(CaseTabCopy.album) {
                 ForEach(albumRows, id: \.self) { row in
@@ -52,7 +47,6 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
                         NavigationStack { album }
                     }
                     .badge(row.count)
-                    .customizationID(CaseTabCopy.album + row.name)
                 }
             }
             TabSection(CaseTabCopy.memo) {
@@ -61,12 +55,11 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
                         NavigationStack { memo }
                     }
                     .badge(row.count)
-                    .customizationID(CaseTabCopy.memo + row.name)
                 }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .tabViewCustomization($customization)
+        // TODO: 사이드바 "편집" 버튼 동작이 디자인에서 정해지면 추가 (애플 기본은 .tabViewCustomization + 줄마다 .customizationID)
     }
 }
 
