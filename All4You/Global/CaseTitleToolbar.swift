@@ -16,7 +16,6 @@ extension View {
         toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Text(title)
-                    // TEMP: 디자인 시스템에 Figma의 Large Title(34pt 굵게)이 없어 애플 글꼴을 씀 — 팀 글꼴에 추가되면 바꿔야 함
                     .font(.largeTitle.bold())
                     // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
                     .fixedSize()
@@ -31,7 +30,7 @@ extension View {
                     onAddSession: onAddSession
                 )
             }
-            // 상단 바가 씌우는 큰 유리 바탕 대신 Figma 크기의 작은 유리 캡슐을 직접 그린다
+            // figma 디자인과 유사하게 하기 위해 기본 상단바 유리를 숨겼다
             .sharedBackgroundVisibility(.hidden)
         }
     }

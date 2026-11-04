@@ -59,7 +59,9 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        // TODO: 사이드바 "편집" 버튼 동작이 디자인에서 정해지면 추가 (애플 기본은 .tabViewCustomization + 줄마다 .customizationID)
+        // TODO: 사이드바 "편집"(앨범·메모 삭제, Figma 28:7319) — 다음 이슈에서 작업.
+        // 애플 사이드바 공개 API로는 맨 윗줄 편집 버튼·빨간 빼기 표시를 만들 수 없어, 직접 만든 사이드바나 UIKit 사이드바를 검토해야 함
+        // (.tabViewCustomization은 숨기기·순서 바꾸기만 됨)
     }
 }
 
