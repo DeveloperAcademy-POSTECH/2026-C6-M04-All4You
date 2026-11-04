@@ -12,7 +12,7 @@ struct ExternalImportGlassMenu: View {
     let onCameraTap: () -> Void
     let onPhotoLibraryTap: () -> Void
     let onFileTap: () -> Void
-
+    
     var body: some View {
         VStack(spacing: 0) {
             menuButton("사진 찍기", icon: "camera", action: onCameraTap)
@@ -26,7 +26,7 @@ struct ExternalImportGlassMenu: View {
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
         .accessibilityElement(children: .contain)
     }
-
+    
     private func menuButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: icon)
