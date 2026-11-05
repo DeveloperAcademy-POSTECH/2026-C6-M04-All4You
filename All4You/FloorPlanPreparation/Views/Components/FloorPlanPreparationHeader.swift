@@ -6,6 +6,7 @@
 //
 
 // 이전 버튼 & 주소 & 시간 컴포넌트
+// TODO: 이전 화면에서 데이터 받아와지는지 확인 필요
 import SwiftUI
 
 struct FloorPlanPreparationHeader: View {
