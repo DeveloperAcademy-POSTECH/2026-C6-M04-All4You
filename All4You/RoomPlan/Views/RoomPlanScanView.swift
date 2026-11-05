@@ -138,11 +138,9 @@ struct RoomPlanScanView: View {
             await refreshCameraPermission()
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active {
-                Task { await refreshCameraPermission() }
-            } else {
-                scanService.stop()
-            }
+            // 제어 센터를 내리거나 알림이 왔을 경우 및 백그라운드 전환에서는 스캔 단계와 세션 유지
+            guard phase == .active else { return }
+            Task { await refreshCameraPermission() }
         }
     }
     
