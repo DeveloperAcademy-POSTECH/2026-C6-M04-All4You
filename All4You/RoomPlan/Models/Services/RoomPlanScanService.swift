@@ -57,12 +57,14 @@ import RoomPlan
         let tracking = RoomPlanTrackingService(scanID: store.scanID)
         tracking.onApproachingLimit = { [weak self] in
             guard let self, self.phase == .scanning else { return }
+            self.needsRelocalization = true
             self.issue = .approachingLimit
             self.stop()
         }
         tracking.onRelocalized = { [weak self] in
             guard let self else { return }
             self.isRelocalizing = false
+            self.needsRelocalization = false
             self.begin()
         }
         tracking.onRelocalizationTimeout = { [weak self] in
@@ -77,6 +79,8 @@ import RoomPlan
     
     // 세션 재개, 저장 중 입력, 재현지화를 조율하는 내부 상태
     private var captureSession: RoomCaptureSession?
+    // 새 ARSession이 이전 구간의 좌표계에 맞춰질 때까지 촬영 시작 차단
+    private var needsRelocalization = false
     private var guidanceTimer: Task<Void, Never>?
     private var ending: CaptureEnd?
     private var pendingAction: PendingAction = .none
@@ -119,7 +123,7 @@ import RoomPlan
     
     // 저장·병합 종료 확인 후 새 RoomPlan 촬영 구간 시작
     func begin() {
-        guard let captureSession, !isRelocalizing,
+        guard let captureSession, !isRelocalizing, !needsRelocalization,
               phase == .ready || phase == .paused || phase == .segmentSaved else { return }
         // 저장 또는 중간 병합 중 재개 입력의 지연 실행 예약
         if ending?.isPausing == true {
@@ -261,8 +265,11 @@ import RoomPlan
     // 일반 구간의 연속 촬영 또는 용량 한계 도달 후 월드맵 relocalization
     func continueScanning() {
         guard phase == .segmentSaved else { return }
-        // 용량 한계 이후 새 ARSession과 저장 월드맵의 위치 재정렬
         if issue == .approachingLimit || issue == .sceneLimitReached {
+            needsRelocalization = true
+        }
+        // 타임아웃으로 issue가 바뀌어도 위치를 찾기 전에는 새 구간을 시작하지 않음
+        if needsRelocalization {
             guard tracking.prepareRestart() else {
                 issue = .captureFailed("이전 위치 정보가 없어 연속 스캔을 시작할 수 없습니다")
                 return
@@ -324,6 +331,7 @@ import RoomPlan
             self.tracking.stopMonitoring()
             if let captureError = error as? RoomCaptureSession.CaptureError {
                 if captureError == .exceedSceneSizeLimit {
+                    self.needsRelocalization = true
                     self.issue = .sceneLimitReached
                 } else {
                     self.issue = .captureFailed(captureError.localizedDescription)
