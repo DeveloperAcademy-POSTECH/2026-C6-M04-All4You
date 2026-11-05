@@ -12,9 +12,12 @@ struct CaseMainView: View {
     @State private var photoFilter = PhotoFilter()
     // 사이드바에서 고른 줄. 도면의 2D·3D도 여기서 정해진다
     @State private var selection = CaseTabSelection.floorPlan2D
+    // 사이드바의 장소 줄. 삭제하면 개수가 0이 되도록 화면이 들고 있는다
+    @State private var albumRows = Copy.albumRows
+    @State private var memoRows = Copy.memoRows
 
     var body: some View {
-        CaseTabView(selection: $selection, albumRows: Copy.albumRows, memoRows: Copy.memoRows) {
+        CaseTabView(selection: $selection, albumRows: albumRows, memoRows: memoRows, onClearRow: clearRow) {
             withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: dimension))
         } album: {
             withCaseToolbars(emptyTab(Copy.albumPlaceholder))
@@ -66,6 +69,23 @@ extension CaseMainView {
             )
             // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
             .backOnlyToolbar(onBack: onBack)
+    }
+
+    /// 사이드바에서 삭제를 확인한 장소의 사진·메모를 비운다. 장소 줄은 남고 개수만 0이 된다
+    private func clearRow(_ value: CaseTabSelection) {
+        switch value {
+        case .album(let name):
+            // TODO: 이 장소의 사진(EvidencePhoto)을 실제로 지우기 — 사진 데이터가 생기면
+            guard let index = albumRows.firstIndex(where: { $0.name == name }) else { return }
+            albumRows[index].count = 0
+        case .memo(let name):
+            // TODO: 이 장소의 메모를 실제로 지우기 — 메모 데이터가 생기면
+            guard let index = memoRows.firstIndex(where: { $0.name == name }) else { return }
+            memoRows[index].count = 0
+        case .floorPlan2D, .floorPlan3D:
+            // 도면 줄은 지울 수 없다
+            return
+        }
     }
 
     /// 아직 내용이 없는 앨범·메모 탭의 빈 화면

@@ -7,7 +7,8 @@ import SwiftUI
 struct CaseSidebarRow {
     let name: String
     let systemImage: String
-    let count: Int
+    // 사이드바에서 삭제하면 0이 된다
+    var count: Int
 }
 
 /// 사이드바에서 고른 줄. 탭 막대의 도면·앨범·메모는 이 줄이 속한 구역이다
@@ -27,6 +28,8 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     @Binding var selection: CaseTabSelection
     let albumRows: [CaseSidebarRow]
     let memoRows: [CaseSidebarRow]
+    // 사이드바에서 삭제를 확인한 줄. 그 장소의 사진·메모를 비우는 일은 화면이 한다
+    let onClearRow: (CaseTabSelection) -> Void
     @ViewBuilder let floorPlan: FloorPlan
     @ViewBuilder let album: Album
     @ViewBuilder let memo: Memo
@@ -48,11 +51,17 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
 // 서브 뷰
 extension CaseTabView {
     private var sidebar: some View {
-        CaseSidebar(selection: $selection, albumRows: albumRows, memoRows: memoRows, onClose: toggleSidebar)
-            .overlay(alignment: .trailing) {
-                Divider()
-            }
-            .transition(.move(edge: .leading))
+        CaseSidebar(
+            selection: $selection,
+            albumRows: albumRows,
+            memoRows: memoRows,
+            onClose: toggleSidebar,
+            onClearRow: onClearRow
+        )
+        .overlay(alignment: .trailing) {
+            Divider()
+        }
+        .transition(.move(edge: .leading))
     }
 
     private var tabs: some View {
@@ -146,8 +155,20 @@ enum CaseTabCopy {
     static let twoD = "2D"
     static let threeD = "3D"
     static let edit = "편집"
+    static let done = "완료"
     static let sidebar = "사이드바"
     static let closeSidebar = "사이드바 닫기"
+    static let cancel = "취소"
+
+    // 앨범 삭제 확인 창 (Figma). 앨범 줄은 남고 그 안의 사진만 지워진다
+    static let clearAlbum = "앨범 삭제"
+    static func clearAlbumTitle(_ name: String) -> String { "'\(name)' 앨범을 삭제할까요?" }
+    static func clearAlbumMessage(_ count: Int) -> String { "사진 \(count)장이 모두 삭제됩니다" }
+
+    // TEMP: 메모 삭제 확인 창은 Figma에 없어 앨범 문구를 본떠 임시로 씀 — 디자인이 나오면 바꿔야 함
+    static let clearMemo = "메모 삭제"
+    static func clearMemoTitle(_ name: String) -> String { "'\(name)' 메모를 삭제할까요?" }
+    static func clearMemoMessage(_ count: Int) -> String { "메모 \(count)개가 모두 삭제됩니다" }
 }
 
 #Preview {
@@ -156,7 +177,8 @@ enum CaseTabCopy {
     CaseTabView(
         selection: $selection,
         albumRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 89)],
-        memoRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5)]
+        memoRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5)],
+        onClearRow: { _ in }
     ) {
         Text("도면 내용")
     } album: {

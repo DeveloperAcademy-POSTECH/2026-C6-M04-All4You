@@ -9,11 +9,17 @@ struct CaseSidebar: View {
     let albumRows: [CaseSidebarRow]
     let memoRows: [CaseSidebarRow]
     let onClose: () -> Void
+    // 확인 창에서 삭제를 누르면 그 줄(.album·.memo)의 사진·메모를 비운다. 줄 자체는 남는다
+    let onClearRow: (CaseTabSelection) -> Void
 
     // 구역마다 펼쳐져 있는지
     @State private var isFloorPlanExpanded = true
     @State private var isAlbumExpanded = true
     @State private var isMemoExpanded = true
+    // 편집 중이면 앨범·메모 줄에 빨간 빼기 버튼이 보이고, 도면 줄은 흐려진다
+    @State private var isEditing = false
+    // 빼기 버튼 → "삭제"를 누른 줄. 값이 있으면 확인 창이 뜬다
+    @State private var clearRequest: ClearRequest?
 
     var body: some View {
         // 사이드바만의 상단 바(편집·닫기)를 두려고 NavigationStack으로 감싼다.
@@ -25,8 +31,23 @@ struct CaseSidebar: View {
                 memoSection
             }
             .listStyle(.sidebar)
+            // 목록의 편집 모드를 켜야 지울 수 있는 줄(onDelete)에 빨간 빼기 버튼이 나온다
+            .environment(\.editMode, .constant(isEditing ? .active : .inactive))
             .toolbar {
                 sidebarToolbar
+            }
+            .alert(
+                clearRequest?.title ?? "",
+                isPresented: isClearAlertShown,
+                presenting: clearRequest
+            ) { request in
+                Button(request.confirmTitle, role: .destructive) {
+                    onClearRow(request.value)
+                    isEditing = false
+                }
+                Button(CaseTabCopy.cancel, role: .cancel) {}
+            } message: { request in
+                Text(request.message)
             }
         }
         .frame(width: Layout.width)
@@ -37,8 +58,13 @@ struct CaseSidebar: View {
 extension CaseSidebar {
     private var floorPlanSection: some View {
         Section(CaseTabCopy.floorPlan, isExpanded: $isFloorPlanExpanded) {
-            row(CaseTabCopy.twoD, systemImage: "square.on.square", value: .floorPlan2D)
-            row(CaseTabCopy.threeD, systemImage: "point.3.connected.trianglepath.dotted", value: .floorPlan3D)
+            Group {
+                row(CaseTabCopy.twoD, systemImage: "square.on.square", value: .floorPlan2D)
+                row(CaseTabCopy.threeD, systemImage: "point.3.connected.trianglepath.dotted", value: .floorPlan3D)
+            }
+            // 도면은 지울 수 없어서, 편집 중에는 흐리게 한다. 눌리지 않는 것은 listSelection이 막는다
+            .deleteDisabled(true)
+            .opacity(isEditing ? Layout.disabledOpacity : 1)
         }
     }
 
@@ -64,16 +90,31 @@ extension CaseSidebar {
         Section(title, isExpanded: isExpanded) {
             ForEach(rows, id: \.name) { placeRow in
                 row(placeRow.name, systemImage: placeRow.systemImage, value: value(placeRow.name), count: placeRow.count)
+                    // 이미 비어 있는 줄은 지울 것이 없어 빼기 버튼을 두지 않는다
+                    .deleteDisabled(placeRow.count == 0)
+            }
+            // 바로 지우지 않고, 누른 줄을 기억해 확인 창을 띄운다
+            .onDelete { offsets in
+                guard let index = offsets.first else { return }
+                let placeRow = rows[index]
+                clearRequest = ClearRequest(value: value(placeRow.name), name: placeRow.name, count: placeRow.count)
             }
         }
     }
 
-    /// 맨 윗줄: 왼쪽 편집, 오른쪽 닫기
+    /// 맨 윗줄: 왼쪽 편집(편집 중에는 체크 버튼), 오른쪽 닫기
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            Button(CaseTabCopy.edit) {
-                // TODO: 사이드바 편집 모드 (31-2)
+            if isEditing {
+                Button(CaseTabCopy.done, systemImage: "checkmark") {
+                    isEditing = false
+                }
+                .buttonStyle(.glassProminent)
+            } else {
+                Button(CaseTabCopy.edit) {
+                    isEditing = true
+                }
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -88,8 +129,8 @@ extension CaseSidebar {
     private func row(_ title: String, systemImage: String, value: CaseTabSelection, count: Int? = nil) -> some View {
         let isSelected = selection == value
         return Label(title, systemImage: systemImage)
-            // badge는 0이면 숫자를 숨긴다
-            .badge(count ?? 0)
+            // 숫자로 넘기면 0일 때 숨겨져서, 삭제 뒤 0이 보이도록 글자로 넘긴다. 도면 줄(nil)은 숫자가 없다
+            .badge(count.map { Text($0, format: .number) })
             .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
             .listRowSeparator(.hidden)
             .listRowBackground(selectedBackground(isSelected))
@@ -108,14 +149,53 @@ extension CaseSidebar {
 
 // 고른 줄
 extension CaseSidebar {
-    /// 목록은 "고르지 않음"(nil)도 다루지만 사이드바에서는 늘 한 줄이 골라져 있어서, nil은 무시한다
+    /// 목록은 "고르지 않음"(nil)도 다루지만 사이드바에서는 늘 한 줄이 골라져 있어서, nil은 무시한다.
+    /// 편집 중에는 줄을 눌러도 고르지 않는다 (줄에 .disabled를 붙여도 목록의 고르기는 막히지 않는다)
     private var listSelection: Binding<CaseTabSelection?> {
         Binding(
             get: { selection },
             set: { newSelection in
-                if let newSelection { selection = newSelection }
+                guard !isEditing, let newSelection else { return }
+                selection = newSelection
             }
         )
+    }
+}
+
+// 삭제 확인 창
+extension CaseSidebar {
+    /// 확인 창은 clearRequest에 값이 있을 때 뜨고, 닫히면 값을 지운다
+    private var isClearAlertShown: Binding<Bool> {
+        Binding(
+            get: { clearRequest != nil },
+            set: { isShown in
+                if !isShown { clearRequest = nil }
+            }
+        )
+    }
+
+    /// 비우려는 줄과 확인 창 문구. 앨범 줄이면 사진, 메모 줄이면 메모 문구를 쓴다
+    private struct ClearRequest {
+        let value: CaseTabSelection
+        let name: String
+        let count: Int
+
+        private var isMemo: Bool {
+            if case .memo = value { return true }
+            return false
+        }
+
+        var title: String {
+            isMemo ? CaseTabCopy.clearMemoTitle(name) : CaseTabCopy.clearAlbumTitle(name)
+        }
+
+        var message: String {
+            isMemo ? CaseTabCopy.clearMemoMessage(count) : CaseTabCopy.clearAlbumMessage(count)
+        }
+
+        var confirmTitle: String {
+            isMemo ? CaseTabCopy.clearMemo : CaseTabCopy.clearAlbum
+        }
     }
 }
 
@@ -125,6 +205,7 @@ extension CaseSidebar {
         static let width: CGFloat = 320
         static let selectedCornerRadius: CGFloat = 22
         static let selectedInset: CGFloat = 12
+        static let disabledOpacity: CGFloat = 0.4
     }
 }
 
@@ -135,6 +216,7 @@ extension CaseSidebar {
         selection: $selection,
         albumRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 89)],
         memoRows: [CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5)],
-        onClose: {}
+        onClose: {},
+        onClearRow: { _ in }
     )
 }
