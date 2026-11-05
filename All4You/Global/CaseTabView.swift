@@ -162,14 +162,16 @@ enum CaseTabCopy {
     static let delete = "삭제"
 
     // 앨범 삭제 확인 창 (Figma). 앨범 줄은 남고 그 안의 사진만 지워진다
-    static let clearAlbum = "앨범 삭제"
-    static func clearAlbumTitle(_ name: String) -> String { "'\(name)' 앨범을 삭제할까요?" }
-    static func clearAlbumMessage(_ count: Int) -> String { "사진 \(count)장이 모두 삭제됩니다" }
+    static func clearAlbumTitle(_ name: String) -> String { "'\(name)' 사진을 모두 삭제할까요?" }
+    static func clearAlbumMessage(_ name: String, _ count: Int) -> String {
+        "현재 조사 차수의 \(name) 사진 \(count)장이 모두 삭제됩니다."
+    }
 
     // TEMP: 메모 삭제 확인 창은 Figma에 없어 앨범 문구를 본떠 임시로 씀 — 디자인이 나오면 바꿔야 함
-    static let clearMemo = "메모 삭제"
-    static func clearMemoTitle(_ name: String) -> String { "'\(name)' 메모를 삭제할까요?" }
-    static func clearMemoMessage(_ count: Int) -> String { "메모 \(count)개가 모두 삭제됩니다" }
+    static func clearMemoTitle(_ name: String) -> String { "'\(name)' 메모를 모두 삭제할까요?" }
+    static func clearMemoMessage(_ name: String, _ count: Int) -> String {
+        "현재 조사 차수의 \(name) 메모 \(count)개가 모두 삭제됩니다."
+    }
 }
 
 #Preview {

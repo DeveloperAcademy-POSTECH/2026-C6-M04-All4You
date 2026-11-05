@@ -3,7 +3,7 @@
 
 import SwiftUI
 
-/// 도면·앨범·메모 구역과 그 안의 줄. 고른 줄은 회색 알약 바탕에 파란 글자로 보인다
+/// 도면·앨범·메모 구역과 그 안의 줄. 고른 줄은 회색 알약 바탕으로 보인다
 struct CaseSidebar: View {
     @Binding var selection: CaseTabSelection
     let albumRows: [CaseSidebarRow]
@@ -41,7 +41,7 @@ struct CaseSidebar: View {
                 isPresented: isClearAlertShown,
                 presenting: clearRequest
             ) { request in
-                Button(request.confirmTitle, role: .destructive) {
+                Button(CaseTabCopy.delete, role: .destructive) {
                     onClearRow(request.value)
                     isEditing = false
                 }
@@ -137,9 +137,12 @@ extension CaseSidebar {
     private func row(_ title: String, systemImage: String, value: CaseTabSelection, count: Int? = nil) -> some View {
         let isSelected = selection == value
         return Label(title, systemImage: systemImage)
+            // 알약 왼쪽 끝과 아이콘 사이를 넉넉히 띄운다
+            .padding(.leading, Layout.rowLeadingInset)
             // 숫자로 넘기면 0일 때 숨겨져서, 삭제 뒤 0이 보이도록 글자로 넘긴다. 도면 줄(nil)은 숫자가 없다
             .badge(count.map { Text($0, format: .number) })
-            .foregroundStyle(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+            // 고른 줄도 글자색은 다른 줄과 같다. 고른 줄은 알약 바탕으로만 구분한다
+            .foregroundStyle(.primary)
             .listRowSeparator(.hidden)
             .listRowBackground(selectedBackground(isSelected))
             .tag(value)
@@ -148,9 +151,9 @@ extension CaseSidebar {
     @ViewBuilder
     private func selectedBackground(_ isSelected: Bool) -> some View {
         if isSelected {
+            // 목록 줄 칸 폭을 그대로 써서 알약을 넓게 그린다
             RoundedRectangle(cornerRadius: Layout.selectedCornerRadius)
                 .fill(.gray200)
-                .padding(.horizontal, Layout.selectedInset)
         }
     }
 }
@@ -198,11 +201,7 @@ extension CaseSidebar {
         }
 
         var message: String {
-            isMemo ? CaseTabCopy.clearMemoMessage(count) : CaseTabCopy.clearAlbumMessage(count)
-        }
-
-        var confirmTitle: String {
-            isMemo ? CaseTabCopy.clearMemo : CaseTabCopy.clearAlbum
+            isMemo ? CaseTabCopy.clearMemoMessage(name, count) : CaseTabCopy.clearAlbumMessage(name, count)
         }
     }
 }
@@ -212,7 +211,7 @@ extension CaseSidebar {
     private enum Layout {
         static let width: CGFloat = 320
         static let selectedCornerRadius: CGFloat = 22
-        static let selectedInset: CGFloat = 12
+        static let rowLeadingInset: CGFloat = 8
         static let disabledOpacity: CGFloat = 0.4
     }
 }
