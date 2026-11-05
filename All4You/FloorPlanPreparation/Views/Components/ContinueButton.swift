@@ -11,7 +11,7 @@ import SwiftUI
 struct ContinueButton: View {
     let isEnabled: Bool
     let action: () -> Void
-
+    
     var body: some View {
         Button(action: action) {
             Text("계속")
@@ -26,7 +26,7 @@ struct ContinueButton: View {
 
 private struct ContinueButtonStyle: ButtonStyle {
     let isEnabled: Bool
-
+    
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(isEnabled ? .white : .secondary)

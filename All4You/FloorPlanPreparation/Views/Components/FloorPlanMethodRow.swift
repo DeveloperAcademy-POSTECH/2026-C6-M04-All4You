@@ -5,7 +5,7 @@
 //  Created by 채유성 on 11/1/26.
 //
 
-// 평면도 불러오는 방식 선택하는 컴포넌트
+// 평면도 불러오는 방식 선택 리스트 컴포넌트
 import SwiftUI
 
 struct FloorPlanMethodRow: View {
