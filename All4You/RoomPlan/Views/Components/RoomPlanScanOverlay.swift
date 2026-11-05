@@ -63,14 +63,13 @@ struct RoomPlanScanOverlay: View {
                     Circle()
                         .fill(.red)
                         .frame(width: 58, height: 58)
-                        .padding(5)
-                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
                         .frame(width: 72, height: 72)
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("스캔 시작")
-                .padding(.trailing, 24)
+                .padding(.trailing, 28)
             } else if phase == .scanning || phase == .paused {
                 Button(action: onStop) {
                     RoundedRectangle(cornerRadius: 7)
