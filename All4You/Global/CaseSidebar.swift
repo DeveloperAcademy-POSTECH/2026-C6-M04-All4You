@@ -92,13 +92,21 @@ extension CaseSidebar {
                 row(placeRow.name, systemImage: placeRow.systemImage, value: value(placeRow.name), count: placeRow.count)
                     // 이미 비어 있는 줄은 지울 것이 없어 빼기 버튼을 두지 않는다
                     .deleteDisabled(placeRow.count == 0)
+                    // 빼기 버튼을 누르거나 줄을 밀면 나오는 "삭제". 바로 지우지 않고 확인 창을 띄운다.
+                    // 애플 기본 삭제(onDelete, role: .destructive)는 누르는 순간 줄을 목록에서 빼 버려서,
+                    // 줄이 남는 이 화면에서는 줄이 사라졌다 다시 나타난다. 그래서 역할 없는 버튼에 빨간색만 입힌다
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if placeRow.count > 0 {
+                            Button(CaseTabCopy.delete, systemImage: "trash") {
+                                clearRequest = ClearRequest(value: value(placeRow.name), name: placeRow.name, count: placeRow.count)
+                            }
+                            // 색 자산에 빨강이 없어, ⊖와 같은 애플 시스템 빨강을 쓴다 (2026-11-05 결정)
+                            .tint(.red)
+                        }
+                    }
             }
-            // 바로 지우지 않고, 누른 줄을 기억해 확인 창을 띄운다
-            .onDelete { offsets in
-                guard let index = offsets.first else { return }
-                let placeRow = rows[index]
-                clearRequest = ClearRequest(value: value(placeRow.name), name: placeRow.name, count: placeRow.count)
-            }
+            // 편집 중 빼기 버튼을 보이게 하려고만 둔다. 눌렀을 때 할 일은 위 swipeActions의 "삭제"가 한다
+            .onDelete { _ in }
         }
     }
 

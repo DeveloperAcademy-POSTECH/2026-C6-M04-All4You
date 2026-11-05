@@ -159,6 +159,7 @@ enum CaseTabCopy {
     static let sidebar = "사이드바"
     static let closeSidebar = "사이드바 닫기"
     static let cancel = "취소"
+    static let delete = "삭제"
 
     // 앨범 삭제 확인 창 (Figma). 앨범 줄은 남고 그 안의 사진만 지워진다
     static let clearAlbum = "앨범 삭제"
