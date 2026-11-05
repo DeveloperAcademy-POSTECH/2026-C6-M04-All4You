@@ -16,6 +16,7 @@ enum RoomPlanGuidanceService {
     static let lightScanning = "밝은 빛으로 공간을 비춰주세요"
 
     // 촬영 중 기본 안내 / 밝기 안내 번갈아 보여줌
+    // TODO: 추후 실제로 모서리가 멀 때나 어두울 때 띄워주는 것으로 수정해야함
     static func alternating(at index: Int) -> String {
         index.isMultiple(of: 2) ? defaultScanning : lightScanning
     }
