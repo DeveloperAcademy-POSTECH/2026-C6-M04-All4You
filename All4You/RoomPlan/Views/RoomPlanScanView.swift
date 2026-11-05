@@ -166,11 +166,11 @@ struct RoomPlanScanView: View {
         return "스캔 상태 저장됨"
     }
     
-    // 최종 병합 결과와 저장된 구간 수의 완료 문구
+    // 단일 구간 또는 병합 결과의 최종 저장 상태 문구
     private var finishedMessage: String {
-        if scanService.isMergingStructure { return "저장된 스캔 구간을 병합하는 중입니다" }
-        if scanService.mergedStructureURL != nil { return "병합된 도면을 저장했습니다" }
-        if scanService.mergeError != nil { return "구간은 저장했지만 병합하지 못했습니다" }
+        if scanService.isMergingStructure { return "최종 도면을 저장하는 중입니다" }
+        if scanService.finalModelURL != nil { return "도면을 저장했습니다" }
+        if scanService.mergeError != nil { return "구간은 저장했지만 최종 도면을 만들지 못했습니다" }
         return "저장된 스캔 구간 \(scanService.savedSegments.count)개"
     }
     

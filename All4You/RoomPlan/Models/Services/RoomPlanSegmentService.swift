@@ -10,7 +10,19 @@ import Foundation
 import RoomPlan
 
 struct RoomPlanSegmentService {
+    enum SaveError: Error, Equatable {
+        case emptyScan
+    }
+
     let scanID = UUID()
+
+    // 실시간 결과와 최종 처리 결과에 동일한 빈 공간 판정 적용
+    static func hasScannedContent(_ room: CapturedRoom?) -> Bool {
+        guard let room else { return false }
+        return !room.walls.isEmpty || !room.floors.isEmpty
+            || !room.objects.isEmpty || !room.doors.isEmpty
+            || !room.windows.isEmpty || !room.openings.isEmpty
+    }
     
     private var directory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -35,6 +47,12 @@ struct RoomPlanSegmentService {
         index: Int,
         fallbackRoom: CapturedRoom?
     ) async throws -> SavedRoomPlanSegment {
+        let room = (try? await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: data))
+            ?? fallbackRoom
+        // RoomBuilder가 빈 결과를 반환해도 원시 데이터만 저장 성공으로 처리하지 않음
+        guard let room, Self.hasScannedContent(room) else {
+            throw SaveError.emptyScan
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         
         let encoder = makeEncoder()
@@ -46,25 +64,16 @@ struct RoomPlanSegmentService {
             // 1. 원시 센서 데이터(raw) 저장 시도
             try encoder.encode(data).write(to: rawURL, options: .atomic)
             
-            let room = (try? await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: data))
-            ?? fallbackRoom
-            
-            if let room {
-                // 원시 데이터 저장이 성공했다면, 가공 데이터 저장 실패는 프로세스를 중단하지 않는 부가 작업으로 취급 (크래시 방지)
-                try? encoder.encode(room).write(to: roomURL, options: .atomic)
-            }
+            // 원시 데이터 저장이 성공했다면, 가공 데이터 저장 실패는 프로세스를 중단하지 않는 부가 작업으로 취급 (크래시 방지)
+            try? encoder.encode(room).write(to: roomURL, options: .atomic)
             return SavedRoomPlanSegment(url: rawURL, room: room)
         } catch let rawError {
             // 2. 원시 데이터 저장 실패 시, 가공 데이터라도 최대한 살려서 대체 저장 시도
-            guard let room = (try? await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: data))
-                    ?? fallbackRoom else {
-                throw SaveError(raw: rawError, room: nil)
-            }
             do {
                 try encoder.encode(room).write(to: roomURL, options: .atomic)
                 return SavedRoomPlanSegment(url: roomURL, room: room)
             } catch {
-                throw SaveError(raw: rawError, room: error)
+                throw SegmentWriteError(raw: rawError, room: error)
             }
         }
     }
@@ -73,6 +82,20 @@ struct RoomPlanSegmentService {
     func buildStructure(from rooms: [CapturedRoom]) async throws -> CapturedStructure {
         try await StructureBuilder(options: [.beautifyObjects])
             .capturedStructure(from: rooms)
+    }
+
+    // 한 구간은 CapturedRoom 자체를, 여러 구간은 병합된 CapturedStructure를 최종 결과로 저장
+    func saveFinalModel(from rooms: [CapturedRoom]) async throws -> URL {
+        if rooms.count == 1, let room = rooms.first {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let dataURL = directory.appendingPathComponent("final-room.json")
+            try makeEncoder().encode(room).write(to: dataURL, options: .atomic)
+
+            let modelURL = directory.appendingPathComponent("final-room.usdz")
+            try room.export(to: modelURL)
+            return modelURL
+        }
+        return try await saveMergedStructure(from: rooms)
     }
     
     // 최종 병합된 3D 구조의 JSON 및 USDZ 파일 내보내기
@@ -91,7 +114,7 @@ struct RoomPlanSegmentService {
 }
 
 // 원시 데이터 및 가공 데이터 저장 실패 시 원인을 보존하기 위한 에러 타입
-private struct SaveError: LocalizedError {
+private struct SegmentWriteError: LocalizedError {
     let raw: Error
     let room: Error?
     

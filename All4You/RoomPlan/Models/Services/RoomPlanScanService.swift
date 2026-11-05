@@ -42,7 +42,7 @@ import RoomPlan
     @Published private(set) var isTorchOn = false
     @Published private(set) var torchMessage: String?
     @Published private(set) var savedSegments: [URL] = []
-    @Published private(set) var mergedStructureURL: URL?
+    @Published private(set) var finalModelURL: URL?
     @Published private(set) var isMergingStructure = false
     @Published private(set) var mergedPreview: CapturedStructure?
     @Published private(set) var isMergingPreview = false
@@ -178,8 +178,10 @@ import RoomPlan
         turnTorchOff()
         ending = .pause
         pendingAction = .none
-        // 파일 저장과 무관한 일시정지 버튼 상태의 즉시 반영
-        phase = .paused
+        // 실시간 형상이 없으면 재개 버튼 대신 최초 스캔 버튼을 즉시 표시
+        let hasContent = RoomPlanSegmentService.hasScannedContent(currentRoom)
+        phase = hasContent ? .paused : .ready
+        if !hasContent { guidance = RoomPlanGuidanceService.beforeStart }
         tracking.stopMonitoring()
         guidanceTimer?.cancel()
         tracking.checkpointWorldMap()
@@ -220,20 +222,23 @@ import RoomPlan
         guard phase == .scanning, ending == nil, let captureSession else { return }
         turnTorchOff()
         ending = .stop
-        phase = .saving
+        // 결과 유무를 확인하기 전에는 저장 화면으로 전환하지 않음
         tracking.stopMonitoring()
         guidanceTimer?.cancel()
         tracking.checkpointWorldMap()
         captureSession.stop(pauseARSession: false)
     }
     
-    // 촬영 완료와 두 개 이상 방의 최종 JSON·USDZ 형태로 병합 요청
+    // 촬영 완료 후 한 구간은 단독 결과로, 여러 구간은 병합 결과로 내보내기
     func finish() {
         guard phase == .segmentSaved else { return }
         turnTorchOff()
         phase = .finished
         tracking.stop()
-        guard completedRooms.count >= 2 else { return }
+        guard !completedRooms.isEmpty else {
+            mergeError = "저장된 공간 결과가 없어 최종 도면을 만들 수 없습니다"
+            return
+        }
         isMergingStructure = true
         mergeError = nil
         let rooms = completedRooms
@@ -241,9 +246,9 @@ import RoomPlan
         Task { @MainActor [weak self] in
             do {
                 let url = try await Task.detached(priority: .utility) {
-                    try await store.saveMergedStructure(from: rooms)
+                    try await store.saveFinalModel(from: rooms)
                 }.value
-                self?.mergedStructureURL = url
+                self?.finalModelURL = url
                 self?.isMergingStructure = false
             } catch {
                 self?.logger.error("스캔 구간 병합 실패: \(error.localizedDescription, privacy: .public)")
@@ -310,15 +315,12 @@ import RoomPlan
     nonisolated func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
         Task { @MainActor [weak self] in
             guard let self, self.captureSession === session,
-                  self.phase == .saving || self.phase == .paused || self.phase == .scanning,
+                  self.phase == .saving || self.phase == .paused || self.phase == .scanning || self.phase == .ready,
                   self.ending?.isProcessing != true else { return }
             let wasPaused = self.ending?.isPausing == true
             // RoomPlan 원본 콜백에서 구간 저장, 방 누적, 미리보기 병합으로 이어지는 데이터 흐름
             self.ending = wasPaused ? .processingPause : .processingStop
-            if self.phase == .scanning {
-                self.phase = .saving
-                self.guidanceTimer?.cancel()
-            }
+            if self.phase == .scanning { self.guidanceTimer?.cancel() }
             self.tracking.stopMonitoring()
             if let captureError = error as? RoomCaptureSession.CaptureError {
                 if captureError == .exceedSceneSizeLimit {
@@ -338,6 +340,20 @@ import RoomPlan
             switch result {
             case .success(let saved):
                 self.applySavedSegment(saved, wasPaused: wasPaused, pauseGeneration: pauseGeneration)
+            case .failure(let error as RoomPlanSegmentService.SaveError) where error == .emptyScan:
+                // 인식된 형상이 없으면 이 구간을 버리고 시작 버튼을 다시 기다림
+                let startRequested = self.pendingAction == .resume
+                self.unsavedPauseData = nil
+                self.pausedRoom = nil
+                self.currentRoom = nil
+                self.isSavingPause = false
+                self.ending = nil
+                self.pendingAction = .none
+                self.issue = nil
+                self.guidance = RoomPlanGuidanceService.beforeStart
+                self.phase = .ready
+                if startRequested { self.begin() }
+                return
             case .failure(let error):
                 self.logger.error("스캔 구간 저장 실패: \(error.localizedDescription, privacy: .public)")
                 self.issue = .saveFailed(error.localizedDescription)
@@ -417,7 +433,7 @@ import RoomPlan
                 self.logger.error("중간 스캔 병합 실패; 개별 방 결과를 계속 표시합니다")
             }
             if self.pendingAction == .resume,
-               self.phase == .paused || self.phase == .segmentSaved {
+               self.phase == .paused || self.phase == .segmentSaved || self.phase == .ready {
                 self.begin()
             }
         }
