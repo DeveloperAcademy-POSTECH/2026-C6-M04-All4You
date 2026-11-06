@@ -1,9 +1,11 @@
-// 3D 도면 수정 화면의 빈 틀. 3D 표시와 수정은 이후 이슈에서 들어온다
+// 3D 도면 수정 화면. 도면을 3D로 보여 준다. 스탬프·창문 수정은 이후 이슈(20, 21)에서 들어온다
 
 import SwiftUI
 
 /// 3D 도면을 고치는 화면
 struct FloorPlanEdit3DView: View {
+    /// 2D·3D 수정 화면과 메인이 함께 보는 도면
+    @Binding var planData: PlanData
     let onBack: () -> Void
     let onDone: () -> Void
 
@@ -13,9 +15,7 @@ struct FloorPlanEdit3DView: View {
     private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        Text(Copy.placeholder)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.quaternary)
+        FloorPlan3DView(planData: planData)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
@@ -37,12 +37,12 @@ extension FloorPlanEdit3DView {
 extension FloorPlanEdit3DView {
     private enum Copy {
         static let title = "3D 도면 수정"
-        static let placeholder = "3D 도면 자리"
     }
 }
 
 #Preview {
+    @Previewable @State var planData = DummyFloorPlan.planData
     NavigationStack {
-        FloorPlanEdit3DView(onBack: {}, onDone: {})
+        FloorPlanEdit3DView(planData: $planData, onBack: {}, onDone: {})
     }
 }
