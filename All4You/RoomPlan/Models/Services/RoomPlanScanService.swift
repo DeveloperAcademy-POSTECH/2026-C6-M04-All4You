@@ -13,23 +13,24 @@ import OSLog
 import RoomPlan
 
 @MainActor final class RoomPlanScanService: NSObject, ObservableObject, RoomCaptureSessionDelegate {
+    
     // 구간 종료 요청의 목적과 콜백 처리 중복 방지를 함께 표현하는 종료 상태
     private enum CaptureEnd: Equatable {
         case pause
         case stop
         case processingPause
         case processingStop
-
+        
         var isPausing: Bool { self == .pause || self == .processingPause }
         var isProcessing: Bool { self == .processingPause || self == .processingStop }
     }
-
+    
     private enum PendingAction: Equatable {
         case none
         case resume
         case finish
     }
-
+    
     // 화면에 전달되는 촬영 단계, 안내, 미리보기 및 저장 상태
     @Published private(set) var phase: RoomPlanScanPhase = .checklist
     @Published private(set) var issue: RoomPlanScanIssue?
@@ -50,6 +51,9 @@ import RoomPlan
     @Published private(set) var mergeError: String?
     @Published private(set) var segmentID = UUID()
     var arSession: ARSession { tracking.arSession }
+    
+    // 미리보기에 전달할 저장 완료 공간 결과
+    var finishedRooms: [CapturedRoom] { completedRooms }
     
     // 동일 스캔 ID로 묶인 구간 저장소와 월드맵 저장소
     private let store = RoomPlanSegmentService()
@@ -88,7 +92,7 @@ import RoomPlan
     private var pausedSegmentSaved = false
     private var unsavedPauseData: CapturedRoomData?
     private var previewMergeID = UUID()
-
+    
     // 완료 구간과 일시정지 순간의 방을 중복 없이 결합한 미리보기 입력
     var previewRooms: [CapturedRoom] {
         var rooms = completedRooms
@@ -103,7 +107,7 @@ import RoomPlan
         }
         return rooms
     }
-
+    
     // 촬영 단계에 따른 저장 공간 윤곽선 입력의 선택
     var outlineRooms: [CapturedRoom] {
         phase == .paused ? previewRooms : completedRooms
@@ -219,7 +223,7 @@ import RoomPlan
             if ending?.isPausing == true {
                 pendingAction = .finish
             } else {
-                phase = .segmentSaved
+                completeStoppedCapture()
             }
             return
         }
@@ -302,7 +306,7 @@ import RoomPlan
             self.guidance = RoomPlanGuidanceService.message(for: instruction)
         }
     }
-
+    
     // 실시간 CapturedRoom 갱신과 일시정지용 마지막 스캔 도면 형상 보관
     nonisolated func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
         Task { @MainActor [weak self] in
@@ -342,6 +346,7 @@ import RoomPlan
             let pauseGeneration = self.pauseGeneration
             let fallbackRoom = wasPaused ? self.pausedRoom : self.currentRoom
             if wasPaused { self.unsavedPauseData = data }
+            if !wasPaused { self.phase = .saving }
             // 카메라 화면 지연 방지를 위한 CapturedRoomData 백그라운드 인코딩
             let result = await self.saveSegment(data, fallbackRoom: fallbackRoom)
             guard self.captureSession === session else { return }
@@ -375,20 +380,25 @@ import RoomPlan
             }
             self.isSavingPause = false
             self.ending = nil
+            if case .saveFailed = self.issue, !self.needsRelocalization, !wasPaused {
+                self.guidance = "스캔 결과를 저장하지 못했어요. 다시 촬영해 주세요"
+                self.phase = .ready
+                return
+            }
             if wasPaused {
                 if self.pendingAction == .finish {
-                    self.phase = .segmentSaved
+                    self.completeStoppedCapture()
                 } else if self.pendingAction == .resume {
                     self.begin()
                 } else {
                     self.phase = .paused
                 }
             } else {
-                self.phase = .segmentSaved
+                self.completeStoppedCapture()
             }
         }
     }
-
+    
     // 저장 실패 구간의 원본 데이터 보존과 동일 인덱스 재저장
     private func retryPauseSave(finishAfterSave: Bool) {
         if isSavingPause {
@@ -409,8 +419,7 @@ import RoomPlan
                 self.applySavedSegment(saved, wasPaused: true, pauseGeneration: pauseGeneration)
                 self.issue = nil
                 if self.pendingAction == .finish {
-                    self.pendingAction = .none
-                    self.phase = .segmentSaved
+                    self.completeStoppedCapture()
                 } else {
                     self.begin()
                 }
@@ -420,7 +429,21 @@ import RoomPlan
             }
         }
     }
-
+    
+    // 정상 종료는 최종 미리보기로 이동, 스캔 한계에 도달했을 때 중단하는 경우에는 SegmentDialog뷰 띄움
+    private func completeStoppedCapture() {
+        pendingAction = .none
+        guard !completedRooms.isEmpty else {
+            needsRelocalization = false
+            issue = nil
+            guidance = RoomPlanGuidanceService.beforeStart
+            phase = .ready
+            return
+        }
+        phase = .segmentSaved
+        if !needsRelocalization { finish() }
+    }
+    
     // 저장된 방 배열의 중간 CapturedStructure 병합과 미리보기 교체
     private func mergePreview() {
         guard completedRooms.count >= 2 else { return }
@@ -446,7 +469,7 @@ import RoomPlan
             }
         }
     }
-
+    
     // 구간 번호에 맞춘 비동기 원본 저장과 후처리 결과 반환
     private func saveSegment(
         _ data: CapturedRoomData,
@@ -462,7 +485,7 @@ import RoomPlan
             }
         }.value
     }
-
+    
     // 저장된 구간의 URL·방 누적과 일시정지 순간 나오는 스캔 결과 형상 중복 제거 (겹치는 현상 방지)
     private func applySavedSegment(
         _ saved: SavedRoomPlanSegment,
@@ -482,5 +505,5 @@ import RoomPlan
             renderRevision += 1
         }
     }
-
+    
 }

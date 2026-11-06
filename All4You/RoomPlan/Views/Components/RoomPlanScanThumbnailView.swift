@@ -16,6 +16,10 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
     let structure: CapturedStructure?
     let liveRoom: CapturedRoom?
     let revision: Int
+    var focusOnLastRoom = true
+    var allowsInteraction = false
+    var showsShadows = true
+    var highlightsWalkableFloor = false
     
     // View를 그릴 때 필요한 오브젝트, 재사용 노드, 조명 및 직교 카메라 상태 관리자
     final class Coordinator {
@@ -24,8 +28,12 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         let scene = SCNScene()
         var nodes: [SCNNode] = []
         let cameraNode = SCNNode()
+        let keyLight = SCNNode()
         let wallMaterial = RoomPlanScanThumbnailView.material(color: .systemGray3)
         let floorMaterial = RoomPlanScanThumbnailView.material(color: .white)
+        let walkableFloorMaterial = RoomPlanScanThumbnailView.material(
+            color: UIColor(white: 0.92, alpha: 1), unlit: true
+        )
         let objectMaterial = RoomPlanScanThumbnailView.material(color: .systemGray4)
         
         init() {
@@ -39,7 +47,6 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
             ambient.light?.type = .ambient
             ambient.light?.intensity = 800
             scene.rootNode.addChildNode(ambient)
-            let keyLight = SCNNode()
             keyLight.light = SCNLight()
             keyLight.light?.type = .directional
             keyLight.light?.intensity = 1_000
@@ -56,18 +63,22 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         let view = SCNView()
         view.backgroundColor = .clear
         view.isOpaque = false
-        view.allowsCameraControl = false
-        view.isUserInteractionEnabled = false
+        // 미리보기에서만 SceneKit 기본 회전·확대 제스처 허용
+        view.allowsCameraControl = allowsInteraction
+        view.isUserInteractionEnabled = allowsInteraction
         view.antialiasingMode = .multisampling4X
         view.rendersContinuously = false
         view.preferredFramesPerSecond = 30
         view.scene = context.coordinator.scene
         view.pointOfView = context.coordinator.cameraNode
+        // 최종 병합 도면에서는 외벽이 실내에 드리우는 그림자 제거
+        context.coordinator.keyLight.light?.castsShadow = showsShadows
         return view
     }
     
     // 병합된 전체 구조 또는 개별 방들의 벽, 바닥, 물체 정보를 실시간으로 갱신
     func updateUIView(_ view: SCNView, context: Context) {
+        context.coordinator.keyLight.light?.castsShadow = showsShadows
         // 데이터 버전이나 화면 크기가 변경된 경우에만 scene 구성 요소 재설정
         guard context.coordinator.lastRevision != revision
                 || context.coordinator.lastSize != view.bounds.size else { return }
@@ -77,6 +88,7 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         let scene = context.coordinator.scene
         let wallMaterial = context.coordinator.wallMaterial
         let floorMaterial = context.coordinator.floorMaterial
+        let walkableFloorMaterial = context.coordinator.walkableFloorMaterial
         let objectMaterial = context.coordinator.objectMaterial
         var nodes: [SCNNode] = []
         var nodeIndex = 0
@@ -92,11 +104,15 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
             if nodeIndex < context.coordinator.nodes.count {
                 node = context.coordinator.nodes[nodeIndex]
                 if let box = node.geometry as? SCNBox {
-                    // 크기 변화가 있는 상자 모형만 효율적으로 재사용하여 갱신
                     if abs(box.width - width) > 0.005 { box.width = width }
                     if abs(box.height - height) > 0.005 { box.height = height }
                     if abs(box.length - length) > 0.005 { box.length = length }
                     if box.firstMaterial !== material { box.materials = [material] }
+                } else {
+                    let box = SCNBox(width: width, height: height,
+                                     length: length, chamferRadius: 0)
+                    box.materials = [material]
+                    node.geometry = box
                 }
             } else {
                 node = SCNNode(geometry: SCNBox(width: width, height: height,
@@ -112,6 +128,34 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
             nodeIndex += 1
         }
         
+        func updateWalkableFloor(_ floor: CapturedRoom.Surface) {
+            let width = CGFloat(max(floor.dimensions.x, 0.02))
+            let height = CGFloat(max(floor.dimensions.y, 0.02))
+            let node: SCNNode
+            if nodeIndex < context.coordinator.nodes.count {
+                node = context.coordinator.nodes[nodeIndex]
+                if let plane = node.geometry as? SCNPlane {
+                    plane.width = width
+                    plane.height = height
+                } else {
+                    node.geometry = SCNPlane(width: width, height: height)
+                }
+            } else {
+                node = SCNNode(geometry: SCNPlane(width: width, height: height))
+                node.opacity = 0
+                scene.rootNode.addChildNode(node)
+                context.coordinator.nodes.append(node)
+            }
+            node.geometry?.materials = [walkableFloorMaterial]
+            var transform = floor.transform
+            // 바닥 박스의 윗면 바로 위에 배치하여 받침 옆면은 흰색으로 유지
+            transform.columns.3.y += 0.025
+            node.simdTransform = transform
+            node.opacity = 1
+            nodes.append(node)
+            nodeIndex += 1
+        }
+        
         // 병합된 구조 데이터 존재 여부에 따른 표시 대상 분기 처리
         var focusNodes: [SCNNode] = []
         let displayedRooms = structure == nil ? rooms : (liveRoom.map { [$0] } ?? [])
@@ -121,10 +165,12 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
                            height: CGFloat(max(wall.dimensions.y, 0.02)),
                            length: 0.05, transform: wall.transform, material: wallMaterial)
             }
-            for floor in structure.floors {
+            let floors = structure.floors.isEmpty ? rooms.flatMap(\.floors) : structure.floors
+            for floor in floors {
                 updateNode(width: CGFloat(max(floor.dimensions.x, 0.02)),
                            height: CGFloat(max(floor.dimensions.y, 0.02)),
                            length: 0.03, transform: floor.transform, material: floorMaterial)
+                if highlightsWalkableFloor { updateWalkableFloor(floor) }
             }
             for object in structure.objects {
                 updateNode(width: CGFloat(max(object.dimensions.x, 0.02)),
@@ -144,6 +190,7 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
                 updateNode(width: CGFloat(max(floor.dimensions.x, 0.02)),
                            height: CGFloat(max(floor.dimensions.y, 0.02)),
                            length: 0.03, transform: floor.transform, material: floorMaterial)
+                if highlightsWalkableFloor { updateWalkableFloor(floor) }
             }
             for object in room.objects {
                 updateNode(width: CGFloat(max(object.dimensions.x, 0.02)),
@@ -164,7 +211,7 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         }
         
         // 구간 병합 전의 마지막 방 또는 병합 완료 후의 전체 구조를 기준 삼아 카메라 프레이밍
-        let fittedNodes = structure == nil && !focusNodes.isEmpty ? focusNodes : nodes
+        let fittedNodes = focusOnLastRoom && structure == nil && !focusNodes.isEmpty ? focusNodes : nodes
         let positions = fittedNodes.map(\.simdPosition)
         let minX = positions.map(\.x).min() ?? 0
         let maxX = positions.map(\.x).max() ?? 0
@@ -217,11 +264,11 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         SCNTransaction.commit()
     }
     
-    // 벽, 바닥, 물체 요소가 자연스럽게 보이도록 재지 추가
-    private static func material(color: UIColor) -> SCNMaterial {
+    // 벽, 바닥, 물체 요소가 자연스럽게 보이도록 재질 추가
+    private static func material(color: UIColor, unlit: Bool = false) -> SCNMaterial {
         let value = SCNMaterial()
         value.diffuse.contents = color
-        value.lightingModel = .physicallyBased
+        value.lightingModel = unlit ? .constant : .physicallyBased
         value.roughness.contents = 0.85
         value.isDoubleSided = true
         return value

@@ -31,6 +31,19 @@ struct RoomPlanCameraPreview: UIViewRepresentable {
     }
 }
 
+// 스캔 종료 후 카메라 세션이 해제되어도 종료 버튼을 눌렀을 때 장면을 배경으로 유지하기 위한 단일 프레임 변환
+enum RoomPlanCameraSnapshot {
+    private static let imageContext = CIContext()
+    
+    static func capture(from arSession: ARSession, orientation: UIInterfaceOrientation) -> UIImage? {
+        guard let frame = arSession.currentFrame else { return nil }
+        let image = CIImage(cvPixelBuffer: frame.capturedImage)
+            .oriented(orientation.imageOrientation)
+        guard let cgImage = imageContext.createCGImage(image, from: image.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+}
+
 // ARFrame의 카메라 픽셀 버퍼를 방향과 화면 비율에 맞춰 Metal 표면에 출력하는 뷰
 final class ARCameraFrameView: MTKView, MTKViewDelegate {
     var arSession: ARSession?
