@@ -188,21 +188,13 @@ private struct RoomPlanScanSessionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(.container, edges: .all)
-        .navigationBarBackButtonHidden()
-        .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .topLeading) {
-            if scanService.phase != .finished {
-                Button {
-                    scanService.detach()
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.glass)
-                .padding(16)
-                .accessibilityLabel("이전")
-            }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(scanService.phase == .finished ? .hidden : .visible, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .backOnlyToolbar(title: "이전") {
+            scanService.detach()
+            dismiss()
         }
         // 앱 최초 진입 및 앱 활성화 시 카메라 권한 상태 재확인
         .task {
