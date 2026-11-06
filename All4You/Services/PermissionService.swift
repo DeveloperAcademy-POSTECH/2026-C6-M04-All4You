@@ -82,16 +82,30 @@ enum PermissionService {
 
 /// 위치 권한의 답은 await로 오지 않고 delegate로만 와서, 그 답을 받아 await로 돌려주는 연결 객체.
 /// 화면 상태를 들고 있는 것이 아니라 애플 위치 기능과 잇기 위한 것이다 (UIKit 연결과 같은 성격)
+/// CLLocationManager는 메인 스레드에서 다루도록 권장되어 메인 스레드에서만 돈다
+@MainActor
 private final class LocationAnswer: NSObject, CLLocationManagerDelegate {
     private var continuation: CheckedContinuation<CLAuthorizationStatus, Never>?
+    // 답을 기다리는 중인 요청. 그동안 또 불리면 새로 묻지 않고 이 요청의 답을 함께 기다린다
+    private var pendingAnswer: Task<CLAuthorizationStatus, Never>?
 
-    /// 알림을 띄우고, 사용자가 답할 때까지 기다렸다가 그 상태를 돌려준다
+    /// 알림을 띄우고, 사용자가 답할 때까지 기다렸다가 그 상태를 돌려준다.
+    /// 기다리는 곳(continuation)은 하나뿐이라, 겹쳐 불리면 앞 요청이 영영 답을 못 받지 않도록 진행 중인 요청을 함께 쓴다
     func waitForAnswer(from manager: CLLocationManager) async -> CLAuthorizationStatus {
-        await withCheckedContinuation { continuation in
-            self.continuation = continuation
-            manager.delegate = self
-            manager.requestWhenInUseAuthorization()
+        if let pendingAnswer {
+            return await pendingAnswer.value
         }
+        let request = Task {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+                manager.delegate = self
+                manager.requestWhenInUseAuthorization()
+            }
+        }
+        pendingAnswer = request
+        let answer = await request.value
+        pendingAnswer = nil
+        return answer
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
