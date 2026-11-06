@@ -47,12 +47,22 @@ enum PermissionService {
         return isPhotoLibraryAllowed(status) ? .allowed : .deniedBefore
     }
 
-    // TEMP: 위치를 거절해도 사진 촬영은 막지 않아서 답을 기다리지 않음 — 위치를 꼭 받아야 한다고 정해지면 답을 기다리도록 바꿔야 함
-    /// 위치를 아직 묻지 않았으면 시스템 알림을 띄운다. 답은 기다리지 않는다.
-    /// 위치는 CLLocationManager가 답을 delegate로만 알려 줘서, 기다리려면 따로 객체를 둬야 한다
-    static func requestLocationPermission() {
-        guard locationManager.authorizationStatus == .notDetermined else { return }
-        locationManager.requestWhenInUseAuthorization()
+    /// 위치 권한을 확인하고, 아직 묻지 않았으면 시스템 알림을 띄워 답을 기다린다
+    static func requestLocationPermission() async -> Result {
+        // 기기 전체 위치 서비스가 꺼져 있으면 요청해도 알림이 뜨지 않고 답도 오지 않는다.
+        // 이 확인은 메인 스레드에서 부르면 화면이 멈출 수 있다는 경고가 있어 다른 스레드에서 한다
+        let isServiceOn = await Task.detached { CLLocationManager.locationServicesEnabled() }.value
+        guard isServiceOn else { return .deniedBefore }
+
+        switch locationManager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            return .allowed
+        case .notDetermined:
+            let answer = await locationAnswer.waitForAnswer(from: locationManager)
+            return answer == .authorizedWhenInUse || answer == .authorizedAlways ? .allowed : .deniedNow
+        default:
+            return .deniedBefore
+        }
     }
 
     /// 거절된 권한은 앱에서 다시 물을 수 없어서, 이 앱의 설정 화면을 연다
@@ -67,4 +77,27 @@ enum PermissionService {
 
     /// 요청 알림이 떠 있는 동안 사라지지 않도록 하나를 계속 들고 있는다
     private static let locationManager = CLLocationManager()
+    private static let locationAnswer = LocationAnswer()
+}
+
+/// 위치 권한의 답은 await로 오지 않고 delegate로만 와서, 그 답을 받아 await로 돌려주는 연결 객체.
+/// 화면 상태를 들고 있는 것이 아니라 애플 위치 기능과 잇기 위한 것이다 (UIKit 연결과 같은 성격)
+private final class LocationAnswer: NSObject, CLLocationManagerDelegate {
+    private var continuation: CheckedContinuation<CLAuthorizationStatus, Never>?
+
+    /// 알림을 띄우고, 사용자가 답할 때까지 기다렸다가 그 상태를 돌려준다
+    func waitForAnswer(from manager: CLLocationManager) async -> CLAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+            manager.delegate = self
+            manager.requestWhenInUseAuthorization()
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        // delegate를 붙이는 순간에도 한 번 불리므로, 아직 답이 없을 때(notDetermined)는 넘긴다
+        guard manager.authorizationStatus != .notDetermined else { return }
+        continuation?.resume(returning: manager.authorizationStatus)
+        continuation = nil
+    }
 }
