@@ -1,7 +1,6 @@
 // 도면을 3D로 보여 주는 뷰. 한 손가락으로 돌리고, 두 손가락으로 확대·축소한다
 //
-// PoC는 ARView에 카메라 조종(SceneController)을 직접 만들었지만, 여기서는 SwiftUI RealityView와
-// 애플 기본 카메라 조작(.realityViewCameraControls(.orbit))을 쓴다.
+// 카메라 조작은 애플 기본 조작(.realityViewCameraControls(.orbit))을 쓴다.
 // 기본 조작은 확대 민감도를 바꿀 수 없어서, 같은 핀치로 도면 자체를 원점 기준으로 더 키우고 줄여 확대를 세게 만든다
 
 import RealityKit
@@ -16,8 +15,10 @@ struct FloorPlan3DView: View {
     @State private var committedZoom: Float = 1
     /// 공간 이름 라벨의 화면 위치 (키 = Room.id). 카메라가 움직일 때마다 다시 계산한다
     @State private var labelPoints: [String: CGPoint] = [:]
-    /// 매 프레임 라벨 위치를 다시 계산하는 구독. 화면이 사라지면 함께 없어진다
+    /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
     @State private var frameUpdates: EventSubscription?
+    /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
+    @State private var timeSinceLabelUpdate: TimeInterval = 0
 
     var body: some View {
         RealityView { content in
@@ -25,10 +26,15 @@ struct FloorPlan3DView: View {
             content.add(makeLight())
             content.add(makeCamera())
             let cameraContent = content
-            frameUpdates = content.subscribe(to: SceneEvents.Update.self) { _ in
+            frameUpdates = content.subscribe(to: SceneEvents.Update.self) { event in
+                // 라벨마다 광선 계산을 하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
+                timeSinceLabelUpdate += event.deltaTime
+                guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
+                timeSinceLabelUpdate = 0
                 updateLabelPoints(using: cameraContent)
             }
         }
+        // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
         .realityViewCameraControls(.orbit)
         .simultaneousGesture(extraZoomGesture)
         .overlay(alignment: .topLeading) {
@@ -41,7 +47,7 @@ struct FloorPlan3DView: View {
 }
 
 // 공간 이름 라벨
-// iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹친다
+// iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹치는 방법 사용
 extension FloorPlan3DView {
     private var roomLabels: some View {
         ForEach(planData.rooms) { room in
@@ -53,7 +59,7 @@ extension FloorPlan3DView {
         .allowsHitTesting(false)
     }
 
-    /// 장면 안 라벨 자리(FloorPlan3DBuilder)를 화면 점으로 바꾼다. 카메라 뒤에 있거나 벽에 가려지면 빠진다
+    /// 장면 안 라벨 자리(FloorPlan3DBuilder)를 화면 점으로 바꾸고, 카메라 뒤에 있거나 벽에 가려지면 빠지도록 한다
     private func updateLabelPoints(using content: RealityViewCameraContent) {
         guard let anchors = sceneRoot.findEntity(named: FloorPlan3DBuilder.roomLabelAnchorsName) else { return }
         var points: [String: CGPoint] = [:]
@@ -67,8 +73,8 @@ extension FloorPlan3DView {
             labelPoints = points
         }
     }
-
-    /// 카메라에서 라벨 자리까지 광선을 쏘아, 그 사이에 벽(충돌 모양이 있는 상자)이 있으면 가려진 것으로 본다
+    
+    /// 카메라 위치와 방향을 잡아 가상의 직선을 긋는 계산식을 돌린 후, 직선이 벽과 충돌하는 결과가 나오면 라벨이 벽에 가려진 것으로 판단
     private func isHiddenByWall(_ position: SIMD3<Float>, at point: CGPoint, content: RealityViewCameraContent) -> Bool {
         guard let scene = sceneRoot.scene,
               let ray = content.ray(through: point, in: .local, to: .scene) else { return false }
@@ -145,6 +151,9 @@ extension FloorPlan3DView {
         static let zoomRange: ClosedRange<Float> = 0.4...4
         /// 라벨 바로 앞(m)은 가림 판정에서 뺀다. 라벨 자리에 닿은 것을 벽으로 잘못 보지 않게
         static let labelHitMargin: Float = 0.05
+        /// 라벨 위치·가림을 다시 계산하는 간격 (초)
+        /// TEMP: 우선 여유 있게 잡은 값. 라벨을 아주 많이 띄워 보는 테스트를 하며 알맞은 값으로 조절할 예정
+        static let labelUpdateInterval: TimeInterval = 1.0 / 60
     }
 }
 

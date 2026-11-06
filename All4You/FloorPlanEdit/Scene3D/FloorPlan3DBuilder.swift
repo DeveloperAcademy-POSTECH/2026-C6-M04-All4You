@@ -1,8 +1,5 @@
-// 도면(PlanData)을 RealityKit 3D 엔티티로 만든다
-//
-// FloorPlanEditPoC의 SceneBuilder에서 바닥·벽·창문·콘센트 만들기를 가져와 단순하게 옮겼다.
-// PoC에서 뺀 것: 바뀐 것만 다시 만들기(지금은 도면이 바뀌면 통째로 다시 만듦), 고른 표시와 탭 판정(이슈 20-1),
-// 문짝(열리는 방향이 ERD에 없어 문 자리는 뚫어만 둠), 가구, 사진, 2D↔3D 전환
+// 도면(PlanData)을 RealityKit 3D 엔티티로 만든다. 도면이 바뀌면 통째로 다시 만든다
+// 문 자리는 뚫어만 두고 문짝은 그리지 않는다
 //
 // 3D 좌표 (PlanSpace): 도면 (x, y) → 3D (x, 높이, y). 3D는 +y가 위, 도면 아래쪽이 +z.
 // 도면 가운데를 3D 원점에 둬서, 카메라가 원점을 보고 돌면 도면 가운데를 중심으로 돈다
@@ -148,7 +145,9 @@ extension FloorPlan3DBuilder {
     }
 
     /// 토막 구간에 bottom~top 높이의 상자. 너무 얇으면 만들지 않는다.
-    /// isSolid면 광선이 부딪히는 충돌 모양을 붙인다 (벽에 가려진 라벨 숨기기). 유리는 비쳐 보이므로 붙이지 않는다
+    /// TEMP: 잔선(아주 얇은 조각) 처리는 임시로 해 둔 것. 실제 도면을 여러 개 변환해 보고,
+    /// 이후 이슈에서 편집 기능을 다루면서 필요하면 바꾸거나 지울 수 있다
+    /// isSolid면 직선이 부딪히는 판정(벽에 가려진 라벨 숨기기), 유리는 라벨을 가리지 않는 판정.
     private static func box(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, material: any Material, isSolid: Bool = true) -> ModelEntity? {
         let width = piece.to - piece.from
         let height = top - bottom
@@ -164,7 +163,7 @@ extension FloorPlan3DBuilder {
 }
 
 // 콘센트와 표시
-// TEMP: 콘센트·사람·발화지점은 RealityKit 기본 도형으로 만든 임시 모양 — Figma(43:21764)의 주황 3D 아이콘 에셋이 생기면 바꿈
+// TEMP: 콘센트·사람·발화지점은 RealityKit 기본 도형으로 만든 임시 모양. 디자인의 3D 아이콘 에셋이 생기면 바꿈
 extension FloorPlan3DBuilder {
     /// 벽 면에 붙은 콘센트
     private static func makeOutlet(_ fixture: WallFixture, wall: Wall, line: WallLine, space: PlanSpace) -> ModelEntity {
