@@ -1,4 +1,4 @@
-// 벽에 달린 문·창문·개구부 (ERD v16 planData.doorWindows)
+// 벽에 달린 문·창문·개구부
 
 /// 벽을 따라간 중심 위치로 저장해서, 벽을 옮기면 함께 움직인다
 struct DoorWindow: Codable, Equatable, Identifiable {
@@ -16,12 +16,12 @@ struct DoorWindow: Codable, Equatable, Identifiable {
     var height: Double
 }
 
-/// 문·창문 종류 (ERD v16 DoorWindowKind)
+/// 문·창문 종류
 enum DoorWindowKind: String, Codable {
     /// 문
     case door
     /// 창문
     case window
-    /// 문짝 없이 뚫린 출입구
+    /// 문짝 없이 뚫린 출입구(추후 고려 안한다면 삭제 가능성 존재)
     case passage
 }

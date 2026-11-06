@@ -1,4 +1,4 @@
-// 도면 위에 놓는 사람·발화지점 표시 (ERD v16 planData.markers). 화면에서는 "스탬프"라고 부른다
+// 도면 위에 놓는 사람·발화지점 표시 planData.markers 스탬프. 벽에 붙는 콘센트와 성격이 달라 둘이 묶어 분리.
 
 /// 바닥 위 위치·높이와 바라보는 방향을 가진 표시. 2D에서는 기호, 3D에서는 모델로 그린다
 struct PlanMarker: Codable, Equatable, Identifiable {
@@ -14,7 +14,7 @@ struct PlanMarker: Codable, Equatable, Identifiable {
     var lying: Bool?
 }
 
-/// 표시 종류 (ERD v16 MarkerKind)
+/// 표시 종류
 enum MarkerKind: String, Codable {
     /// 사람 (화면 글자 "피해자")
     case person

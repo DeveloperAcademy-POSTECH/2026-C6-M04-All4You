@@ -1,4 +1,4 @@
-// 벽 한쪽 면에 붙은 것 (ERD v16 planData.wallFixtures). 지금은 콘센트뿐
+// 벽 한쪽 면에 붙은 것 planData.wallFixtures. 지금은 콘센트뿐
 
 /// 벽을 따라간 위치와 바닥에서 높이로 저장해서, 벽을 옮기면 따라가고 3D에서 벽 면에 붙어 보인다
 struct WallFixture: Codable, Equatable, Identifiable {
@@ -14,13 +14,13 @@ struct WallFixture: Codable, Equatable, Identifiable {
     var heightFromFloor: Double
 }
 
-/// 벽에 붙는 것의 종류 (ERD v16 FixtureKind)
+/// 벽에 붙는 것의 종류  FixtureKind
 enum FixtureKind: String, Codable {
     /// 콘센트 (화면 글자 "전기")
     case outlet
 }
 
-/// 벽의 면 (ERD v16 WallFace). 벽 시작 → 끝 방향을 바라볼 때 왼쪽·오른쪽
+/// 벽의 면. 벽 시작 → 끝 방향을 바라볼 때 왼쪽·오른쪽
 enum WallFace: String, Codable {
     case left
     case right

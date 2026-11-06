@@ -38,7 +38,7 @@ enum FloorPlan3DBuilder {
 extension FloorPlan3DBuilder {
     /// 라벨 자리들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 라벨을 겹친다
     static let roomLabelAnchorsName = "roomLabelAnchors"
-    /// 라벨을 띄울 높이 (m). 벽(2.4m)보다 낮게 방 안에 둬서, 옆에서 보면 벽에 가려지고 위에서 보면 보이게
+    /// 라벨을 띄울 높이 (m). 벽(2.4m)보다 낮게 방 안에 둬서, 옆에서 보면 벽에 가려지고 위에서 보면 보이게(추후 수정 가능)
     private static let roomLabelHeight = 1.5
 
     /// 방마다 이름 라벨이 놓일 3D 점. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = Room.id

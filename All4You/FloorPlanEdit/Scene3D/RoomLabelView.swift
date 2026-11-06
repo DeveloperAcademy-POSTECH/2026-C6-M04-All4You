@@ -1,8 +1,8 @@
-// 도면 위에 띄우는 공간 이름 알약 (Figma 43:21764의 검은 알약)
+// 도면 위에 띄우는 공간 라벨 캡슐 (Figma의 검은 캡슐)
 
 import SwiftUI
 
-/// 검은 알약 안의 흰 공간 이름
+/// 검은 캡슐 안의 흰 텍스트(공간 라벨)
 struct RoomLabelView: View {
     /// Room.name
     let name: String
