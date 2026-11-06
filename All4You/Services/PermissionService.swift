@@ -15,27 +15,36 @@ import UIKit
 /// 권한 상태를 읽고, 아직 묻지 않았으면 시스템 알림으로 묻는다.
 /// 기억할 상태가 없어서 인스턴스를 만들지 않는 enum의 static 함수로 둔다
 enum PermissionService {
-    /// 카메라를 쓸 수 있으면 true. 아직 묻지 않았으면 시스템 알림을 띄우고 답을 기다린다
-    static func requestCameraPermission() async -> Bool {
+    /// 권한을 확인·요청한 결과. 거절은 "방금 알림에서 거절"과 "전에 이미 거절"을 나눈다.
+    /// 거절된 권한은 시스템 알림을 다시 띄울 수 없어서, 이미 거절된 경우에만 화면이 설정 앱으로 안내한다
+    enum Result {
+        case allowed
+        case deniedNow
+        case deniedBefore
+    }
+
+    /// 카메라 권한을 확인하고, 아직 묻지 않았으면 시스템 알림을 띄워 답을 기다린다
+    static func requestCameraPermission() async -> Result {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            return true
+            return .allowed
         case .notDetermined:
-            return await AVCaptureDevice.requestAccess(for: .video)
+            return await AVCaptureDevice.requestAccess(for: .video) ? .allowed : .deniedNow
         default:
             // 거절(denied)했거나 기기 관리로 막힌(restricted) 상태. 다시 물을 수 없고 설정 앱에서만 바꿀 수 있다
-            return false
+            return .deniedBefore
         }
     }
 
-    /// 사진 보관함을 읽을 수 있으면 true. 아직 묻지 않았으면 시스템 알림을 띄우고 답을 기다린다.
+    /// 사진 보관함 권한을 확인하고, 아직 묻지 않았으면 시스템 알림을 띄워 답을 기다린다.
     /// 사진을 골라서만 허용한 경우(limited)도 그 사진은 읽을 수 있으므로 허용으로 본다
-    static func requestPhotoLibraryPermission() async -> Bool {
-        var status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    static func requestPhotoLibraryPermission() async -> Result {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .notDetermined {
-            status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            let answer = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            return isPhotoLibraryAllowed(answer) ? .allowed : .deniedNow
         }
-        return status == .authorized || status == .limited
+        return isPhotoLibraryAllowed(status) ? .allowed : .deniedBefore
     }
 
     // TEMP: 위치를 거절해도 사진 촬영은 막지 않아서 답을 기다리지 않음 — 위치를 꼭 받아야 한다고 정해지면 답을 기다리도록 바꿔야 함
@@ -50,6 +59,10 @@ enum PermissionService {
     static func openSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
         UIApplication.shared.open(url)
+    }
+
+    private static func isPhotoLibraryAllowed(_ status: PHAuthorizationStatus) -> Bool {
+        status == .authorized || status == .limited
     }
 
     /// 요청 알림이 떠 있는 동안 사라지지 않도록 하나를 계속 들고 있는다
