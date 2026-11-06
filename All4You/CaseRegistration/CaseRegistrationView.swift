@@ -161,8 +161,7 @@ extension CaseRegistrationView {
         ToolbarItem(placement: .confirmationAction) {
             Button(role: .confirm, action: register)
                 .disabled(!isValid)
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 주황색)
-                .tint(.orange)
+                .tint(.brand500)
         }
     }
 }

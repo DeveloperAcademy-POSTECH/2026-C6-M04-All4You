@@ -8,9 +8,10 @@
 // 사건 목록 오른쪽 영역. 빈 화면, 사건 목록, 고른 사건의 미리보기를 보여 준다
 
 import SwiftUI
+import SwiftData
 
 struct CaseListContent: View {
-    @Environment(CaseStore.self) private var store
+    @Query private var allCases: [FireCase]
     
     let filter: CaseFilter
     let searchText: String
@@ -18,19 +19,39 @@ struct CaseListContent: View {
     let onRegister: () -> Void
     
     private var cases: [FireCase] {
-        store.cases(for: filter, matching: searchText)
+        let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let searched = keyword.isEmpty
+            ? allCases
+            : allCases.filter { $0.address.localizedStandardContains(keyword) }
+
+        switch filter {
+        case .recent:
+            return searched.sorted { $0.lastViewedAt > $1.lastViewedAt }
+        case .inProgress:
+            return searched.filter { $0.status == .inProgress }
+                .sorted { $0.occurredAt > $1.occurredAt }
+        case .closed:
+            return searched.filter { $0.status == .closed }
+                .sorted { $0.occurredAt > $1.occurredAt }
+        }
     }
     
     private var selectedCase: FireCase? {
-        store.cases.first { $0.id == selectedCaseID }
+        allCases.first { $0.id == selectedCaseID }
     }
     
     var body: some View {
         Group {
-            if store.cases.isEmpty {
+            if allCases.isEmpty {
                 emptyView
             } else if cases.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView.search(text: searchText)
+            } else if cases.isEmpty {
+                ContentUnavailableView(
+                    "해당 사건이 없어요",
+                    systemImage: "folder",
+                    description: Text("다른 목록을 선택하거나 새로운 사건을 등록해 주세요")
+                )
             } else {
                 HStack(spacing: 0) {
                     caseList
@@ -43,8 +64,8 @@ struct CaseListContent: View {
                 .animation(.default, value: selectedCaseID)
             }
         }
-        .navigationTitle(store.cases.isEmpty ? "" : filter.title)
-        .navigationBarTitleDisplayMode(store.cases.isEmpty ? .inline : .large)
+        .navigationTitle(allCases.isEmpty ? "" : filter.title)
+        .navigationBarTitleDisplayMode(allCases.isEmpty ? .inline : .large)
     }
 }
 
@@ -158,20 +179,16 @@ extension CaseListContent {
     }
 }
 
-#Preview("사건 없음") {
+#Preview("SwiftData 빈 목록") {
     @Previewable @State var selectedCaseID: FireCase.ID?
-    
-    NavigationStack {
-        CaseListContent(filter: .recent, searchText: "", selectedCaseID: $selectedCaseID, onRegister: {})
-    }
-    .environment(CaseStore())
-}
 
-#Preview("사건 있음") {
-    @Previewable @State var selectedCaseID: FireCase.ID?
-    
     NavigationStack {
-        CaseListContent(filter: .inProgress, searchText: "", selectedCaseID: $selectedCaseID, onRegister: {})
+        CaseListContent(
+            filter: .recent,
+            searchText: "",
+            selectedCaseID: $selectedCaseID,
+            onRegister: {}
+        )
     }
-    .environment(CaseStore(cases: FireCase.samples))
+    .modelContainer(for: FireCase.self, inMemory: true)
 }

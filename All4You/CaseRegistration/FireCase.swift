@@ -1,26 +1,31 @@
 //
-//  FileCase.swift
+//  FireCase.swift
 //  All4You
 //
 //  Created by SIA on 11/4/26.
 //
-
-// 사건 한 건과 사건 목록의 분류
+//  SwiftData에 저장하는 화재 사건 모델
+//
 
 import Foundation
+import SwiftData
 
-/// 화재 사건 한 건
-// TEMP: 데이터 저장 방식이 정해지기 전 임시 모델 — ERD(Investigation)가 확정되면 이름·필드를 맞춰야 함
-struct FireCase: Identifiable, Hashable {
-    let id: UUID
-    /// 도로명 전체 주소. 예) 경상북도 포항시 남구 청암로 77
+@Model
+final class FireCase {
+    @Attribute(.unique) var id: UUID
     var address: String
-    /// 출동 날짜와 시간
     var occurredAt: Date
-    var status: Status
+
+    // SwiftData에 문자열로 저장하고 UI에는 타입 안전한 enum 제공
+    private var statusValue: String
     var lastViewedAt: Date
     var photoCount: Int
     var memoCount: Int
+
+    var status: Status {
+        get { Status(rawValue: statusValue) ?? .inProgress }
+        set { statusValue = newValue.rawValue }
+    }
 
     init(
         id: UUID = UUID(),
@@ -34,23 +39,24 @@ struct FireCase: Identifiable, Hashable {
         self.id = id
         self.address = address
         self.occurredAt = occurredAt
-        self.status = status
+        self.statusValue = status.rawValue
         self.lastViewedAt = lastViewedAt
         self.photoCount = photoCount
         self.memoCount = memoCount
     }
 
-    /// 목록에 보여 줄 짧은 이름. 주소의 마지막 두 마디를 쓴다. 예) 청암로 77
     var title: String {
         address.split(separator: " ").suffix(2).joined(separator: " ")
     }
 
-    enum Status {
-        case inProgress, closed
+    enum Status: String {
+        case inProgress
+        case closed
     }
 }
 
-/// 사이드바에서 고르는 사건 목록의 분류
+// 사이드바 분류는 저장 대상이 아닌 UI 상태
+// enum 케이스명은 기존 화면과 호환되도록 유지
 enum CaseFilter: CaseIterable, Hashable {
     case recent, inProgress, closed
 
@@ -69,35 +75,4 @@ enum CaseFilter: CaseIterable, Hashable {
         case .closed: "checkmark"
         }
     }
-}
-
-extension FireCase {
-    /// 미리보기용 예시 사건
-    static let samples: [FireCase] = {
-        let entries: [(String, String, FireCase.Status)] = [
-            ("경상북도 포항시 북구 두호동 128", "2026-09-28 14:36", .inProgress),
-            ("경상북도 포항시 북구 장성동 305", "2026-09-22 08:15", .inProgress),
-            ("경상북도 포항시 북구 죽도동 74", "2026-09-17 19:42", .inProgress),
-            ("경상북도 포항시 북구 양덕동 219", "2026-09-11 03:27", .inProgress),
-            ("경상북도 포항시 북구 흥해읍 462", "2026-09-10 11:53", .inProgress),
-            ("경상북도 포항시 남구 오천읍 156", "2026-08-27 22:18", .closed),
-            ("경상북도 포항시 남구 연일읍 83", "2026-08-21 10:04", .closed),
-            ("경상북도 포항시 남구 대잠동 241", "2026-08-16 16:39", .closed),
-            ("경상북도 포항시 남구 효자동 67", "2026-08-09 01:52", .closed),
-            ("경상북도 포항시 북구 우현동 194", "2026-08-03 13:25", .closed),
-        ]
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return entries.map { address, date, status in
-            let occurredAt = formatter.date(from: date) ?? .now
-            return FireCase(
-                address: address,
-                occurredAt: occurredAt,
-                status: status,
-                lastViewedAt: occurredAt,
-                photoCount: 47,
-                memoCount: 12
-            )
-        }
-    }()
 }

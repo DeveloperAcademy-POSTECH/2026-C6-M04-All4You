@@ -5,7 +5,7 @@
 //  Created by SIA on 11/4/26.
 //
 
-// 사건 목록에서 사건을 고르면 오른쪽에 뜨는 미리보기. 도면과 앨범·메모 개수를 보여 준다
+// 사건 목록에서 사건을 고르면 오른쪽에 뜨는 미리보기. 도면과 앨범,메모 개수를 보여 준다
 
 import SwiftUI
 
@@ -78,8 +78,4 @@ extension CasePreviewView {
         static let memoUnit = "개"
         static let floorPlanPlaceholder = "도면 자리"
     }
-}
-
-#Preview {
-    CasePreviewView(fireCase: FireCase.samples[0])
 }
