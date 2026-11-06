@@ -8,9 +8,13 @@ import SwiftUI
 
 struct FloorPlan3DView: View {
     let planData: PlanData
+    /// 눌러 고른 도면 요소. 빈 곳이나 벽을 누르면 nil
+    @Binding var selection: PlanSelection?
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
+    /// 누른 화면 점을 광선으로 바꿀 때 쓰는 카메라 정보. 장면을 처음 만들 때 받아 둔다
+    @State private var cameraContent: RealityViewCameraContent?
     /// 핀치를 끝냈을 때의 도면 배율. 다음 핀치는 여기서 이어 간다
     @State private var committedZoom: Float = 1
     /// 공간 이름 라벨의 화면 위치 (키 = Room.id). 카메라가 움직일 때마다 다시 계산한다
@@ -25,22 +29,26 @@ struct FloorPlan3DView: View {
             content.add(sceneRoot)
             content.add(makeLight())
             content.add(makeCamera())
-            let cameraContent = content
-            frameUpdates = content.subscribe(to: SceneEvents.Update.self) { event in
+            cameraContent = content
+            frameUpdates = content.subscribe(to: SceneEvents.Update.self) { [content] event in
                 // 라벨마다 광선 계산을 하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
                 timeSinceLabelUpdate += event.deltaTime
                 guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
                 timeSinceLabelUpdate = 0
-                updateLabelPoints(using: cameraContent)
+                updateLabelPoints(using: content)
             }
         }
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
         .realityViewCameraControls(.orbit)
         .simultaneousGesture(extraZoomGesture)
+        .simultaneousGesture(selectTapGesture)
         .overlay(alignment: .topLeading) {
             roomLabels
         }
         .onChange(of: planData, initial: true) {
+            rebuildScene()
+        }
+        .onChange(of: selection) {
             rebuildScene()
         }
     }
@@ -84,9 +92,30 @@ extension FloorPlan3DView {
             direction: ray.direction,
             length: distanceToLabel - Layout.labelHitMargin,
             query: .nearest,
+            mask: FloorPlan3DBuilder.wallCollisionGroup,
             relativeTo: nil
         )
         return !hits.isEmpty
+    }
+}
+
+// 눌러 고르기
+// 광선은 월드 좌표로 계산해서 핀치 배율(sceneRoot.scale)이 이미 반영된다
+extension FloorPlan3DView {
+    private var selectTapGesture: some Gesture {
+        SpatialTapGesture()
+            .onEnded { value in
+                selection = hitSelection(at: value.location)
+            }
+    }
+
+    /// 누른 화면 점에서 광선을 쏴 가장 먼저 맞은 도면 요소. 벽이 먼저 맞거나 아무것도 안 맞으면 nil
+    private func hitSelection(at point: CGPoint) -> PlanSelection? {
+        guard let cameraContent,
+              let scene = sceneRoot.scene,
+              let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
+        let hit = scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
+        return hit.flatMap { FloorPlan3DBuilder.selection(of: $0.entity) }
     }
 }
 
@@ -114,7 +143,7 @@ extension FloorPlan3DView {
 extension FloorPlan3DView {
     private func rebuildScene() {
         sceneRoot.children.removeAll()
-        sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: planData))
+        sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: planData, selection: selection))
     }
 
     /// 도면 앞쪽(도면 아래쪽) 위에서 비스듬히 내려다보는 카메라. 도면이 클수록 멀리 둔다
@@ -158,5 +187,6 @@ extension FloorPlan3DView {
 }
 
 #Preview {
-    FloorPlan3DView(planData: DummyFloorPlan.planData)
+    @Previewable @State var selection: PlanSelection?
+    FloorPlan3DView(planData: DummyFloorPlan.planData, selection: $selection)
 }

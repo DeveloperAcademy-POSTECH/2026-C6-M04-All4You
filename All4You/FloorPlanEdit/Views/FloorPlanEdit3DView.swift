@@ -10,12 +10,14 @@ struct FloorPlanEdit3DView: View {
     let onDone: () -> Void
 
     @State private var selectedTool: EditTool?
+    /// 3D에서 눌러 고른 스탬프·창문
+    @State private var selection: PlanSelection?
 
     /// 3D에서 가구는 보기만 하고 공간 이름은 라벨로만 보여 주므로 두 도구를 숨긴다
     private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        FloorPlan3DView(planData: planData)
+        FloorPlan3DView(planData: planData, selection: $selection)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
