@@ -10,44 +10,63 @@ struct FloorPlanImportView: View {
 
     var body: some View {
         NavigationStack {
-            content
-                .navigationBarTitleDisplayMode(.inline)
-                .backOnlyToolbar(title: "목록으로") {
-                    camera.stop()
-                    dismiss()
-                }
+            if let result {
+                scanResult(image: result)
+            } else {
+                content
+                    .navigationBarTitleDisplayMode(.inline)
+            }
         }
     }
 
+    // 보정된 도면을 화면에 최대한 크게 표시. 도면이 잘리지 않도록 비율 유지
+    private func scanResult(image: UIImage) -> some View {
+        Image(uiImage: image)
+            .resizable()
+            .scaledToFit()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(.white)
+            .preferredColorScheme(.light)
+            .navigationTitle("스캔 결과 확인")
+            .navigationSubtitle("청암로 77") // TODO: 주소 불러온 걸로 바꾸기
+            .navigationBarTitleDisplayMode(.inline)
+            .bothSidesToolbar(
+                leadingTitle: "뒤로 가기",
+                trailingTitle: "저장",
+                customLayout: true,
+                barTitle: "스캔 결과 확인",
+                barSubtitle: "청암로 77", // TODO: 주소 불러온 걸로 바꾸기
+                onBack: {
+                    // 원본 사진은 유지하고 결과만 비워 영역 조정 화면으로 돌아간다.
+                    result = nil
+                },
+                onDone: {
+                    if let onImport {
+                        onImport(image)
+                    }
+                    dismiss()
+                }
+            )
+    }
+
+    // 촬영한 원본이 있으면 모서리 조정 화면을, 없으면 카메라를 표시
     private var content: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let result {
-                VStack(spacing: 20) {
-                    Text("스캔 결과 확인").font(AppTypography.title2Emphasized)
-                    Image(uiImage: result).resizable().scaledToFit().padding(16)
-                    HStack(spacing: 24) {
-                        if let onImport {
-                            Button("이 도면 사용") {
-                                onImport(result)
-                                dismiss()
-                            }
-                        }
-                        Button("다시 촬영") { reset() }
-                        ShareLink(item: Image(uiImage: result), preview: SharePreview("평면도 스케치", image: Image(uiImage: result))) {
-                            Label("이미지 내보내기", systemImage: "square.and.arrow.up")
-                        }
-                    }.buttonStyle(.borderedProminent)
-                }.padding(16).foregroundStyle(.white)
-            } else if let source {
+            if let source {
                 FloorPlanImportCropView(source: source, onRetake: reset) { correctedImage in
                     result = correctedImage
                 }
             } else {
                 captureScreen
+                    .preferredColorScheme(.dark)
+                    // 카메라에만 적용해 영역 조정 화면의 양쪽 툴바와 겹치지 않게 한다.
+                    .backOnlyToolbar(title: "목록으로", customLayout: true) {
+                        camera.stop()
+                        dismiss()
+                    }
             }
         }
-        .preferredColorScheme(.dark)
         .onChange(of: camera.image) { _, capturedImage in
             if let capturedImage = capturedImage {
                 source = capturedImage
@@ -55,57 +74,20 @@ struct FloorPlanImportView: View {
         }
     }
 
+    // 카메라 화면을 구성하고, 화면이 나타나거나 사라질 때 카메라를 켜고 끔
     private var captureScreen: some View {
         GeometryReader { geometry in
             let landscape = geometry.size.width > geometry.size.height
-            // 카메라 화면의 왼쪽 위를 기준으로 한 가이드 위치와 크기.
-            let guideSize = CGSize(width: 1069, height: 836)
+
             ZStack {
                 FloorPlanImportCameraPreview(camera: camera)
-                RoundedRectangle(cornerRadius: 24)
-                    .stroke(.white, lineWidth: 4)
-                    .frame(width: guideSize.width, height: guideSize.height)
-                    .onGeometryChange(for: [CGRect].self) { frame in
-                        [frame.frame(in: .named("scanPreview")), CGRect(origin: .zero, size: geometry.size)]
-                    } action: { frames in
-                        camera.updateGuide(previewSize: frames[1].size, guide: frames[0])
-                    }
-                    .padding(.bottom, 99)
-                    .padding(.leading, 138)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .allowsHitTesting(false)
-                VStack {
-                    Spacer()
-                    Text(camera.message).font(.callout)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 18).padding(.vertical, 10)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(.horizontal, 80).padding(.bottom, 110)
-                }
-                HStack {
-                    zoomButtons
-                        .padding(.leading, 27)
-                    Spacer()
-                    if landscape {
-                        shutter.padding(.trailing, 24)
-                    }
-                }
-                if landscape == false {
-                    VStack {
-                        Spacer()
-                        shutter.padding(.bottom, 20)
-                    }
-                }
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        if camera.detected {
-                            Label("종이 인식됨", systemImage: "checkmark.viewfinder").font(AppTypography.label).foregroundStyle(.yellow)
-                        }
-                    }.padding(18)
-                }
+                guideFrame(previewSize: geometry.size)
+                captureHint
+                captureControls(landscape: landscape)
+                detectionStatus
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
             .coordinateSpace(name: "scanPreview")
             .foregroundStyle(.white)
             .onAppear {
@@ -122,7 +104,77 @@ struct FloorPlanImportView: View {
                 }
             }
         }
+        // 카메라와 인식 좌표를 모두 화면 전체 크기에 맞춤
+        .ignoresSafeArea()
     }
+
+    // 화면 가장자리에서 여백을 준 흰색 프레임. 실제 위치를 자동 촬영 기준으로 전달
+    private func guideFrame(previewSize: CGSize) -> some View {
+        RoundedRectangle(cornerRadius: 24)
+            .stroke(.white, lineWidth: 4)
+            .onGeometryChange(for: CGRect.self) { frame in
+                frame.frame(in: .named("scanPreview"))
+            } action: { frame in
+                camera.updateGuide(previewSize: previewSize, guide: frame)
+            }
+            .padding(.top, 90)
+            .padding(.bottom, 99)
+            .padding(.leading, 138)
+            .padding(.trailing, 159)
+            .allowsHitTesting(false)
+    }
+
+    // 화면 아래에 현재 촬영 안내 문구를 표시
+    private var captureHint: some View {
+        VStack {
+            Spacer()
+            Text(camera.message)
+                .font(.callout)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 26)
+                .padding(.vertical, 8)
+                .glassEffect((.regular), in: Capsule())
+                .padding(.bottom, 39)
+        }
+    }
+
+    // 배율 버튼은 왼쪽에, 촬영 버튼은 가로 화면에서 오른쪽, 세로 화면에서 아래에 배치
+    private func captureControls(landscape: Bool) -> some View {
+        ZStack {
+            HStack {
+                zoomButtons
+                    .padding(.leading, 32)
+                Spacer()
+                if landscape {
+                    shutter.padding(.trailing, 27)
+                }
+            }
+            if landscape == false {
+                VStack {
+                    Spacer()
+                    shutter.padding(.bottom, 20)
+                }
+            }
+        }
+    }
+
+    // 종이가 인식되면 오른쪽 아래에 인식 상태를 표시
+    private var detectionStatus: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                if camera.detected {
+                    Label("종이 인식됨", systemImage: "checkmark.viewfinder")
+                        .font(AppTypography.label)
+                        .foregroundStyle(.yellow)
+                }
+            }
+            .padding(18)
+        }
+    }
+
+    // 0.5배, 1배, 2배, 3배 버튼을 표시하고 선택한 배율을 카메라에 전달
     private var zoomButtons: some View {
         VStack(spacing: 12) {
             ForEach([0.5, 1.0, 2.0, 3.0], id: \.self) { value in
@@ -140,6 +192,7 @@ struct FloorPlanImportView: View {
         }
     }
 
+    // 현재 선택한 배율은 노란색, 나머지는 흰색으로 표시
     private func zoomColor(for value: Double) -> Color {
         if camera.zoom == value {
             return .yellow
@@ -147,6 +200,7 @@ struct FloorPlanImportView: View {
         return .white
     }
 
+    // 촬영할 수 없는 상태이거나 지원하지 않는 배율이면 줌 버튼을 비활성화
     private func isZoomDisabled(_ value: Double) -> Bool {
         if isCaptureDisabled {
             return true
@@ -159,23 +213,25 @@ struct FloorPlanImportView: View {
         return false
     }
 
+    // 누르면 직접 촬영하는 흰색 원형 버튼
     private var shutter: some View {
         Button { camera.capture() } label: {
             ZStack {
-                Image(systemName: "shutter")
-                    .resizable()
-                    .scaledToFit()
+                Circle()
+                    .strokeBorder(.white, lineWidth: 4)
                     .frame(width: 102, height: 102)
-                    .foregroundStyle(.white)
+                Circle()
+                    .fill(.white)
+                    .frame(width: 85, height: 85)
                 if camera.busy {
                     ProgressView().tint(.black)
                 }
             }
-            .padding(.horizontal, 27)
         }
         .disabled(isCaptureDisabled)
         .accessibilityLabel("도면 직접 스캔")
     }
+    // 카메라 준비 전이거나 이미 촬영 중이면 촬영 버튼을 비활성화
     private var isCaptureDisabled: Bool {
         // 카메라가 준비되기 전에는 촬영할 수 없다.
         if camera.ready == false {
@@ -192,7 +248,6 @@ struct FloorPlanImportView: View {
         source = nil
         result = nil
         camera.image = nil
-        // 촬영 화면이 다시 나타나면 onAppear에서 카메라를 시작한다.
     }
 }
 

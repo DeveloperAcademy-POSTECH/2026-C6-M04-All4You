@@ -1,14 +1,16 @@
 import UIKit
 import CoreImage
 import Vision
+import Synchronization
 
-/// 종이의 네 모서리. 왼쪽 위부터 시계 방향이며 좌표 범위는 0...1이다.
+// 종이의 네 모서리. 왼쪽 위부터 시계 방향이며 좌표 범위는 0...1
 struct FloorPlanImportRegion {
     private(set) var corners = [
         CGPoint(x: 0.08, y: 0.08), CGPoint(x: 0.92, y: 0.08),
         CGPoint(x: 0.92, y: 0.92), CGPoint(x: 0.08, y: 0.92)
     ]
 
+    // 네 모서리가 교차하거나 뒤집히지 않는지 확인한 뒤 스캔 영역을 변경
     mutating func update(_ points: [CGPoint]) {
         if points.count != 4 {
             return
@@ -21,7 +23,7 @@ struct FloorPlanImportRegion {
             let second = outline[index + 1]
             let third = outline[index + 2]
 
-            // 세 점이 시계 방향으로 꺾여야 모서리가 교차하지 않는다.
+            // 세 점이 시계 방향으로 꺾여야 모서리가 교차하지 않음
             let turn = (second.x - first.x) * (third.y - second.y)
                 - (second.y - first.y) * (third.x - second.x)
             if turn <= 0.003 { return }
@@ -31,14 +33,13 @@ struct FloorPlanImportRegion {
     }
 }
 
-/// 사진 방향 정리, 종이 인식, 원근 보정을 담당한다.
-enum FloorPlanImportImageProcessor {
-    // 보정할 때마다 새로 만들지 않고 재사용한다.
-    nonisolated private static let context = CIContext()
+// 사진 방향 정리, 종이 인식, 원근 보정을 담당
+actor FloorPlanImportImageProcessor {
+    private static let context = Mutex(CIContext())
 
-    /// 자동 촬영은 문서 전체가 인식될 때만 허용한다.
-    /// 수동 촬영 후에는 일반 사각형 인식도 영역 조정의 시작점으로 사용한다.
-    nonisolated static func detectPaper(
+    // 자동 촬영은 문서 전체가 인식될 때만 허용
+    // 수동 촬영 후에는 일반 사각형 인식도 영역 조정의 시작점으로 사용
+    static func detectPaper(
         in image: VNImageRequestHandler,
         allowRectangleFallback: Bool = true
     ) -> [CGPoint]? {
@@ -51,7 +52,7 @@ enum FloorPlanImportImageProcessor {
                 }
             }
         } catch {
-            // 문서 인식에 실패해도 직접 촬영과 모서리 조정은 사용할 수 있다.
+            // 문서 인식에 실패해도 직접 촬영과 모서리 조정 가능
         }
         if allowRectangleFallback == false {
             return nil
@@ -75,20 +76,21 @@ enum FloorPlanImportImageProcessor {
         return screenCorners(of: paper)
     }
 
-    nonisolated private static func screenCorners(of paper: VNRectangleObservation) -> [CGPoint] {
+    // Vision이 찾은 네 모서리를 화면 좌표로 바꾸고 왼쪽 위부터 시계 방향으로 반환
+    private static func screenCorners(of paper: VNRectangleObservation) -> [CGPoint] {
         let points = [paper.topLeft, paper.topRight, paper.bottomRight, paper.bottomLeft]
-        // Vision과 화면의 Y좌표 방향을 맞춘다.
         return points.map { point in
             CGPoint(x: point.x, y: 1 - point.y)
         }
     }
 
-    nonisolated static func prepare(_ image: UIImage) -> (image: UIImage, corners: [CGPoint]?) {
+    // 사진의 방향과 크기를 정리하고, 조정 화면에서 사용할 사진과 종이 모서리를 반환
+    static func prepare(_ image: UIImage) -> (image: UIImage, corners: [CGPoint]?) {
         // 큰 사진은 긴 변을 2400까지 줄이고, 작은 사진은 확대하지 않는다.
         let longestSide = max(image.size.width, image.size.height)
         let scale = min(1, 2400 / longestSide)
         let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        // 화면 회전 정보를 픽셀에 반영해 모서리 위치와 사진 방향을 맞춘다.
+        // 화면 회전 정보를 픽셀에 반영해 모서리 위치와 사진 방향을 맞춤
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let upright = UIGraphicsImageRenderer(size: size, format: format).image { _ in
@@ -100,7 +102,8 @@ enum FloorPlanImportImageProcessor {
         return (upright, detectPaper(in: imageRequest))
     }
 
-    nonisolated static func correct(_ image: UIImage, corners: [CGPoint]) -> UIImage? {
+    // 선택한 네 모서리에 맞춰 종이 영역을 자르고 기울어진 원근을 보정
+    static func correct(_ image: UIImage, corners: [CGPoint]) -> UIImage? {
         if corners.count != 4 { return nil }
         guard let input = CIImage(image: image) else { return nil }
         guard let filter = CIFilter(name: "CIPerspectiveCorrection") else { return nil }
@@ -117,12 +120,15 @@ enum FloorPlanImportImageProcessor {
         }
         guard let output = filter.outputImage else { return nil }
         if output.extent.isEmpty { return nil }
-        guard let cgImage = context.createCGImage(output, from: output.extent) else { return nil }
+        let renderedImage = context.withLock { renderer in
+            renderer.createCGImage(output, from: output.extent)
+        }
+        guard let cgImage = renderedImage else { return nil }
         return UIImage(cgImage: cgImage)
     }
 }
 
-/// 촬영 화면과 카메라에서 함께 쓰는 안내 문구.
+// 촬영 화면과 카메라에서 함께 쓰는 안내 문구.
 enum FloorPlanImportText {
     static let adjustPaper = "종이 전체가 보이도록 위치를 조정해 주세요"
     static let fitPaper = "종이를 네모난 영역 안에 맞춰주세요"
