@@ -5,11 +5,16 @@
 //  Created by 채유성 on 11/5/26.
 //
 
-// 스캔 결과 미리보기 Sheet
+// 저장된 RoomPlan 결과를 받아 2D·3D 미리보기를 제공하는 Sheet
+import RoomPlan
 import SwiftUI
 
 struct ScanPreviewSheet: View {
     @State private var selectedMode: ScanPreviewMode = .twoD
+    let rooms: [CapturedRoom]
+    let structure: CapturedStructure?
+    let revision: Int
+    let statusMessage: String?
     
     let onContinue: () -> Void
     let onChooseOtherMethod: () -> Void
@@ -17,11 +22,20 @@ struct ScanPreviewSheet: View {
     
     init(
         initialMode: ScanPreviewMode = .twoD,
+        rooms: [CapturedRoom] = [],
+        structure: CapturedStructure? = nil,
+        revision: Int = 0,
+        isContinueEnabled: Bool = true,
+        statusMessage: String? = nil,
         onContinue: @escaping () -> Void,
         onChooseOtherMethod: @escaping () -> Void,
         onRescan: @escaping () -> Void
     ) {
         _selectedMode = State(initialValue: initialMode)
+        self.rooms = rooms
+        self.structure = structure
+        self.revision = revision
+        self.statusMessage = statusMessage
         self.onContinue = onContinue
         self.onChooseOtherMethod = onChooseOtherMethod
         self.onRescan = onRescan
@@ -44,11 +58,16 @@ struct ScanPreviewSheet: View {
                 ScanPreviewModePicker(selection: $selectedMode)
                     .padding(.top, 18)
                 
-                ScanPreviewArtwork()
-                    .frame(maxWidth: 500)
-                    .frame(height: 350)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 32)
+                ScanPreviewArtwork(
+                    mode: selectedMode,
+                    rooms: rooms,
+                    structure: structure,
+                    revision: revision
+                )
+                .frame(maxWidth: 500)
+                .frame(height: 350)
+                .padding(.horizontal, 24)
+                .padding(.top, 32)
                 
                 Spacer(minLength: 12)
                 
@@ -87,14 +106,3 @@ struct ScanPreviewSheet: View {
         }
     }
 }
-
-#Preview("도면 미리보기") {
-    ScanPreviewSheet(onContinue: {}, onChooseOtherMethod: {}, onRescan: {})
-        .background(Color.gray.opacity(0.45))
-}
-
-#Preview("도면 미리보기 3D") {
-    ScanPreviewSheet(initialMode: .threeD, onContinue: {}, onChooseOtherMethod: {}, onRescan: {})
-        .background(Color.gray.opacity(0.45))
-}
-

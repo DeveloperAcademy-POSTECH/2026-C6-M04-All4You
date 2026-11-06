@@ -29,12 +29,20 @@ struct FloorPlanMethodRow: View {
             .background(.white, in: shape)
             .overlay {
                 shape.strokeBorder(isSelected ? .black : .clear, lineWidth: 2)
+                    .animation(.linear(duration: 0.15), value: isSelected)
             }
             .contentShape(shape)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FloorPlanMethodPressStyle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("선택하면 계속 버튼이 활성화됩니다")
+    }
+}
+
+// 시스템의 기본 버튼 애니메이션 전환 효과를 막고 테두리에만 변경을 주기 위한 함수
+private struct FloorPlanMethodPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
     }
 }
 

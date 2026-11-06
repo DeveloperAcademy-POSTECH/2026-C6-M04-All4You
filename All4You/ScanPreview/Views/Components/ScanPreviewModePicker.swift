@@ -15,7 +15,7 @@ enum ScanPreviewMode: String, CaseIterable {
 
 struct ScanPreviewModePicker: View {
     @Binding var selection: ScanPreviewMode
-
+    
     var body: some View {
         Picker("도면 보기 방식", selection: $selection) {
             ForEach(ScanPreviewMode.allCases, id: \.self) { mode in
