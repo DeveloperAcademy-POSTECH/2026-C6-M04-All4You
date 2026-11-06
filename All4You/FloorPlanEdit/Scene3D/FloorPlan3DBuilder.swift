@@ -29,7 +29,29 @@ enum FloorPlan3DBuilder {
         for marker in plan.markers {
             root.addChild(makeMarker(marker, space: space))
         }
+        root.addChild(makeRoomLabelAnchors(for: plan.rooms, space: space))
         return root
+    }
+}
+
+// 공간 이름 라벨 자리
+extension FloorPlan3DBuilder {
+    /// 라벨 자리들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 라벨을 겹친다
+    static let roomLabelAnchorsName = "roomLabelAnchors"
+    /// 라벨을 띄울 높이 (m). 벽(2.4m)보다 낮게 방 안에 둬서, 옆에서 보면 벽에 가려지고 위에서 보면 보이게
+    private static let roomLabelHeight = 1.5
+
+    /// 방마다 이름 라벨이 놓일 3D 점. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = Room.id
+    private static func makeRoomLabelAnchors(for rooms: [Room], space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = roomLabelAnchorsName
+        for room in rooms {
+            let anchor = Entity()
+            anchor.name = room.id
+            anchor.position = space.world(SIMD2(room.labelX, room.labelY), height: roomLabelHeight)
+            group.addChild(anchor)
+        }
+        return group
     }
 }
 
@@ -120,18 +142,22 @@ extension FloorPlan3DBuilder {
         var result = [box(piece, bottom: top, top: wall.height, depth: wall.thickness, material: Materials.wall)]
         if opening.kind == .window {
             result.append(box(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness, material: Materials.wall))
-            result.append(box(piece, bottom: opening.sillHeight, top: top, depth: 0.03, material: Materials.glass))
+            result.append(box(piece, bottom: opening.sillHeight, top: top, depth: 0.03, material: Materials.glass, isSolid: false))
         }
         return result.compactMap { $0 }
     }
 
-    /// 토막 구간에 bottom~top 높이의 상자. 너무 얇으면 만들지 않는다
-    private static func box(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, material: any Material) -> ModelEntity? {
+    /// 토막 구간에 bottom~top 높이의 상자. 너무 얇으면 만들지 않는다.
+    /// isSolid면 광선이 부딪히는 충돌 모양을 붙인다 (벽에 가려진 라벨 숨기기). 유리는 비쳐 보이므로 붙이지 않는다
+    private static func box(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, material: any Material, isSolid: Bool = true) -> ModelEntity? {
         let width = piece.to - piece.from
         let height = top - bottom
         guard width > 0.001, height > 0.001 else { return nil }
-        let mesh = MeshResource.generateBox(width: Float(width), height: Float(height), depth: Float(depth))
-        let entity = ModelEntity(mesh: mesh, materials: [material])
+        let size = SIMD3(Float(width), Float(height), Float(depth))
+        let entity = ModelEntity(mesh: .generateBox(size: size), materials: [material])
+        if isSolid {
+            entity.components.set(CollisionComponent(shapes: [.generateBox(size: size)]))
+        }
         entity.position = [Float((piece.from + piece.to) / 2), Float((bottom + top) / 2), 0]
         return entity
     }

@@ -14,18 +14,73 @@ struct FloorPlan3DView: View {
     @State private var sceneRoot = Entity()
     /// 핀치를 끝냈을 때의 도면 배율. 다음 핀치는 여기서 이어 간다
     @State private var committedZoom: Float = 1
+    /// 공간 이름 라벨의 화면 위치 (키 = Room.id). 카메라가 움직일 때마다 다시 계산한다
+    @State private var labelPoints: [String: CGPoint] = [:]
+    /// 매 프레임 라벨 위치를 다시 계산하는 구독. 화면이 사라지면 함께 없어진다
+    @State private var frameUpdates: EventSubscription?
 
     var body: some View {
         RealityView { content in
             content.add(sceneRoot)
             content.add(makeLight())
             content.add(makeCamera())
+            let cameraContent = content
+            frameUpdates = content.subscribe(to: SceneEvents.Update.self) { _ in
+                updateLabelPoints(using: cameraContent)
+            }
         }
         .realityViewCameraControls(.orbit)
         .simultaneousGesture(extraZoomGesture)
+        .overlay(alignment: .topLeading) {
+            roomLabels
+        }
         .onChange(of: planData, initial: true) {
             rebuildScene()
         }
+    }
+}
+
+// 공간 이름 라벨
+// iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹친다
+extension FloorPlan3DView {
+    private var roomLabels: some View {
+        ForEach(planData.rooms) { room in
+            if let point = labelPoints[room.id] {
+                RoomLabelView(name: room.name)
+                    .position(point)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 장면 안 라벨 자리(FloorPlan3DBuilder)를 화면 점으로 바꾼다. 카메라 뒤에 있거나 벽에 가려지면 빠진다
+    private func updateLabelPoints(using content: RealityViewCameraContent) {
+        guard let anchors = sceneRoot.findEntity(named: FloorPlan3DBuilder.roomLabelAnchorsName) else { return }
+        var points: [String: CGPoint] = [:]
+        for anchor in anchors.children {
+            let position = anchor.position(relativeTo: nil)
+            guard let point = content.project(point: position, to: .local),
+                  !isHiddenByWall(position, at: point, content: content) else { continue }
+            points[anchor.name] = point
+        }
+        if points != labelPoints {
+            labelPoints = points
+        }
+    }
+
+    /// 카메라에서 라벨 자리까지 광선을 쏘아, 그 사이에 벽(충돌 모양이 있는 상자)이 있으면 가려진 것으로 본다
+    private func isHiddenByWall(_ position: SIMD3<Float>, at point: CGPoint, content: RealityViewCameraContent) -> Bool {
+        guard let scene = sceneRoot.scene,
+              let ray = content.ray(through: point, in: .local, to: .scene) else { return false }
+        let distanceToLabel = simd_distance(ray.origin, position)
+        let hits = scene.raycast(
+            origin: ray.origin,
+            direction: ray.direction,
+            length: distanceToLabel - Layout.labelHitMargin,
+            query: .nearest,
+            relativeTo: nil
+        )
+        return !hits.isEmpty
     }
 }
 
@@ -88,6 +143,8 @@ extension FloorPlan3DView {
         static let extraZoomPower: Float = 0.6
         /// 도면 배율을 이 범위 안에서만 바꾼다 (너무 작아지거나 화면을 넘지 않게)
         static let zoomRange: ClosedRange<Float> = 0.4...4
+        /// 라벨 바로 앞(m)은 가림 판정에서 뺀다. 라벨 자리에 닿은 것을 벽으로 잘못 보지 않게
+        static let labelHitMargin: Float = 0.05
     }
 }
 
