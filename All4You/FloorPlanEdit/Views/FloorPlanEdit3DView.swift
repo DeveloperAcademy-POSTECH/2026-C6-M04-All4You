@@ -1,4 +1,4 @@
-// 3D 도면 수정 화면. 도면을 3D로 보여 주고, 스탬프를 놓고 옮기고 돌린다
+// 3D 도면 수정 화면. 도면을 3D로 보여 주고, 스탬프를 놓고 옮기고 돌리고 복제·삭제한다
 
 import SwiftUI
 
@@ -58,9 +58,21 @@ extension FloorPlanEdit3DView {
         }
     }
 
-    /// 끌어 옮기거나 돌린 스탬프를 도면에 반영한다
+    /// 옮기거나 돌리거나 복제·삭제한 스탬프를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
     private func handleEdit(_ edit: PlanEdit) {
         switch edit {
+        case .duplicate(.marker(let id)):
+            selection = planData.duplicateMarker(id: id).map(PlanSelection.marker) ?? selection
+        case .duplicate(.wallFixture(let id)):
+            selection = planData.duplicateWallFixture(id: id).map(PlanSelection.wallFixture) ?? selection
+        case .delete(.marker(let id)):
+            planData.removeMarker(id: id)
+            selection = nil
+        case .delete(.wallFixture(let id)):
+            planData.removeWallFixture(id: id)
+            selection = nil
+        case .duplicate(.doorWindow), .delete(.doorWindow):
+            break
         case .move(.marker(let id), let point, _):
             planData.moveMarker(id: id, to: point)
         case .move(.wallFixture(let id), let point, let height):

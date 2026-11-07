@@ -1,6 +1,12 @@
-// 도면의 스탬프를 더하고 옮기고 돌리는 계산. 화면은 도면 좌표만 넘기고, 저장 모양(벽 기준 위치·면 등)은 여기서 정한다
+// 도면의 스탬프를 더하고 옮기고 돌리고 복제·삭제하는 계산. 화면은 도면 좌표만 넘기고, 저장 모양(벽 기준 위치·면 등)은 여기서 정한다
 
 import Foundation
+
+extension PlanData {
+    /// 복제한 스탬프를 원래 것에서 떨어뜨리는 거리 (m). 사람·발화지점은 도면 오른쪽으로, 벽에 붙은 것은 벽을 따라
+    /// TEMP: 복제 자리는 디자인 확인 전이라 임시로 정한 값
+    fileprivate static let duplicateGap = 0.5
+}
 
 // 사람·발화지점
 extension PlanData {
@@ -31,6 +37,25 @@ extension PlanData {
         let degrees = yaw.truncatingRemainder(dividingBy: 360)
         markers[index].yaw = degrees < 0 ? degrees + 360 : degrees
     }
+
+    /// 사람·발화지점을 같은 종류·방향·자세로 옆에 하나 더 놓고 새 id를 돌려준다
+    mutating func duplicateMarker(id: String) -> String? {
+        guard let original = markers.first(where: { $0.id == id }) else { return nil }
+        let copy = PlanMarker(
+            id: UUID().uuidString,
+            kind: original.kind,
+            position: original.position + SIMD2(Self.duplicateGap, 0),
+            height: original.height,
+            yaw: original.yaw,
+            lying: original.lying
+        )
+        markers.append(copy)
+        return copy.id
+    }
+
+    mutating func removeMarker(id: String) {
+        markers.removeAll { $0.id == id }
+    }
 }
 
 // 콘센트처럼 벽에 붙는 것
@@ -57,6 +82,28 @@ extension PlanData {
               let spot = wallSpot(wallId: wallFixtures[index].wallId, point: point, height: height) else { return }
         wallFixtures[index].positionAlongWall = spot.along
         wallFixtures[index].heightFromFloor = spot.height
+    }
+
+    /// 벽에 붙은 것을 같은 벽·면·높이로 벽을 따라 옆에 하나 더 붙이고 새 id를 돌려준다. 벽 끝을 넘으면 반대쪽에 붙인다
+    mutating func duplicateWallFixture(id: String) -> String? {
+        guard let original = wallFixtures.first(where: { $0.id == id }),
+              let wall = wall(id: original.wallId), let line = line(of: wall) else { return nil }
+        let forward = original.positionAlongWall + Self.duplicateGap
+        let along = forward <= line.length ? forward : max(original.positionAlongWall - Self.duplicateGap, 0)
+        let copy = WallFixture(
+            id: UUID().uuidString,
+            wallId: original.wallId,
+            kind: original.kind,
+            face: original.face,
+            positionAlongWall: along,
+            heightFromFloor: original.heightFromFloor
+        )
+        wallFixtures.append(copy)
+        return copy.id
+    }
+
+    mutating func removeWallFixture(id: String) {
+        wallFixtures.removeAll { $0.id == id }
     }
 
     /// 도면 점과 높이를 벽 기준 자리로 바꾼다. 벽을 따라간 위치는 벽 안으로, 높이는 벽 높이 안으로 맞춘다
