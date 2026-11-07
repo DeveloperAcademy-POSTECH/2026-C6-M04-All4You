@@ -12,6 +12,8 @@ struct FloorPlan3DView: View {
     let selection: PlanSelection?
     /// 누른 자리를 도면 기준 값으로 바꿔 알린다. 아무것도 안 맞으면 nil
     let onTap: (PlanTap?) -> Void
+    /// 고른 스탬프를 끌어 옮기거나 돌리고 손을 떼면 알린다
+    let onEdit: (PlanEdit) -> Void
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -25,6 +27,12 @@ struct FloorPlan3DView: View {
     @State private var frameUpdates: EventSubscription?
     /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
     @State private var timeSinceLabelUpdate: TimeInterval = 0
+    /// 지금 하고 있는 한 손가락 끌기. 고른 스탬프 위에서 시작했으면 스탬프 이동, 아니면 카메라 회전
+    @State private var drag: DragKind?
+    /// 회전 손잡이의 화면 위치. 사람·발화지점을 골랐을 때만 있다
+    @State private var rotateHandlePoint: CGPoint?
+    /// 고른 사람·발화지점의 엔티티. 장면을 다시 만들 때 찾아 둔다 (매 프레임 신호에서는 selection이 처음 값으로 남아 있어서)
+    @State private var selectedMarkerEntity: Entity?
 
     var body: some View {
         RealityView { content in
@@ -38,14 +46,20 @@ struct FloorPlan3DView: View {
                 guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
                 timeSinceLabelUpdate = 0
                 updateLabelPoints(using: content)
+                updateRotateHandlePoint(using: content)
             }
         }
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
-        .realityViewCameraControls(.orbit)
+        // 스탬프를 끄는 동안은 카메라가 같이 돌지 않게 기본 조작을 끈다
+        .realityViewCameraControls(isMovingStamp ? .none : .orbit)
         .simultaneousGesture(extraZoomGesture)
         .simultaneousGesture(tapGesture)
+        .simultaneousGesture(stampDragGesture)
         .overlay(alignment: .topLeading) {
             roomLabels
+        }
+        .overlay(alignment: .topLeading) {
+            rotateHandle
         }
         .onChange(of: planData, initial: true) {
             rebuildScene()
@@ -112,11 +126,7 @@ extension FloorPlan3DView {
 
     /// 누른 화면 점에서 광선을 쏴 가장 먼저 맞은 것을 도면 기준 값으로 바꾼다
     private func tapResult(at point: CGPoint) -> PlanTap? {
-        guard let cameraContent,
-              let scene = sceneRoot.scene,
-              let ray = cameraContent.ray(through: point, in: .local, to: .scene),
-              let hit = scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
-        else { return nil }
+        guard let hit = firstHit(at: point) else { return nil }
         if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
             return .element(element)
         }
@@ -128,6 +138,14 @@ extension FloorPlan3DView {
         }
         return .floor(planPoint)
     }
+
+    /// 화면 점에서 쏜 광선이 가장 먼저 맞은 것
+    private func firstHit(at point: CGPoint) -> CollisionCastHit? {
+        guard let cameraContent,
+              let scene = sceneRoot.scene,
+              let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
+        return scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
+    }
 }
 
 /// 3D에서 누른 곳을 도면 기준 값으로 바꾼 것
@@ -138,6 +156,134 @@ enum PlanTap {
     case floor(SIMD2<Double>)
     /// 벽 면 위 도면 점 (m)과 바닥에서 높이 (m)
     case wall(id: String, point: SIMD2<Double>, height: Double)
+}
+
+/// 3D에서 끌어 바꾼 스탬프를 도면 기준 값으로 바꾼 것. 손을 뗄 때 한 번 알린다
+enum PlanEdit {
+    /// 스탬프를 도면 점 (m)과 바닥에서 높이 (m)로 옮김. 사람·발화지점은 높이를 쓰지 않는다
+    case move(PlanSelection, point: SIMD2<Double>, height: Double)
+    /// 사람·발화지점(PlanMarker.id)의 방향을 yaw(도)로 바꿈
+    case rotate(markerId: String, yaw: Double)
+}
+
+// 스탬프 끌어 옮기기
+// 끄는 동안은 엔티티만 움직이고 도면은 손을 뗄 때 한 번 바꾼다 (끄는 내내 장면을 다시 만들지 않게)
+extension FloorPlan3DView {
+    private enum DragKind {
+        case stamp(StampDrag)
+        case camera
+    }
+
+    /// 끌고 있는 스탬프와 끌기 시작할 때의 위치
+    private struct StampDrag {
+        let selection: PlanSelection
+        let entity: Entity
+        /// 콘센트가 붙은 벽 (Wall.id). 사람·발화지점은 nil이라 바닥 위에서 움직인다
+        let wallId: String?
+        let startPosition: SIMD3<Float>
+        /// 끌기 시작한 화면 점 아래의 바닥·벽 점 (sceneRoot 기준)
+        let startSurfacePoint: SIMD3<Float>
+    }
+
+    private var isMovingStamp: Bool {
+        if case .stamp = drag { return true }
+        return false
+    }
+
+    /// 손가락이 바닥(벽) 위에서 움직인 만큼 스탬프를 옮긴다. 콘센트는 붙은 벽 면 위에서만 움직인다
+    private var stampDragGesture: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                if drag == nil {
+                    drag = beginStampDrag(at: value.startLocation).map(DragKind.stamp) ?? .camera
+                }
+                guard case .stamp(let stampDrag) = drag,
+                      let point = surfacePoint(at: value.location, wallId: stampDrag.wallId) else { return }
+                stampDrag.entity.position = stampDrag.startPosition + (point - stampDrag.startSurfacePoint)
+            }
+            .onEnded { _ in
+                defer { drag = nil }
+                guard case .stamp(let stampDrag) = drag else { return }
+                let position = stampDrag.entity.position
+                let point = PlanSpace(plan: planData).plan(position)
+                onEdit(.move(stampDrag.selection, point: point, height: Double(position.y)))
+            }
+    }
+
+    /// 끌기가 고른 스탬프 위에서 시작했으면 그 스탬프를 끌 준비를 한다. 창문은 끌지 않는다
+    private func beginStampDrag(at point: CGPoint) -> StampDrag? {
+        guard let selection, let hit = firstHit(at: point),
+              FloorPlan3DBuilder.selection(of: hit.entity) == selection,
+              let entity = FloorPlan3DBuilder.selectableEntity(of: hit.entity) else { return nil }
+        let wallId: String?
+        switch selection {
+        case .marker:
+            wallId = nil
+        case .wallFixture(let id):
+            guard let fixture = planData.wallFixtures.first(where: { $0.id == id }) else { return nil }
+            wallId = fixture.wallId
+        case .doorWindow:
+            return nil
+        }
+        guard let start = surfacePoint(at: point, wallId: wallId) else { return nil }
+        return StampDrag(selection: selection, entity: entity, wallId: wallId, startPosition: entity.position, startSurfacePoint: start)
+    }
+
+    /// 화면 점 아래의 바닥 점, 콘센트면 붙은 벽의 면 점 (sceneRoot 기준). 스탬프 자신은 광선에서 뺀다
+    private func surfacePoint(at point: CGPoint, wallId: String?) -> SIMD3<Float>? {
+        guard let cameraContent, let scene = sceneRoot.scene,
+              let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
+        let group = wallId == nil ? FloorPlan3DBuilder.floorCollisionGroup : FloorPlan3DBuilder.wallCollisionGroup
+        let hits = scene.raycast(origin: ray.origin, direction: ray.direction, query: .all, mask: group, relativeTo: nil)
+        let hit = hits
+            .sorted { $0.distance < $1.distance }
+            .first { wallId == nil || FloorPlan3DBuilder.wallId(of: $0.entity) == wallId }
+        return hit.map { sceneRoot.convert(position: $0.position, from: nil) }
+    }
+}
+
+// 회전 손잡이
+// 라벨처럼 고른 스탬프의 꼭대기를 화면 점으로 바꿔 위에 겹친다. 좌우로 끌면 돈다
+extension FloorPlan3DView {
+    @ViewBuilder
+    private var rotateHandle: some View {
+        if let rotateHandlePoint, case .marker(let id) = selection {
+            RotateHandleView()
+                .position(rotateHandlePoint)
+                .gesture(rotateGesture(markerId: id))
+        }
+    }
+
+    private func rotateGesture(markerId: String) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                selectedMarkerEntity?.orientation = PlanSpace.orientation(yaw: rotatedYaw(markerId: markerId, by: value.translation.width))
+            }
+            .onEnded { value in
+                onEdit(.rotate(markerId: markerId, yaw: rotatedYaw(markerId: markerId, by: value.translation.width)))
+            }
+    }
+
+    /// 손가락을 오른쪽으로 끈 만큼 시계 방향으로 더 돈 방향 (도)
+    private func rotatedYaw(markerId: String, by distance: CGFloat) -> Double {
+        let yaw = planData.markers.first { $0.id == markerId }?.yaw ?? 0
+        return yaw + Double(distance) * Layout.degreesPerPoint
+    }
+
+    /// 고른 사람·발화지점의 꼭대기 위에 손잡이 자리를 잡는다. 카메라 뒤에 있으면 숨긴다
+    private func updateRotateHandlePoint(using content: RealityViewCameraContent) {
+        var point: CGPoint?
+        if let entity = selectedMarkerEntity {
+            let bounds = entity.visualBounds(relativeTo: nil)
+            let top = SIMD3(bounds.center.x, bounds.max.y, bounds.center.z)
+            point = content.project(point: top, to: .local).map {
+                CGPoint(x: $0.x, y: $0.y - Layout.rotateHandleGap)
+            }
+        }
+        if point != rotateHandlePoint {
+            rotateHandlePoint = point
+        }
+    }
 }
 
 // 확대 민감도
@@ -165,6 +311,11 @@ extension FloorPlan3DView {
     private func rebuildScene() {
         sceneRoot.children.removeAll()
         sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: planData, selection: selection))
+        if let selection, case .marker = selection {
+            selectedMarkerEntity = FloorPlan3DBuilder.entity(for: selection, in: sceneRoot)
+        } else {
+            selectedMarkerEntity = nil
+        }
     }
 
     /// 도면 앞쪽(도면 아래쪽) 위에서 비스듬히 내려다보는 카메라. 도면이 클수록 멀리 둔다
@@ -204,9 +355,13 @@ extension FloorPlan3DView {
         /// 라벨 위치·가림을 다시 계산하는 간격 (초)
         /// TEMP: 우선 여유 있게 잡은 값. 라벨을 아주 많이 띄워 보는 테스트를 하며 알맞은 값으로 조절할 예정
         static let labelUpdateInterval: TimeInterval = 1.0 / 60
+        /// 스탬프 꼭대기와 회전 손잡이 가운데 사이 (pt)
+        static let rotateHandleGap: CGFloat = 36
+        /// 회전 손잡이를 1pt 끌 때 도는 각도 (도)
+        static let degreesPerPoint = 1.0
     }
 }
 
 #Preview {
-    FloorPlan3DView(planData: DummyFloorPlan.planData, selection: nil, onTap: { _ in })
+    FloorPlan3DView(planData: DummyFloorPlan.planData, selection: nil, onTap: { _ in }, onEdit: { _ in })
 }

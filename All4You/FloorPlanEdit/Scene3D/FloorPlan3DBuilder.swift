@@ -38,10 +38,30 @@ enum FloorPlan3DBuilder {
 extension FloorPlan3DBuilder {
     /// 벽 상자의 충돌 그룹. 라벨 가림 판정은 이 그룹만 본다 (스탬프·유리는 라벨을 가리지 않게)
     static let wallCollisionGroup = CollisionGroup(rawValue: 1 << 1)
+    /// 바닥의 충돌 그룹. 스탬프를 끌 때 스탬프 자신은 빼고 바닥만 맞히려고 쓴다
+    static let floorCollisionGroup = CollisionGroup(rawValue: 1 << 2)
 
     /// 광선이 맞은 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)가 맞아도 부모로 올라가 찾는다
     static func selection(of entity: Entity) -> PlanSelection? {
         nearest(PlanSelectionComponent.self, from: entity)?.selection
+    }
+
+    /// 광선이 맞은 엔티티가 속한 도면 요소 엔티티 전체 (사람 머리가 맞으면 사람 전체). 끌어 옮길 때 이것을 움직인다
+    static func selectableEntity(of entity: Entity) -> Entity? {
+        sequence(first: entity, next: \.parent).first { $0.components.has(PlanSelectionComponent.self) }
+    }
+
+    /// root 아래에서 selection에 해당하는 엔티티를 찾는다
+    static func entity(for selection: PlanSelection, in root: Entity) -> Entity? {
+        if root.components[PlanSelectionComponent.self]?.selection == selection {
+            return root
+        }
+        for child in root.children {
+            if let found = entity(for: selection, in: child) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// 광선이 맞은 엔티티가 벽 상자면 그 벽의 id (Wall.id)
@@ -125,6 +145,11 @@ struct PlanSpace {
     static func orientation(along direction: SIMD2<Double>) -> simd_quatf {
         simd_quatf(angle: Float(atan2(-direction.y, direction.x)), axis: [0, 1, 0])
     }
+
+    /// 사람·발화지점의 방향 yaw(도)를 회전으로. yaw는 도면 위쪽 0°에서 시계 방향이라, 위에서 볼 때 시계 방향 = 위아래 축 기준 음의 회전
+    static func orientation(yaw: Double) -> simd_quatf {
+        simd_quatf(angle: Float(-yaw * .pi / 180), axis: [0, 1, 0])
+    }
 }
 
 // 바닥
@@ -138,7 +163,7 @@ extension FloorPlan3DBuilder {
         let floor = ModelEntity(mesh: .generatePlane(width: width, depth: depth), materials: [Materials.floor])
         let shape = ShapeResource.generateBox(width: width, height: thickness, depth: depth)
             .offsetBy(translation: [0, -thickness / 2, 0])
-        floor.components.set(CollisionComponent(shapes: [shape]))
+        floor.components.set(CollisionComponent(shapes: [shape], filter: CollisionFilter(group: floorCollisionGroup, mask: .all)))
         return floor
     }
 }
@@ -243,13 +268,13 @@ extension FloorPlan3DBuilder {
         return entity
     }
 
-    /// 사람·발화지점. yaw는 도면 위쪽 0°에서 시계 방향이라, 위에서 볼 때 시계 방향 = 위아래 축 기준 음의 회전
+    /// 사람·발화지점
     private static func makeMarker(_ marker: PlanMarker, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let tag = PlanSelection.marker(marker.id)
         let material = stampMaterial(tag, selection: selection)
         let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
         entity.position = space.world(marker.position, height: marker.height)
-        entity.orientation = simd_quatf(angle: Float(-marker.yaw * .pi / 180), axis: [0, 1, 0])
+        entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
         makeSelectable(entity, as: tag)
         return entity
     }

@@ -1,4 +1,4 @@
-// 3D 도면 수정 화면. 도면을 3D로 보여 준다. 스탬프·창문 수정은 아직 없다
+// 3D 도면 수정 화면. 도면을 3D로 보여 주고, 스탬프를 놓고 옮기고 돌린다
 
 import SwiftUI
 
@@ -17,7 +17,7 @@ struct FloorPlanEdit3DView: View {
     private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap)
+        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
@@ -55,6 +55,20 @@ extension FloorPlanEdit3DView {
             selection = .wallFixture(id)
         default:
             break
+        }
+    }
+
+    /// 끌어 옮기거나 돌린 스탬프를 도면에 반영한다
+    private func handleEdit(_ edit: PlanEdit) {
+        switch edit {
+        case .move(.marker(let id), let point, _):
+            planData.moveMarker(id: id, to: point)
+        case .move(.wallFixture(let id), let point, let height):
+            planData.moveWallFixture(id: id, to: point, height: height)
+        case .move(.doorWindow, _, _):
+            break
+        case .rotate(let markerId, let yaw):
+            planData.rotateMarker(id: markerId, yaw: yaw)
         }
     }
 }
