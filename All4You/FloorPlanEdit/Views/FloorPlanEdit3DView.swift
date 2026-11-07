@@ -37,12 +37,13 @@ extension FloorPlanEdit3DView {
 
 // 누른 자리 처리
 extension FloorPlanEdit3DView {
-    /// 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 누른 것을 고른다.
+    /// 이미 놓인 스탬프·창문을 누르면 도구와 상관없이 그것을 고른다.
+    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 고른 것을 푼다.
     /// 도구는 놓은 뒤에도 켜져 있어서, 같은 버튼을 다시 누르거나 다른 도구를 고를 때까지 계속 놓을 수 있다.
     /// 방금 놓은 스탬프를 고른 상태로 둔다
     private func handleTap(_ tap: PlanTap?) {
         switch (selectedTool, tap) {
-        case (nil, .element(let element)?):
+        case (_, .element(let element)?):
             selection = element
         case (nil, _):
             selection = nil

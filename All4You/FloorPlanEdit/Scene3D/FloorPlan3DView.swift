@@ -17,7 +17,7 @@ struct FloorPlan3DView: View {
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
-    /// 누른 화면 점을 광선으로 바꿀 때 쓰는 카메라 정보. 장면을 처음 만들 때 받아 둔다
+    /// 누른 화면 점에서 3D 안쪽으로 가상의 직선을 그을 때 쓰는 카메라 정보. 장면을 처음 만들 때 받아 둔다
     @State private var cameraContent: RealityViewCameraContent?
     /// 핀치를 끝냈을 때의 도면 배율. 다음 핀치는 여기서 이어 간다
     @State private var committedZoom: Float = 1
@@ -29,12 +29,14 @@ struct FloorPlan3DView: View {
     @State private var timeSinceLabelUpdate: TimeInterval = 0
     /// 지금 하고 있는 한 손가락 끌기. 고른 스탬프 위에서 시작했으면 스탬프 이동, 아니면 카메라 회전
     @State private var drag: DragKind?
-    /// 고른 스탬프 위 손잡이·메뉴 줄의 화면 위치. 스탬프(사람·발화지점·콘센트)를 골랐을 때만 있다
-    @State private var stampControlsPoint: CGPoint?
+    /// 고른 스탬프의 손잡이·메뉴 화면 위치. 스탬프(사람·발화지점·콘센트)를 골랐을 때만 있다
+    @State private var stampScreenPoints: StampScreenPoints?
     /// 고른 스탬프의 엔티티. 장면을 다시 만들 때 찾아 둔다 (매 프레임 신호에서는 selection이 처음 값으로 남아 있어서)
     @State private var selectedStampEntity: Entity?
-    /// 회전 손잡이를 끄는 중인지. 그동안은 편집 메뉴를 숨긴다
-    @GestureState private var isRotating = false
+    /// 꾹 눌러 편집 메뉴를 띄운 스탬프. 고른 것이 바뀌거나 스탬프를 옮기기 시작하면 메뉴가 사라진다
+    @State private var menuTarget: PlanSelection?
+    /// 지금 손가락이 닿아 있는 첫 화면 점. 꾹 누르기가 어느 스탬프 위였는지 알 때 쓴다
+    @State private var pressLocation: CGPoint?
 
     var body: some View {
         RealityView { content in
@@ -43,12 +45,12 @@ struct FloorPlan3DView: View {
             content.add(makeCamera())
             cameraContent = content
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { [content] event in
-                // 라벨마다 광선 계산을 하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
+                // 라벨마다 벽에 가려졌는지 직선을 그어 확인하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
                 timeSinceLabelUpdate += event.deltaTime
                 guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
                 timeSinceLabelUpdate = 0
                 updateLabelPoints(using: content)
-                updateStampControlsPoint(using: content)
+                updateStampScreenPoints(using: content)
             }
         }
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
@@ -56,6 +58,8 @@ struct FloorPlan3DView: View {
         .realityViewCameraControls(isMovingStamp ? .none : .orbit)
         .simultaneousGesture(extraZoomGesture)
         .simultaneousGesture(tapGesture)
+        .simultaneousGesture(longPressGesture)
+        .simultaneousGesture(pressLocationGesture)
         .simultaneousGesture(stampDragGesture)
         .overlay(alignment: .topLeading) {
             roomLabels
@@ -63,10 +67,13 @@ struct FloorPlan3DView: View {
         .overlay(alignment: .topLeading) {
             stampControls
         }
+        .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
             rebuildScene()
         }
         .onChange(of: selection) {
+            // 다른 것을 고르면 메뉴를 닫는다. 나중에 같은 스탬프를 다시 눌러도 꾹 누르기 전에는 메뉴가 뜨지 않게
+            if menuTarget != selection { menuTarget = nil }
             rebuildScene()
         }
     }
@@ -126,7 +133,7 @@ extension FloorPlan3DView {
             }
     }
 
-    /// 누른 화면 점에서 광선을 쏴 가장 먼저 맞은 것을 도면 기준 값으로 바꾼다
+    /// 누른 화면 점에서 3D 안쪽으로 가상의 직선을 그어, 가장 먼저 부딪힌 것을 도면 기준 값으로 바꾼다
     private func tapResult(at point: CGPoint) -> PlanTap? {
         guard let hit = firstHit(at: point) else { return nil }
         if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
@@ -141,7 +148,7 @@ extension FloorPlan3DView {
         return .floor(planPoint)
     }
 
-    /// 화면 점에서 쏜 광선이 가장 먼저 맞은 것
+    /// 화면 점에서 3D 안쪽으로 그은 직선이 가장 먼저 부딪힌 것
     private func firstHit(at point: CGPoint) -> CollisionCastHit? {
         guard let cameraContent,
               let scene = sceneRoot.scene,
@@ -202,6 +209,7 @@ extension FloorPlan3DView {
             .onChanged { value in
                 if drag == nil {
                     drag = beginStampDrag(at: value.startLocation).map(DragKind.stamp) ?? .camera
+                    if isMovingStamp { menuTarget = nil }
                 }
                 guard case .stamp(let stampDrag) = drag,
                       let point = surfacePoint(at: value.location, wallId: stampDrag.wallId) else { return }
@@ -235,7 +243,7 @@ extension FloorPlan3DView {
         return StampDrag(selection: selection, entity: entity, wallId: wallId, startPosition: entity.position, startSurfacePoint: start)
     }
 
-    /// 화면 점 아래의 바닥 점, 콘센트면 붙은 벽의 면 점 (sceneRoot 기준). 스탬프 자신은 광선에서 뺀다
+    /// 화면 점 아래의 바닥 점, 콘센트면 붙은 벽의 면 점 (sceneRoot 기준). 직선이 끌고 있는 스탬프 자신에 부딪히지 않게 바닥(벽)만 본다
     private func surfacePoint(at point: CGPoint, wallId: String?) -> SIMD3<Float>? {
         guard let cameraContent, let scene = sceneRoot.scene,
               let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
@@ -249,62 +257,111 @@ extension FloorPlan3DView {
 }
 
 // 고른 스탬프 위 회전 손잡이와 편집 메뉴
-// 라벨처럼 고른 스탬프의 꼭대기를 화면 점으로 바꿔 위에 겹친다. 손잡이는 좌우로 끌면 돌고(사람·발화지점만), 메뉴는 그 오른쪽에 둔다
+// 라벨처럼 고른 스탬프의 꼭대기를 화면 점으로 바꿔 위에 겹친다. 손잡이는 스탬프 둘레로 끌면 돌고(사람·발화지점만),
+// 스탬프를 꾹 누르면 손잡이 대신 메뉴가 뜬다
 extension FloorPlan3DView {
+    /// 스탬프를 꾹 누르면 그 스탬프를 고르고 회전 손잡이 대신 편집 메뉴를 띄운다.
+    /// 꾹 누르기는 누른 자리를 알려 주지 않아서, 손가락이 닿은 자리는 pressLocationGesture가 따로 받아 둔다
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: Layout.longPressDuration)
+            .onEnded { _ in
+                guard let pressLocation,
+                      case .element(let element)? = tapResult(at: pressLocation),
+                      element.isStamp else { return }
+                menuTarget = element
+                onTap(.element(element))
+            }
+    }
+
+    /// 손가락이 처음 닿은 화면 점을 받아 두고, 손을 떼면 지운다
+    private var pressLocationGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if pressLocation == nil { pressLocation = value.startLocation }
+            }
+            .onEnded { _ in
+                pressLocation = nil
+            }
+    }
+
     @ViewBuilder
     private var stampControls: some View {
-        if let stampControlsPoint, let selection {
-            if case .marker(let id) = selection {
-                RotateHandleView()
-                    .position(stampControlsPoint)
-                    .gesture(rotateGesture(markerId: id))
-            }
-            if !isMovingStamp && !isRotating {
+        if let stampScreenPoints, let selection {
+            if menuTarget == selection {
                 StampEditMenuView(
                     onDuplicate: { onEdit(.duplicate(selection)) },
                     onDelete: { onEdit(.delete(selection)) }
                 )
                 .fixedSize()
-                // 메뉴의 왼쪽 끝을 손잡이 오른쪽에 맞춘다
-                .frame(width: 0, height: 0, alignment: .leading)
-                .position(x: stampControlsPoint.x + Layout.editMenuLeading, y: stampControlsPoint.y)
+                .position(stampScreenPoints.menu)
+            } else if case .marker(let id) = selection {
+                RotateHandleView()
+                    .position(stampScreenPoints.handle)
+                    .gesture(rotateGesture(markerId: id, center: stampScreenPoints.center))
             }
         }
     }
 
-    private func rotateGesture(markerId: String) -> some Gesture {
-        DragGesture()
-            .updating($isRotating) { _, isRotating, _ in
-                isRotating = true
-            }
+    /// 손잡이를 스탬프 가운데를 축으로 돌리듯 끌면, 손가락이 돈 각도만큼 스탬프도 돈다.
+    /// 손잡이가 움직이며 따라오므로 끈 거리는 장면 기준 좌표로 잰다
+    private func rotateGesture(markerId: String, center: CGPoint) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
             .onChanged { value in
-                selectedStampEntity?.orientation = PlanSpace.orientation(yaw: rotatedYaw(markerId: markerId, by: value.translation.width))
+                selectedStampEntity?.orientation = PlanSpace.orientation(yaw: rotatedYaw(markerId: markerId, drag: value, center: center))
             }
             .onEnded { value in
-                onEdit(.rotate(markerId: markerId, yaw: rotatedYaw(markerId: markerId, by: value.translation.width)))
+                onEdit(.rotate(markerId: markerId, yaw: rotatedYaw(markerId: markerId, drag: value, center: center)))
             }
     }
 
-    /// 손가락을 오른쪽으로 끈 만큼 시계 방향으로 더 돈 방향 (도)
-    private func rotatedYaw(markerId: String, by distance: CGFloat) -> Double {
+    /// 화면에서 손가락이 스탬프 가운데를 시계 방향으로 돈 만큼 더한 방향 (도)
+    private func rotatedYaw(markerId: String, drag: DragGesture.Value, center: CGPoint) -> Double {
         let yaw = planData.markers.first { $0.id == markerId }?.yaw ?? 0
-        return yaw + Double(distance) * Layout.degreesPerPoint
+        func angle(_ point: CGPoint) -> Double { atan2(point.y - center.y, point.x - center.x) }
+        return yaw + (angle(drag.location) - angle(drag.startLocation)) * 180 / .pi
     }
 
-    /// 고른 스탬프의 꼭대기 위에 손잡이·메뉴 자리를 잡는다. 카메라 뒤에 있으면 숨긴다
-    private func updateStampControlsPoint(using content: RealityViewCameraContent) {
-        var point: CGPoint?
+    /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
+    /// 머리가 없는 스탬프(발화지점·콘센트)는 nil
+    private func personHandleAnchor(of entity: Entity, center: SIMD3<Float>) -> SIMD3<Float>? {
+        guard let head = entity.findEntity(named: FloorPlan3DBuilder.headName)?.position(relativeTo: nil) else { return nil }
+        var outward = head - center
+        outward.y = 0
+        guard simd_length(outward) > 0.001 else { return head }
+        return head + simd_normalize(outward) * Layout.handleBeyondHead * sceneRoot.scale.x
+    }
+
+    /// 고른 스탬프의 화면 위치들을 잡는다. 손잡이는 사람이면 머리 너머 머리 높이, 아니면 꼭대기 위.
+    /// 매 프레임 다시 계산하므로 돌리는 동안 손잡이가 머리를 따라간다. 카메라 뒤에 있으면 숨긴다
+    private func updateStampScreenPoints(using content: RealityViewCameraContent) {
+        var points: StampScreenPoints?
         if let entity = selectedStampEntity {
-            let bounds = entity.visualBounds(relativeTo: nil)
-            let top = SIMD3(bounds.center.x, bounds.max.y, bounds.center.z)
-            point = content.project(point: top, to: .local).map {
-                CGPoint(x: $0.x, y: $0.y - Layout.rotateHandleGap)
+            let center = entity.position(relativeTo: nil)
+            let topY = entity.visualBounds(relativeTo: nil).max.y
+            func above(_ p: SIMD3<Float>) -> CGPoint? {
+                content.project(point: SIMD3(p.x, topY, p.z), to: .local).map { CGPoint(x: $0.x, y: $0.y - Layout.rotateHandleGap) }
+            }
+            let handle = personHandleAnchor(of: entity, center: center)
+                .flatMap { content.project(point: $0, to: .local) } ?? above(center)
+            if let screenCenter = content.project(point: center, to: .local),
+               let menu = above(center), let handle {
+                points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle)
             }
         }
-        if point != stampControlsPoint {
-            stampControlsPoint = point
+        if points != stampScreenPoints {
+            stampScreenPoints = points
         }
     }
+}
+
+/// 고른 스탬프의 화면 점들 (장면 기준)
+private struct StampScreenPoints: Equatable {
+    /// 스탬프가 도는 중심
+    let center: CGPoint
+    /// 편집 메뉴 자리 (가운데 꼭대기 위)
+    let menu: CGPoint
+    /// 회전 손잡이 자리 (사람은 머리 너머 머리 높이)
+    let handle: CGPoint
 }
 
 // 확대 민감도
@@ -377,12 +434,14 @@ extension FloorPlan3DView {
         /// 라벨 위치·가림을 다시 계산하는 간격 (초)
         /// TEMP: 우선 여유 있게 잡은 값. 라벨을 아주 많이 띄워 보는 테스트를 하며 알맞은 값으로 조절할 예정
         static let labelUpdateInterval: TimeInterval = 1.0 / 60
-        /// 스탬프 꼭대기와 회전 손잡이 가운데 사이 (pt)
+        /// 스탬프 꼭대기와 회전 손잡이·편집 메뉴 가운데 사이 (pt)
         static let rotateHandleGap: CGFloat = 36
-        /// 손잡이 가운데에서 편집 메뉴 왼쪽 끝까지 (pt). 손잡이(44pt) 오른쪽에 8pt 띄운다
-        static let editMenuLeading: CGFloat = 30
-        /// 회전 손잡이를 1pt 끌 때 도는 각도 (도)
-        static let degreesPerPoint = 1.0
+        /// 사람의 회전 손잡이를 머리에서 몸 바깥쪽으로 더 내놓는 거리 (m)
+        static let handleBeyondHead: Float = 0.45
+        /// 회전 손잡이를 끄는 거리를 재는 좌표 공간 이름 (3D 뷰 전체)
+        static let sceneSpace = "floorPlan3D"
+        /// 편집 메뉴를 띄우는 꾹 누르기 시간 (초)
+        static let longPressDuration = 0.5
     }
 }
 

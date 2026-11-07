@@ -34,19 +34,19 @@ enum FloorPlan3DBuilder {
 }
 
 // 눌러 고르기
-// 고를 수 있는 엔티티(스탬프·콘센트·창문 유리)에 PlanSelectionComponent를 붙이고, 광선이 맞은 엔티티에서 부모 쪽으로 올라가며 찾는다
+// 고를 수 있는 엔티티(스탬프·콘센트·창문 유리)에 PlanSelectionComponent를 붙이고, 누른 자리에서 그은 직선이 부딪힌 엔티티에서 부모 쪽으로 올라가며 찾는다
 extension FloorPlan3DBuilder {
     /// 벽 상자의 충돌 그룹. 라벨 가림 판정은 이 그룹만 본다 (스탬프·유리는 라벨을 가리지 않게)
     static let wallCollisionGroup = CollisionGroup(rawValue: 1 << 1)
     /// 바닥의 충돌 그룹. 스탬프를 끌 때 스탬프 자신은 빼고 바닥만 맞히려고 쓴다
     static let floorCollisionGroup = CollisionGroup(rawValue: 1 << 2)
 
-    /// 광선이 맞은 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)가 맞아도 부모로 올라가 찾는다
+    /// 직선이 부딪힌 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)에 부딪혀도 부모로 올라가 찾는다
     static func selection(of entity: Entity) -> PlanSelection? {
         nearest(PlanSelectionComponent.self, from: entity)?.selection
     }
 
-    /// 광선이 맞은 엔티티가 속한 도면 요소 엔티티 전체 (사람 머리가 맞으면 사람 전체). 끌어 옮길 때 이것을 움직인다
+    /// 직선이 부딪힌 엔티티가 속한 도면 요소 엔티티 전체 (사람 머리에 부딪히면 사람 전체). 끌어 옮길 때 이것을 움직인다
     static func selectableEntity(of entity: Entity) -> Entity? {
         sequence(first: entity, next: \.parent).first { $0.components.has(PlanSelectionComponent.self) }
     }
@@ -64,7 +64,7 @@ extension FloorPlan3DBuilder {
         return nil
     }
 
-    /// 광선이 맞은 엔티티가 벽 상자면 그 벽의 id (Wall.id)
+    /// 직선이 부딪힌 엔티티가 벽 상자면 그 벽의 id (Wall.id)
     static func wallId(of entity: Entity) -> String? {
         nearest(PlanWallComponent.self, from: entity)?.wallId
     }
@@ -77,7 +77,7 @@ extension FloorPlan3DBuilder {
             .first
     }
 
-    /// 스탬프·콘센트에 고를 수 있는 표시와 충돌 모양(광선이 맞는 틀)을 붙인다
+    /// 스탬프·콘센트에 고를 수 있는 표시와 충돌 모양(직선이 부딪히는 틀)을 붙인다
     private static func makeSelectable(_ entity: Entity, as selection: PlanSelection) {
         entity.components.set(PlanSelectionComponent(selection: selection))
         entity.generateCollisionShapes(recursive: true)
@@ -221,7 +221,7 @@ extension FloorPlan3DBuilder {
         return result.compactMap { $0 }
     }
 
-    /// 벽 상자. 벽 충돌 그룹이라 광선이 부딪힌다 (벽 뒤 라벨은 숨고, 벽 뒤 스탬프는 못 고름)
+    /// 벽 상자. 벽 충돌 그룹이라 직선이 부딪힌다 (벽 뒤 라벨은 숨고, 벽 뒤 스탬프는 못 고름)
     private static func wallBox(_ piece: WallPiece, bottom: Double, top: Double, depth: Double) -> ModelEntity? {
         let filter = CollisionFilter(group: wallCollisionGroup, mask: .all)
         return box(piece, bottom: bottom, top: top, depth: depth, material: Materials.wall, filter: filter)
@@ -279,23 +279,28 @@ extension FloorPlan3DBuilder {
         return entity
     }
 
+    /// 사람 모델의 머리 엔티티 이름. 화면은 이 이름으로 머리를 찾아 회전 손잡이를 머리 위에 둔다
+    static let headName = "head"
+
     /// 고른 스탬프는 다른 색으로
     private static func stampMaterial(_ tag: PlanSelection, selection: PlanSelection?) -> SimpleMaterial {
         tag == selection ? Materials.selectedStamp : Materials.stamp
     }
 
-    /// 몸통과 머리. 누우면 머리가 바라보는 방향(-z)으로 눕는다
+    /// 몸통과 머리. 누우면 머리가 바라보는 방향(-z)으로 눕고, 몸통 가운데가 엔티티 원점(표시 위치)에 오게 해서 몸통 가운데를 중심으로 돈다
     private static func personModel(lying: Bool, material: SimpleMaterial) -> Entity {
+        let torsoCenter: Float = 0.6
         let body = Entity()
         let torso = ModelEntity(mesh: .generateBox(width: 0.4, height: 1.2, depth: 0.25, cornerRadius: 0.1), materials: [material])
-        torso.position = [0, 0.6, 0]
+        torso.position = [0, torsoCenter, 0]
         let head = ModelEntity(mesh: .generateSphere(radius: 0.13), materials: [material])
         head.position = [0, 1.35, 0]
+        head.name = headName
         body.addChild(torso)
         body.addChild(head)
         if lying {
             body.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
-            body.position = [0, 0.13, 0]
+            body.position = [0, 0.13, torsoCenter]
         }
         let wrapper = Entity()
         wrapper.addChild(body)

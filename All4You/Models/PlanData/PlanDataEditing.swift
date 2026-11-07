@@ -11,7 +11,8 @@ extension PlanData {
 // 사람·발화지점
 extension PlanData {
     /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다.
-    /// TEMP: 새 스탬프의 높이·방향·자세는 디자인 확인 전이라 바닥(0m)·위쪽(0°)·선 자세로 둠
+    /// 사람은 늘 누운 자세로 놓는다.
+    /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
     mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String {
         let marker = PlanMarker(
             id: UUID().uuidString,
@@ -19,7 +20,7 @@ extension PlanData {
             position: point,
             height: 0,
             yaw: 0,
-            lying: kind == .person ? false : nil
+            lying: kind == .person ? true : nil
         )
         markers.append(marker)
         return marker.id

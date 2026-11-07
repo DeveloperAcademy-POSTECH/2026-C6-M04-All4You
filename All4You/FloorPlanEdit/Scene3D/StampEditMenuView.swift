@@ -1,8 +1,8 @@
-// 고른 스탬프 옆에 띄우는 편집 메뉴. 복제·삭제·더보기 버튼을 유리 캡슐에 담는다
+// 스탬프를 꾹 누르면 옆에 띄우는 편집 메뉴. 복제·삭제 버튼을 유리 캡슐에 담는다
 
 import SwiftUI
 
-/// 복제 | 삭제 | 더보기 캡슐
+/// 복제 | 삭제 캡슐
 struct StampEditMenuView: View {
     let onDuplicate: () -> Void
     let onDelete: () -> Void
@@ -12,9 +12,6 @@ struct StampEditMenuView: View {
             menuButton(Copy.duplicate, systemImage: "plus.square.on.square", action: onDuplicate)
             divider
             menuButton(Copy.delete, systemImage: "trash", action: onDelete)
-            divider
-            // TODO: 더보기에 넣을 메뉴는 아직 정해지지 않음
-            menuButton(Copy.more, systemImage: "ellipsis") {}
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .glassEffect(.regular, in: .capsule)
@@ -56,7 +53,6 @@ extension StampEditMenuView {
     private enum Copy {
         static let duplicate = "복제"
         static let delete = "삭제"
-        static let more = "더보기"
     }
 }
 
