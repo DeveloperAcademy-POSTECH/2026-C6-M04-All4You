@@ -13,6 +13,7 @@ enum FloorPlan3DBuilder {
     static func makeScene(for plan: PlanData, selection: PlanSelection?) -> Entity {
         PlanSelectionComponent.registerComponent()
         PlanWallComponent.registerComponent()
+        WindowEdgeComponent.registerComponent()
         let space = PlanSpace(plan: plan)
         let root = Entity()
         root.addChild(makeFloor(space: space))
@@ -64,6 +65,11 @@ extension FloorPlan3DBuilder {
         return nil
     }
 
+    /// 직선이 부딪힌 엔티티가 창문 테두리 손잡이면 그 테두리
+    static func windowEdge(of entity: Entity) -> WindowEdge? {
+        entity.components[WindowEdgeComponent.self]?.edge
+    }
+
     /// 직선이 부딪힌 엔티티가 벽 상자면 그 벽의 id (Wall.id)
     static func wallId(of entity: Entity) -> String? {
         nearest(PlanWallComponent.self, from: entity)?.wallId
@@ -92,6 +98,11 @@ struct PlanSelectionComponent: Component {
 /// 벽 엔티티가 어느 벽인지 적어 두는 표시. 벽을 눌러 콘센트를 붙일 때 쓴다
 struct PlanWallComponent: Component {
     let wallId: String
+}
+
+/// 창문 테두리 손잡이가 어느 테두리인지 적어 두는 표시
+struct WindowEdgeComponent: Component {
+    let edge: WindowEdge
 }
 
 // 공간 이름 라벨 자리
@@ -218,7 +229,52 @@ extension FloorPlan3DBuilder {
             result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness))
             result.append(windowGlass(piece, bottom: opening.sillHeight, top: top, window: opening, selection: selection))
         }
-        return result.compactMap { $0 }
+        var entities = result.compactMap { $0 }
+        if opening.kind == .window, selection == .doorWindow(opening.id) {
+            entities += windowEdgeHandles(piece, bottom: opening.sillHeight, top: top, window: opening, wallThickness: wall.thickness)
+        }
+        return entities
+    }
+
+    /// 고른 창문의 네 테두리에 붙이는 막대 손잡이. 끌면 그 테두리가 움직인다.
+    /// 벽 양쪽 면에서 다 보이게 벽보다 조금 두껍고, 손가락으로 잡기 쉽게 충돌 모양은 보이는 막대보다 크다
+    private static func windowEdgeHandles(_ piece: WallPiece, bottom: Double, top: Double, window: DoorWindow, wallThickness: Double) -> [ModelEntity] {
+        let depth = Float(wallThickness) + EdgeHandle.extraDepth
+        // 손잡이 길이는 그 테두리 길이에 비례한다. 테두리 가운데에 놓인다
+        let vertical = SIMD3(EdgeHandle.thickness, Float(top - bottom) * EdgeHandle.lengthRatio, depth)
+        let horizontal = SIMD3(Float(piece.to - piece.from) * EdgeHandle.lengthRatio, EdgeHandle.thickness, depth)
+        let middle = Float((bottom + top) / 2)
+        let center = Float((piece.from + piece.to) / 2)
+        let handles: [(edge: WindowEdge, position: SIMD3<Float>, size: SIMD3<Float>)] = [
+            (.wallStart, [Float(piece.from), middle, 0], vertical),
+            (.wallEnd, [Float(piece.to), middle, 0], vertical),
+            (.top, [center, Float(top), 0], horizontal),
+            (.bottom, [center, Float(bottom), 0], horizontal),
+        ]
+        return handles.map { handle in
+            let entity = ModelEntity(
+                mesh: .generateBox(size: handle.size, cornerRadius: EdgeHandle.thickness / 2),
+                materials: [Materials.windowEdgeHandle]
+            )
+            entity.position = handle.position
+            let touchSize = handle.size + SIMD3(repeating: EdgeHandle.touchPadding)
+            entity.components.set(CollisionComponent(shapes: [.generateBox(size: touchSize)]))
+            // 손잡이를 눌러도 창문이 골라진 채로 있게 창문 표시도 붙인다
+            entity.components.set(PlanSelectionComponent(selection: .doorWindow(window.id)))
+            entity.components.set(WindowEdgeComponent(edge: handle.edge))
+            return entity
+        }
+    }
+
+    /// 창문 테두리 손잡이 크기 (m)
+    private enum EdgeHandle {
+        /// 테두리 길이 중 손잡이가 차지하는 몫
+        static let lengthRatio: Float = 0.5
+        static let thickness: Float = 0.06
+        /// 벽 두께보다 더 두껍게 할 만큼
+        static let extraDepth: Float = 0.06
+        /// 충돌 모양을 보이는 막대보다 사방으로 키울 만큼
+        static let touchPadding: Float = 0.12
     }
 
     /// 벽 상자. 벽 충돌 그룹이라 직선이 부딪힌다 (벽 뒤 라벨은 숨고, 벽 뒤 스탬프는 못 고름)
@@ -327,6 +383,7 @@ private enum Materials {
     // TEMP: 고른 표시 모양은 Figma에서 확인 전이라 임시로 진한 주황
     static let selectedStamp = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     static let selectedGlass = glass(tint: UIColor(resource: .brand500), opacity: 0.6)
+    static let windowEdgeHandle = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
 
     private static func glass(tint: UIColor, opacity: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()

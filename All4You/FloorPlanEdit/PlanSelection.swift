@@ -9,11 +9,3 @@ enum PlanSelection: Equatable {
     /// 창문 (DoorWindow.id). 문·개구부는 고르지 않는다
     case doorWindow(String)
 }
-
-extension PlanSelection {
-    /// 스탬프(사람·발화지점·콘센트)인지. 창문은 아니다
-    var isStamp: Bool {
-        if case .doorWindow = self { return false }
-        return true
-    }
-}
