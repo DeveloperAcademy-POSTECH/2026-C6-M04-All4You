@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct All4YouApp: App {
@@ -13,5 +14,6 @@ struct All4YouApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: FireCase.self)
     }
 }

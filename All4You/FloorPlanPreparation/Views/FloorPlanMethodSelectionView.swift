@@ -96,7 +96,8 @@ struct FloorPlanMethodSelectionView: View {
             switch sourceType {
             case .roomPlan:
                 // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
-                RoomPlanScanView()
+//                RoomPlanScanView()
+                Text("굿굿띠")
             case .iPadDrawing:
                 // TODO: 직접 그리기 화면 연결
                 Text("직접 그리기 화면 준비 중")
