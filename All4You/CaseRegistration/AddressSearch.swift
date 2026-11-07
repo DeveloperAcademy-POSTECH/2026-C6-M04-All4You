@@ -50,42 +50,84 @@ final class AddressSearch: NSObject, MKLocalSearchCompleterDelegate {
 
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         MainActor.assumeIsolated {
-            suggestions = completer.results.prefix(Self.maxCount).map { Self.suggestion(from: $0) }
+            suggestions = completer.results.prefix(Self.maxCount).map {
+                Self.suggestion(from: $0)
+            }
         }
     }
 
-    nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+    nonisolated func completer(
+        _ completer: MKLocalSearchCompleter,
+        didFailWithError error: Error
+    ) {
         MainActor.assumeIsolated {
             suggestions = []
         }
     }
 }
 
+// 주소 추천 및 국가명 처리
+
 extension AddressSearch {
     private static let maxCount = 5
 
-    // TODO: 실제 기기에서 국내 주소의 title/subtitle 형태 확인 — 지금은 title을 전체 주소로 본다
-    private static func suggestion(from completion: MKLocalSearchCompletion) -> AddressSuggestion {
+    // TODO: 실제 기기에서 국내 주소의 title/subtitle 형태 확인
+    // 지금은 title을 전체 주소로 본다
+    private static func suggestion(
+        from completion: MKLocalSearchCompletion
+    ) -> AddressSuggestion {
         let title = completion.title
         var highlighted = AttributedString(title)
+
         for value in completion.titleHighlightRanges {
             guard let stringRange = Range(value.rangeValue, in: title),
-                  let range = Range(stringRange, in: highlighted) else { continue }
+                  let range = Range(stringRange, in: highlighted)
+            else {
+                continue
+            }
+
             highlighted[range].font = Font.callout.bold()
         }
-        if let prefix = highlighted.range(of: countryPrefix), prefix.lowerBound == highlighted.startIndex {
-            highlighted.removeSubrange(prefix)
+
+        for prefix in countryPrefixes {
+            if let range = highlighted.range(of: prefix),
+               range.lowerBound == highlighted.startIndex {
+                highlighted.removeSubrange(range)
+                break
+            }
         }
-        return AddressSuggestion(address: removingCountry(title), highlighted: highlighted)
+
+        return AddressSuggestion(
+            address: removingCountry(title),
+            highlighted: highlighted
+        )
     }
 
-    /// "대한민국 경상북도 ..."처럼 나라 이름이 붙어 오면 뗀다
+    /// 주소 앞에 국가명이 포함된 경우 제거한다
     static func removingCountry(_ address: String) -> String {
-        address.hasPrefix(countryPrefix) ? String(address.dropFirst(countryPrefix.count)) : address
+        for prefix in countryPrefixes {
+            if address.hasPrefix(prefix) {
+                return String(address.dropFirst(prefix.count))
+            }
+        }
+
+        return address
     }
 
-    private static let countryPrefix = "대한민국 "
+    /// 기기의 현재 언어와 한국어를 기준으로 국가명을 가져온다
+    private static let countryPrefixes: [String] = {
+        let locales = [
+            Locale.current,
+            Locale(identifier: "ko_KR")
+        ]
+
+        return Array(Set(locales.compactMap {
+            $0.localizedString(forRegionCode: "KR")
+        })).map { $0 + " " }
+    }()
 }
+
+// 현재 위치 주소
 
 /// 현재 위치의 도로명 주소를 한 번 가져온다
 enum CurrentAddress {
