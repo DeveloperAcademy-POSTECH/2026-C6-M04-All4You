@@ -138,25 +138,45 @@ extension CaseListContent {
         .tag(fireCase.id)
     }
     
-    /// 올해면 "9월", 지난해면 "2025년 9월"
     private func monthTitle(_ month: Date) -> String {
         let calendar = Calendar.current
-        let isThisYear = calendar.isDate(month, equalTo: .now, toGranularity: .year)
-        Self.monthFormatter.dateFormat = isThisYear ? "M월" : "yyyy년 M월"
-        return Self.monthFormatter.string(from: month)
+        let isThisYear = calendar.isDate(
+            month,
+            equalTo: .now,
+            toGranularity: .year
+        )
+
+        let formatter = isThisYear
+            ? Self.currentYearMonthFormatter
+            : Self.previousYearMonthFormatter
+
+        return formatter.string(from: month)
     }
+
 }
 
 // 날짜 형식
 extension CaseListContent {
-    /// 예) 2026.9.28 14:36
+    /// 예) 2026.9.28. 14:36
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy.M.d HH:mm"
+        formatter.dateFormat = "yyyy.M.d. HH:mm"
         return formatter
     }()
-    
-    private static let monthFormatter = DateFormatter()
+
+    /// 올해: 예) 9월
+    private static let currentYearMonthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M월"
+        return formatter
+    }()
+
+    /// 지난해 등 다른 연도: 예) 2025년 11월
+    private static let previousYearMonthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy년 M월"
+        return formatter
+    }()
 }
 
 // 크기
