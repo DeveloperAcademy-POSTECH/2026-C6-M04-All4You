@@ -8,6 +8,8 @@
 // RoomPlan과 공유하는 ARSession, 월드맵 체크포인트, 룸플랜 스캔 최대 용량 감시, relocalization 흐름을 관리하는 로직
 import ARKit
 import Foundation
+import OSLog
+import UIKit
 
 
 @MainActor final class RoomPlanTrackingService: NSObject, ARSessionDelegate {
@@ -15,6 +17,8 @@ import Foundation
     var onApproachingLimit: (() -> Void)?
     var onRelocalized: (() -> Void)?
     var onRelocalizationTimeout: (() -> Void)?
+    var onSessionFailure: ((Error) -> Void)?
+    var onFrameStalled: (() -> Void)?
     
     private let worldMapStore: RoomPlanWorldMapService
     private let mapWarningBytes = 40 * 1_024 * 1_024
@@ -25,6 +29,11 @@ import Foundation
     private var restartPending = false
     private var isRelocalizing = false
     private var relocalizedFrameCount = 0
+    private var frameWatchdog: Task<Void, Never>?
+    private var lastFrameTimestamp: TimeInterval?
+    private var lastFrameAdvanceAt = Date()
+    private var didReportFrameStall = false
+    private let logger = Logger(subsystem: "All4You", category: "RoomPlanTracking")
     
     init(scanID: UUID) {
         worldMapStore = RoomPlanWorldMapService(scanID: scanID)
@@ -50,11 +59,13 @@ import Foundation
         } else {
             arSession.run(ARWorldTrackingConfiguration())
         }
+        startFrameWatchdog()
     }
     
     // 새 RoomPlan 구간을 위한 월드맵 용량 모니터링 시작
     func startMonitoring() {
         stopMonitoring()
+        startFrameWatchdog()
         let generation = monitorGeneration
         monitor = Task { [weak self] in
             while !Task.isCancelled {
@@ -100,9 +111,25 @@ import Foundation
         return true
     }
     
+    // 결과가 없는 첫 촬영은 좌표계를 보존할 필요가 없으므로 실패한 ARSession을 폐기
+    func resetEmptyScan() {
+        stopMonitoring()
+        frameWatchdog?.cancel()
+        frameWatchdog = nil
+        arSession.delegate = nil
+        arSession.pause()
+        arSession = ARSession()
+        latestWorldMap = nil
+        restartPending = false
+        isRelocalizing = false
+        relocalizedFrameCount = 0
+    }
+    
     // 화면 이탈 또는 최종 스캔 완료시 AR 추적 중단
     func stop() {
         stopMonitoring()
+        frameWatchdog?.cancel()
+        frameWatchdog = nil
         isRelocalizing = false
         arSession.delegate = nil
         arSession.pause()
@@ -129,6 +156,36 @@ import Foundation
         }
     }
     
+    // ARSession 오류 콜백 없이 카메라의 동일 프레임만 반복되는 상태 감지
+    private func startFrameWatchdog() {
+        frameWatchdog?.cancel()
+        lastFrameTimestamp = arSession.currentFrame?.timestamp
+        lastFrameAdvanceAt = Date()
+        didReportFrameStall = false
+        let session = arSession
+        frameWatchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let self, self.arSession === session else { break }
+                guard UIApplication.shared.applicationState == .active else {
+                    self.lastFrameAdvanceAt = Date()
+                    continue
+                }
+                if let timestamp = session.currentFrame?.timestamp,
+                   self.lastFrameTimestamp.map({ timestamp > $0 }) ?? true {
+                    self.lastFrameTimestamp = timestamp
+                    self.lastFrameAdvanceAt = Date()
+                    self.didReportFrameStall = false
+                } else if !self.didReportFrameStall,
+                          Date().timeIntervalSince(self.lastFrameAdvanceAt) > 10 {
+                    self.didReportFrameStall = true
+                    self.logger.error("ARSession 카메라 프레임 갱신 중단")
+                    self.onFrameStalled?()
+                }
+            }
+        }
+    }
+    
     nonisolated func session(_ session: ARSession, didUpdate frame: ARFrame) {
         guard case .normal = frame.camera.trackingState else { return }
         Task { @MainActor [weak self] in
@@ -137,6 +194,14 @@ import Foundation
             guard self.relocalizedFrameCount >= 5 else { return }
             self.isRelocalizing = false
             self.onRelocalized?()
+        }
+    }
+    
+    nonisolated func session(_ session: ARSession, didFailWithError error: Error) {
+        Task { @MainActor [weak self] in
+            guard let self, self.arSession === session else { return }
+            self.logger.error("ARSession 실패: \(error.localizedDescription, privacy: .public)")
+            self.onSessionFailure?(error)
         }
     }
 }

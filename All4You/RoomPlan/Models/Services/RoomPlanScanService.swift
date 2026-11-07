@@ -76,6 +76,31 @@ import RoomPlan
             self.isRelocalizing = false
             self.issue = .captureFailed("이전 스캔 위치를 찾지 못했습니다. 마지막으로 촬영한 공간을 다시 비춰주세요")
         }
+        tracking.onSessionFailure = { [weak self] error in
+            guard let self else { return }
+            // 아직 스캔 결과가 없다면 현재 카메라 세션을 버리고 시작 화면으로 복구
+            if self.completedRooms.isEmpty,
+               self.phase == .scanning,
+               !RoomPlanSegmentService.hasScannedContent(self.currentRoom) {
+                self.logger.error("빈 촬영 중 ARSession 실패: \(error.localizedDescription, privacy: .public)")
+                self.resetEmptyScan()
+            } else if self.phase == .ready {
+                // 준비 중 오류는 자동 재시작을 반복하지 않고 다음 시작 입력에서 복구
+                // TODO: guidance 문구 합의 필요
+                self.cameraNeedsReset = true
+                self.guidance = "카메라 연결이 중단됐어요. 스캔 버튼을 눌러 다시 시작해 주세요"
+            }
+        }
+        tracking.onFrameStalled = { [weak self] in
+            guard let self, self.completedRooms.isEmpty else { return }
+            if self.phase == .scanning,
+               !RoomPlanSegmentService.hasScannedContent(self.currentRoom) {
+                self.resetEmptyScan()
+            } else if self.phase == .ready {
+                self.cameraNeedsReset = true
+                self.guidance = "카메라 화면이 멈췄어요. 스캔 버튼을 눌러 다시 시작해 주세요"
+            }
+        }
         return tracking
     }()
     private let logger = Logger(subsystem: "All4You", category: "RoomPlan")
@@ -91,6 +116,8 @@ import RoomPlan
     private var pausedSegmentSaved = false
     private var unsavedPauseData: CapturedRoomData?
     private var previewMergeID = UUID()
+    private var restartAfterEmptyScan = false
+    private var cameraNeedsReset = false
     
     // 완료 구간과 일시정지 순간의 방을 중복 없이 결합한 미리보기 입력
     var previewRooms: [CapturedRoom] {
@@ -122,10 +149,24 @@ import RoomPlan
         if isRelocalizing {
             guidance = "이전 스캔 위치를 비춰 위치를 찾는 중입니다"
         }
+        if restartAfterEmptyScan {
+            restartAfterEmptyScan = false
+            // 새 RoomCaptureView가 화면에 연결된 다음 촬영 시작
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self, self.captureSession === session else { return }
+                self.begin()
+            }
+        }
     }
     
     // 저장·병합 종료 확인 후 새 RoomPlan 촬영 구간 시작
     func begin() {
+        if cameraNeedsReset, phase == .ready, completedRooms.isEmpty {
+            restartAfterEmptyScan = true
+            resetEmptyScan()
+            return
+        }
         guard let captureSession, !isRelocalizing, !needsRelocalization,
               phase == .ready || phase == .paused || phase == .segmentSaved else { return }
         // 저장 또는 중간 병합 중 재개 입력의 지연 실행 예약
@@ -303,6 +344,9 @@ import RoomPlan
             guard let self, self.captureSession === session,
                   self.phase == .saving || self.phase == .paused || self.phase == .scanning || self.phase == .ready,
                   self.ending?.isProcessing != true else { return }
+            if self.ending == nil {
+                self.logger.warning("사용자 종료 요청 없이 RoomPlan 촬영 종료: \(error?.localizedDescription ?? "오류 정보 없음", privacy: .public)")
+            }
             let wasPaused = self.ending?.isPausing == true
             // RoomPlan 원본 콜백에서 구간 저장, 방 누적, 미리보기 병합으로 이어지는 데이터 흐름
             self.ending = wasPaused ? .processingPause : .processingStop
@@ -328,18 +372,25 @@ import RoomPlan
             case .success(let saved):
                 self.applySavedSegment(saved, wasPaused: wasPaused, pauseGeneration: pauseGeneration)
             case .failure(let error as RoomPlanSegmentService.SaveError) where error == .emptyScan:
-                // 인식된 형상이 없으면 이 구간을 버리고 시작 버튼을 다시 기다림
+                // 인식된 부분이 없으면 중단된 RoomCaptureView와 ARSession도 함께 폐기
+                self.logger.notice("인식된 공간 없이 촬영 종료; 빈 세션 복구")
                 let startRequested = self.pendingAction == .resume
                 self.unsavedPauseData = nil
-                self.pausedRoom = nil
-                self.currentRoom = nil
-                self.isSavingPause = false
-                self.ending = nil
-                self.pendingAction = .none
-                self.issue = nil
-                self.guidance = RoomPlanGuidanceService.beforeStart
-                self.phase = .ready
-                if startRequested { self.begin() }
+                if self.completedRooms.isEmpty {
+                    self.restartAfterEmptyScan = startRequested
+                    self.resetEmptyScan()
+                } else {
+                    // 앞 구간이 있으면 좌표계를 버리지 않고 새 촬영 입력을 기다림
+                    self.pausedRoom = nil
+                    self.currentRoom = nil
+                    self.isSavingPause = false
+                    self.ending = nil
+                    self.pendingAction = .none
+                    self.issue = nil
+                    self.guidance = RoomPlanGuidanceService.beforeStart
+                    self.phase = .ready
+                    if startRequested { self.begin() }
+                }
                 return
             case .failure(let error):
                 self.logger.error("스캔 구간 저장 실패: \(error.localizedDescription, privacy: .public)")
@@ -371,6 +422,27 @@ import RoomPlan
                 self.completeStoppedCapture()
             }
         }
+    }
+    
+    // 빈 촬영 이후 기존 세션의 정지 상태를 재사용하지 않도록 카메라와 AR 추적을 새로 연결
+    private func resetEmptyScan() {
+        captureSession?.delegate = nil
+        captureSession?.stop(pauseARSession: false)
+        captureSession = nil
+        tracking.resetEmptyScan()
+        currentRoom = nil
+        pausedRoom = nil
+        unsavedPauseData = nil
+        isSavingPause = false
+        ending = nil
+        pendingAction = .none
+        issue = nil
+        needsRelocalization = false
+        isRelocalizing = false
+        cameraNeedsReset = false
+        guidance = RoomPlanGuidanceService.beforeStart
+        phase = .ready
+        segmentID = UUID()
     }
     
     // 저장 실패 구간의 원본 데이터 보존과 동일 인덱스 재저장
