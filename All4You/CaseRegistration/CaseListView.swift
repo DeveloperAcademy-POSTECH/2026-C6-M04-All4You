@@ -69,17 +69,6 @@ struct CaseListView: View {
             selectedCaseID = nil
         }
         
-        .onChange(of: selectedCaseID) { _, id in
-            guard let id else { return }
-            guard let fireCase = allCases.first(where: { $0.id == id }) else { return }
-            fireCase.lastViewedAt = .now
-            do {
-                try modelContext.save()
-            } catch {
-                print("최근 열람 기록 저장 실패: \(error)")
-            }
-        }
-        
         .sheet(isPresented: $isPresentingRegistration) {
             
             CaseRegistrationView { newCase in
