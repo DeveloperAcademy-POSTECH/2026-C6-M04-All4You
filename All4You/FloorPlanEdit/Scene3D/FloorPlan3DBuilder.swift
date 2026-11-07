@@ -12,6 +12,7 @@ enum FloorPlan3DBuilder {
     /// 도면 전체(바닥·벽·문창문·콘센트·표시)를 담은 엔티티 하나. selection과 같은 요소는 고른 표시로 그린다
     static func makeScene(for plan: PlanData, selection: PlanSelection?) -> Entity {
         PlanSelectionComponent.registerComponent()
+        PlanWallComponent.registerComponent()
         let space = PlanSpace(plan: plan)
         let root = Entity()
         root.addChild(makeFloor(space: space))
@@ -40,9 +41,19 @@ extension FloorPlan3DBuilder {
 
     /// 광선이 맞은 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)가 맞아도 부모로 올라가 찾는다
     static func selection(of entity: Entity) -> PlanSelection? {
+        nearest(PlanSelectionComponent.self, from: entity)?.selection
+    }
+
+    /// 광선이 맞은 엔티티가 벽 상자면 그 벽의 id (Wall.id)
+    static func wallId(of entity: Entity) -> String? {
+        nearest(PlanWallComponent.self, from: entity)?.wallId
+    }
+
+    /// entity부터 부모 쪽으로 올라가며 처음 만나는 컴포넌트
+    private static func nearest<C: Component>(_ type: C.Type, from entity: Entity) -> C? {
         sequence(first: entity, next: \.parent)
             .lazy
-            .compactMap { $0.components[PlanSelectionComponent.self]?.selection }
+            .compactMap { $0.components[type] }
             .first
     }
 
@@ -56,6 +67,11 @@ extension FloorPlan3DBuilder {
 /// 3D 엔티티가 어느 도면 요소인지 적어 두는 표시
 struct PlanSelectionComponent: Component {
     let selection: PlanSelection
+}
+
+/// 벽 엔티티가 어느 벽인지 적어 두는 표시. 벽을 눌러 콘센트를 붙일 때 쓴다
+struct PlanWallComponent: Component {
+    let wallId: String
 }
 
 // 공간 이름 라벨 자리
@@ -100,6 +116,11 @@ struct PlanSpace {
         SIMD3(Float(p.x - center.x), Float(height), Float(p.y - center.y))
     }
 
+    /// 3D 점을 도면 점으로 (world의 반대). 높이는 버린다
+    func plan(_ p: SIMD3<Float>) -> SIMD2<Double> {
+        SIMD2(Double(p.x) + center.x, Double(p.z) + center.y)
+    }
+
     /// 엔티티의 +x 축이 도면 방향 direction을 향하게 하는 회전 (위아래 축 기준)
     static func orientation(along direction: SIMD2<Double>) -> simd_quatf {
         simd_quatf(angle: Float(atan2(-direction.y, direction.x)), axis: [0, 1, 0])
@@ -108,14 +129,17 @@ struct PlanSpace {
 
 // 바닥
 extension FloorPlan3DBuilder {
-    /// 도면보다 사방 1m 넓은 바닥
+    /// 도면보다 사방 1m 넓은 바닥. 눌러서 스탬프를 놓을 수 있게 아래로 얇은 충돌 상자를 붙인다
     private static func makeFloor(space: PlanSpace) -> ModelEntity {
         let margin = 1.0
-        let mesh = MeshResource.generatePlane(
-            width: Float(space.size.x + margin * 2),
-            depth: Float(space.size.y + margin * 2)
-        )
-        return ModelEntity(mesh: mesh, materials: [Materials.floor])
+        let width = Float(space.size.x + margin * 2)
+        let depth = Float(space.size.y + margin * 2)
+        let thickness: Float = 0.01
+        let floor = ModelEntity(mesh: .generatePlane(width: width, depth: depth), materials: [Materials.floor])
+        let shape = ShapeResource.generateBox(width: width, height: thickness, depth: depth)
+            .offsetBy(translation: [0, -thickness / 2, 0])
+        floor.components.set(CollisionComponent(shapes: [shape]))
+        return floor
     }
 }
 
@@ -131,6 +155,7 @@ extension FloorPlan3DBuilder {
     /// 벽 하나. 벽 엔티티 안에서는 +x = 벽 시작점에서 벽을 따라간 거리, +y = 위
     private static func makeWall(_ wall: Wall, line: WallLine, openings: [DoorWindow], space: PlanSpace, selection: PlanSelection?) -> Entity {
         let entity = Entity()
+        entity.components.set(PlanWallComponent(wallId: wall.id))
         entity.position = space.world(line.start)
         entity.orientation = PlanSpace.orientation(along: line.direction)
         let pieces = wallPieces(length: line.length, thickness: wall.thickness, openings: openings)

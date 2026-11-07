@@ -8,8 +8,10 @@ import SwiftUI
 
 struct FloorPlan3DView: View {
     let planData: PlanData
-    /// 눌러 고른 도면 요소. 빈 곳이나 벽을 누르면 nil
-    @Binding var selection: PlanSelection?
+    /// 고른 표시로 그릴 도면 요소
+    let selection: PlanSelection?
+    /// 누른 자리를 도면 기준 값으로 바꿔 알린다. 아무것도 안 맞으면 nil
+    let onTap: (PlanTap?) -> Void
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -41,7 +43,7 @@ struct FloorPlan3DView: View {
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
         .realityViewCameraControls(.orbit)
         .simultaneousGesture(extraZoomGesture)
-        .simultaneousGesture(selectTapGesture)
+        .simultaneousGesture(tapGesture)
         .overlay(alignment: .topLeading) {
             roomLabels
         }
@@ -99,24 +101,43 @@ extension FloorPlan3DView {
     }
 }
 
-// 눌러 고르기
-// 광선은 월드 좌표로 계산해서 핀치 배율(sceneRoot.scale)이 이미 반영된다
+// 누른 자리 판정
 extension FloorPlan3DView {
-    private var selectTapGesture: some Gesture {
+    private var tapGesture: some Gesture {
         SpatialTapGesture()
             .onEnded { value in
-                selection = hitSelection(at: value.location)
+                onTap(tapResult(at: value.location))
             }
     }
 
-    /// 누른 화면 점에서 광선을 쏴 가장 먼저 맞은 도면 요소. 벽이 먼저 맞거나 아무것도 안 맞으면 nil
-    private func hitSelection(at point: CGPoint) -> PlanSelection? {
+    /// 누른 화면 점에서 광선을 쏴 가장 먼저 맞은 것을 도면 기준 값으로 바꾼다
+    private func tapResult(at point: CGPoint) -> PlanTap? {
         guard let cameraContent,
               let scene = sceneRoot.scene,
-              let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
-        let hit = scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
-        return hit.flatMap { FloorPlan3DBuilder.selection(of: $0.entity) }
+              let ray = cameraContent.ray(through: point, in: .local, to: .scene),
+              let hit = scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
+        else { return nil }
+        if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
+            return .element(element)
+        }
+        // 맞은 점은 월드 좌표라 핀치 배율(sceneRoot.scale)이 들어 있다. sceneRoot 기준으로 바꿔 배율을 뺀다
+        let local = sceneRoot.convert(position: hit.position, from: nil)
+        let planPoint = PlanSpace(plan: planData).plan(local)
+        if let wallId = FloorPlan3DBuilder.wallId(of: hit.entity) {
+            return .wall(id: wallId, point: planPoint, height: Double(local.y))
+        }
+        return .floor(planPoint)
     }
+}
+
+/// 3D에서 누른 곳을 도면 기준 값으로 바꾼 것
+enum PlanTap {
+    /// 고를 수 있는 요소 (스탬프·콘센트·창문)
+    case element(PlanSelection)
+    /// 바닥 위 도면 점 (m)
+    case floor(SIMD2<Double>)
+    /// 벽 면 위 도면 점 (m)과 바닥에서 높이 (m)
+    case wall(id: String, point: SIMD2<Double>, height: Double)
 }
 
 // 확대 민감도
@@ -187,6 +208,5 @@ extension FloorPlan3DView {
 }
 
 #Preview {
-    @Previewable @State var selection: PlanSelection?
-    FloorPlan3DView(planData: DummyFloorPlan.planData, selection: $selection)
+    FloorPlan3DView(planData: DummyFloorPlan.planData, selection: nil, onTap: { _ in })
 }
