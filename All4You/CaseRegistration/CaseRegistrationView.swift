@@ -132,7 +132,6 @@ extension CaseRegistrationView {
                 Image(systemName: systemImage)
                     .foregroundStyle(text == nil ? .tertiary : .primary)
                 // 주소 줄 아이콘과 같은 옅은 색
-                    .foregroundStyle(.tertiary)
                 Text(text ?? placeholder)
                 // 고르기 전 안내 문구는 주소 입력칸의 안내 문구와 같은 색으로 맞춘다
                     .foregroundStyle(text == nil ? Color(uiColor: .placeholderText) : Color.primary)
