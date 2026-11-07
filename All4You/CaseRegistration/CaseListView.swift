@@ -15,7 +15,7 @@ struct CaseListView: View {
     
     @Environment(\.modelContext) private var modelContext
     @Query private var allCases: [FireCase]
-
+    
     @State private var showsSaveError = false
     @State private var saveErrorMessage = ""
     
@@ -85,7 +85,7 @@ struct CaseListView: View {
             CaseRegistrationView { newCase in
                 
                 modelContext.insert(newCase)
-
+                
                 do {
                     try modelContext.save()
                     isPresentingRegistration = false
@@ -117,9 +117,7 @@ struct CaseListView: View {
 extension CaseListView {
     
     private func caseTab(_ item: CaseFilter) -> some View {
-        
         NavigationStack {
-            
             CaseListContent(
                 filter: item,
                 searchText: searchText,
@@ -129,6 +127,11 @@ extension CaseListView {
             .toolbar {
                 detailToolbar
             }
+            .searchable(
+                text: $searchText,
+                placement: .toolbar,
+                prompt: "제목, 사건명"
+            )
         }
     }
 }
@@ -169,21 +172,15 @@ extension CaseListView {
     
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
-        
         ToolbarItem(placement: .primaryAction) {
-            
             Button(
                 Copy.newCase,
                 systemImage: "square.and.pencil",
                 action: presentRegistration
             )
         }
-        
-        ToolbarItem(placement: .primaryAction) {
-            searchField
-        }
-        .sharedBackgroundVisibility(.hidden)
     }
+
     
     /// Figma 기준 커스텀 검색창
     private var searchField: some View {
