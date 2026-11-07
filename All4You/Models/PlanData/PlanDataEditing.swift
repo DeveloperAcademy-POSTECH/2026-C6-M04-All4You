@@ -1,4 +1,4 @@
-// 도면의 스탬프를 더하고 옮기고 돌리고 복제·삭제하는 계산. 화면은 도면 좌표만 넘기고, 저장 모양(벽 기준 위치·면 등)은 여기서 정한다
+// 도면의 스탬프를 더하고 옮기고 돌리고 복제·삭제하고, 창문을 달고 크기를 바꾸고 지우는 계산. 화면은 도면 좌표만 넘기고, 저장 모양(벽 기준 위치·면 등)은 여기서 정한다
 
 import Foundation
 
@@ -119,4 +119,93 @@ extension PlanData {
             height: min(max(height, 0), wall.height)
         )
     }
+}
+
+// 창문
+extension PlanData {
+    /// 새 창문 크기 (m)
+    /// TEMP: 디자인 확인 전이라 흔한 창문 크기로 임시로 정한 값
+    fileprivate static let newWindowWidth = 1.0
+    fileprivate static let newWindowHeight = 1.2
+    fileprivate static let newWindowSillHeight = 0.9
+    /// 창문 폭·높이의 가장 작은 값 (m)
+    fileprivate static let minimumWindowSize = 0.2
+
+    /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문을 달고 새 id를 돌려준다.
+    /// 벽 끝이나 옆 문·창문과 겹치면 그 사이 빈 칸 안으로 줄이거나 밀어 넣는다. 빈 칸이 너무 좁거나 벽을 찾지 못하면 nil
+    mutating func addWindow(wallId: String, at point: SIMD2<Double>) -> String? {
+        guard let wall = wall(id: wallId), let line = line(of: wall) else { return nil }
+        let along = ((point - line.start) * line.direction).sum()
+        let gap = openingGap(on: wall, line: line, around: along, excluding: nil)
+        let width = min(Self.newWindowWidth, gap.upperBound - gap.lowerBound)
+        let height = min(Self.newWindowHeight, wall.height - Self.newWindowSillHeight)
+        guard width >= Self.minimumWindowSize, height >= Self.minimumWindowSize else { return nil }
+        let window = DoorWindow(
+            id: UUID().uuidString,
+            wallId: wallId,
+            kind: .window,
+            centerAlongWall: min(max(along, gap.lowerBound + width / 2), gap.upperBound - width / 2),
+            width: width,
+            sillHeight: Self.newWindowSillHeight,
+            height: height
+        )
+        doorWindows.append(window)
+        return window.id
+    }
+
+    /// 창문 테두리 edge 하나를 옮겨 폭·높이를 바꾼다. 반대쪽 테두리는 그대로 둔다.
+    /// along = 벽 시작점에서 거리 (m, 벽 방향 테두리), height = 바닥에서 높이 (m, 위·아래 테두리).
+    /// 가장 작은 크기보다 작아지거나 벽 끝·벽 높이·옆 문·창문을 넘지 않게 맞춘다
+    mutating func resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double) {
+        guard let index = doorWindows.firstIndex(where: { $0.id == id }),
+              let wall = wall(id: doorWindows[index].wallId), let line = line(of: wall) else { return }
+        let window = doorWindows[index]
+        let gap = openingGap(on: wall, line: line, around: window.centerAlongWall, excluding: id)
+        let minimum = Self.minimumWindowSize
+        var start = window.centerAlongWall - window.width / 2
+        var end = window.centerAlongWall + window.width / 2
+        var bottom = window.sillHeight
+        var top = window.sillHeight + window.height
+        switch edge {
+        case .wallStart: start = min(max(along, gap.lowerBound), end - minimum)
+        case .wallEnd: end = max(min(along, gap.upperBound), start + minimum)
+        case .bottom: bottom = min(max(height, 0), top - minimum)
+        case .top: top = max(min(height, wall.height), bottom + minimum)
+        }
+        doorWindows[index].centerAlongWall = (start + end) / 2
+        doorWindows[index].width = end - start
+        doorWindows[index].sillHeight = bottom
+        doorWindows[index].height = top - bottom
+    }
+
+    mutating func removeDoorWindow(id: String) {
+        doorWindows.removeAll { $0.id == id }
+    }
+
+    /// 벽 위에서 along(벽 시작점에서 거리, m)이 들어 있는 빈 칸. 벽 끝과 다른 문·창문(id가 excluding인 것은 뺌)이 경계다.
+    /// along이 다른 문·창문 안이면 길이 0인 칸
+    private func openingGap(on wall: Wall, line: WallLine, around along: Double, excluding id: String?) -> ClosedRange<Double> {
+        var lower = 0.0
+        var upper = line.length
+        for other in doorWindows where other.wallId == wall.id && other.id != id {
+            let otherStart = other.centerAlongWall - other.width / 2
+            let otherEnd = other.centerAlongWall + other.width / 2
+            if otherEnd <= along {
+                lower = max(lower, otherEnd)
+            } else if otherStart >= along {
+                upper = min(upper, otherStart)
+            } else {
+                return along...along
+            }
+        }
+        return lower...max(lower, upper)
+    }
+}
+
+/// 창문의 네 테두리. 시작·끝은 화면 왼쪽·오른쪽이 아니라 벽 시작점 쪽·끝점 쪽
+enum WindowEdge: CaseIterable {
+    case wallStart
+    case wallEnd
+    case top
+    case bottom
 }

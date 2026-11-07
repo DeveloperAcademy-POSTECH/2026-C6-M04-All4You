@@ -46,7 +46,7 @@ extension CaseFlowView {
         case .edit2D:
             edit2DScreen
         case .conversionLoading:
-            ConversionLoadingView(onFinished: replaceLoadingWithEdit3D)
+            ConversionLoadingView(planData: planData, onFinished: replaceLoadingWithEdit3D)
         case .edit3D:
             FloorPlanEdit3DView(planData: $planData, onBack: goBack, onDone: showCaseMain)
         }

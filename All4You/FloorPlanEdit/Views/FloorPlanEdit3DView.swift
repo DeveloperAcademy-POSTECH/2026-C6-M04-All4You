@@ -1,4 +1,4 @@
-// 3D 도면 수정 화면. 도면을 3D로 보여 주고, 스탬프를 놓고 옮기고 돌리고 복제·삭제한다
+// 3D 도면 수정 화면. 도면을 3D로 보여 주고, 스탬프를 놓고 옮기고 돌리고 복제·삭제하고, 창문을 달고 크기를 바꾸고 지운다
 
 import SwiftUI
 
@@ -54,6 +54,9 @@ extension FloorPlanEdit3DView {
         case (.outlet?, .wall(let wallId, let point, let height)?):
             guard let id = planData.addWallFixture(.outlet, wallId: wallId, at: point, height: height) else { return }
             selection = .wallFixture(id)
+        case (.window?, .wall(let wallId, let point, _)?):
+            guard let id = planData.addWindow(wallId: wallId, at: point) else { return }
+            selection = .doorWindow(id)
         default:
             break
         }
@@ -72,8 +75,13 @@ extension FloorPlanEdit3DView {
         case .delete(.wallFixture(let id)):
             planData.removeWallFixture(id: id)
             selection = nil
-        case .duplicate(.doorWindow), .delete(.doorWindow):
+        case .delete(.doorWindow(let id)):
+            planData.removeDoorWindow(id: id)
+            selection = nil
+        case .duplicate(.doorWindow):
             break
+        case .resizeWindow(let id, let edge, let along, let height):
+            planData.resizeWindow(id: id, edge: edge, along: along, height: height)
         case .move(.marker(let id), let point, _):
             planData.moveMarker(id: id, to: point)
         case .move(.wallFixture(let id), let point, let height):

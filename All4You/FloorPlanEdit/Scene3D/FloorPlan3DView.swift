@@ -27,7 +27,7 @@ struct FloorPlan3DView: View {
     @State private var frameUpdates: EventSubscription?
     /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
     @State private var timeSinceLabelUpdate: TimeInterval = 0
-    /// 지금 하고 있는 한 손가락 끌기. 고른 스탬프 위에서 시작했으면 스탬프 이동, 아니면 카메라 회전
+    /// 지금 하고 있는 한 손가락 끌기. 고른 스탬프 위에서 시작했으면 스탬프 이동, 고른 창문 테두리 손잡이면 크기 조절, 아니면 카메라 회전
     @State private var drag: DragKind?
     /// 고른 스탬프의 손잡이·메뉴 화면 위치. 스탬프(사람·발화지점·콘센트)를 골랐을 때만 있다
     @State private var stampScreenPoints: StampScreenPoints?
@@ -37,6 +37,12 @@ struct FloorPlan3DView: View {
     @State private var menuTarget: PlanSelection?
     /// 지금 손가락이 닿아 있는 첫 화면 점. 꾹 누르기가 어느 스탬프 위였는지 알 때 쓴다
     @State private var pressLocation: CGPoint?
+    /// 고른 창문의 위 테두리 가운데 점 (sceneRoot 기준). 장면을 다시 만들 때 계산해 둔다
+    @State private var selectedWindowTop: SIMD3<Float>?
+    /// 창문 삭제 메뉴를 띄울 화면 위치 (위 테두리 가운데)
+    @State private var windowMenuPoint: CGPoint?
+    /// 창문 테두리를 끄는 동안 미리 보여 주는 도면. 손을 떼면 지우고 도면은 한 번만 바꾼다
+    @State private var windowPreview: PlanData?
 
     var body: some View {
         RealityView { content in
@@ -51,11 +57,12 @@ struct FloorPlan3DView: View {
                 timeSinceLabelUpdate = 0
                 updateLabelPoints(using: content)
                 updateStampScreenPoints(using: content)
+                updateWindowMenuPoint(using: content)
             }
         }
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
-        // 스탬프를 끄는 동안은 카메라가 같이 돌지 않게 기본 조작을 끈다
-        .realityViewCameraControls(isMovingStamp ? .none : .orbit)
+        // 스탬프나 창문 테두리를 끄는 동안은 카메라가 같이 돌지 않게 기본 조작을 끈다
+        .realityViewCameraControls(isDraggingElement ? .none : .orbit)
         .simultaneousGesture(extraZoomGesture)
         .simultaneousGesture(tapGesture)
         .simultaneousGesture(longPressGesture)
@@ -67,8 +74,14 @@ struct FloorPlan3DView: View {
         .overlay(alignment: .topLeading) {
             stampControls
         }
+        .overlay(alignment: .topLeading) {
+            windowControls
+        }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
+            rebuildScene()
+        }
+        .onChange(of: windowPreview) {
             rebuildScene()
         }
         .onChange(of: selection) {
@@ -175,8 +188,10 @@ enum PlanEdit {
     case rotate(markerId: String, yaw: Double)
     /// 스탬프를 옆에 하나 더 만듦
     case duplicate(PlanSelection)
-    /// 스탬프를 지움
+    /// 스탬프·창문을 지움
     case delete(PlanSelection)
+    /// 창문(DoorWindow.id) 테두리 edge를 벽 시작점에서 along(m), 바닥에서 height(m) 자리로 옮김
+    case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
 }
 
 // 스탬프 끌어 옮기기
@@ -184,6 +199,8 @@ enum PlanEdit {
 extension FloorPlan3DView {
     private enum DragKind {
         case stamp(StampDrag)
+        /// 고른 창문의 테두리 손잡이를 끎
+        case windowEdge(windowId: String, edge: WindowEdge)
         case camera
     }
 
@@ -198,29 +215,47 @@ extension FloorPlan3DView {
         let startSurfacePoint: SIMD3<Float>
     }
 
-    private var isMovingStamp: Bool {
-        if case .stamp = drag { return true }
-        return false
+    /// 스탬프나 창문 테두리를 끄는 중인지. 그동안은 카메라를 멈춘다
+    private var isDraggingElement: Bool {
+        switch drag {
+        case .stamp?, .windowEdge?: true
+        case .camera?, nil: false
+        }
     }
 
-    /// 손가락이 바닥(벽) 위에서 움직인 만큼 스탬프를 옮긴다. 콘센트는 붙은 벽 면 위에서만 움직인다
+    /// 손가락이 바닥(벽) 위에서 움직인 만큼 스탬프를 옮긴다. 콘센트는 붙은 벽 면 위에서만 움직인다.
+    /// 창문 테두리 손잡이에서 시작하면 그 테두리를 옮긴다
     private var stampDragGesture: some Gesture {
         DragGesture()
             .onChanged { value in
                 if drag == nil {
-                    drag = beginStampDrag(at: value.startLocation).map(DragKind.stamp) ?? .camera
-                    if isMovingStamp { menuTarget = nil }
+                    drag = beginWindowEdgeDrag(at: value.startLocation)
+                        ?? beginStampDrag(at: value.startLocation).map(DragKind.stamp)
+                        ?? .camera
+                    if isDraggingElement { menuTarget = nil }
                 }
-                guard case .stamp(let stampDrag) = drag,
-                      let point = surfacePoint(at: value.location, wallId: stampDrag.wallId) else { return }
-                stampDrag.entity.position = stampDrag.startPosition + (point - stampDrag.startSurfacePoint)
+                switch drag {
+                case .stamp(let stampDrag)?:
+                    guard let point = surfacePoint(at: value.location, wallId: stampDrag.wallId) else { return }
+                    stampDrag.entity.position = stampDrag.startPosition + (point - stampDrag.startSurfacePoint)
+                case .windowEdge(let windowId, let edge)?:
+                    previewWindowEdge(windowId: windowId, edge: edge, at: value.location)
+                case .camera?, nil:
+                    break
+                }
             }
-            .onEnded { _ in
+            .onEnded { value in
                 defer { drag = nil }
-                guard case .stamp(let stampDrag) = drag else { return }
-                let position = stampDrag.entity.position
-                let point = PlanSpace(plan: planData).plan(position)
-                onEdit(.move(stampDrag.selection, point: point, height: Double(position.y)))
+                switch drag {
+                case .stamp(let stampDrag)?:
+                    let position = stampDrag.entity.position
+                    let point = PlanSpace(plan: planData).plan(position)
+                    onEdit(.move(stampDrag.selection, point: point, height: Double(position.y)))
+                case .windowEdge(let windowId, let edge)?:
+                    finishWindowEdge(windowId: windowId, edge: edge, at: value.location)
+                case .camera?, nil:
+                    break
+                }
             }
     }
 
@@ -260,14 +295,13 @@ extension FloorPlan3DView {
 // 라벨처럼 고른 스탬프의 꼭대기를 화면 점으로 바꿔 위에 겹친다. 손잡이는 스탬프 둘레로 끌면 돌고(사람·발화지점만),
 // 스탬프를 꾹 누르면 손잡이 대신 메뉴가 뜬다
 extension FloorPlan3DView {
-    /// 스탬프를 꾹 누르면 그 스탬프를 고르고 회전 손잡이 대신 편집 메뉴를 띄운다.
+    /// 스탬프·창문을 꾹 누르면 그것을 고르고 회전 손잡이(창문은 테두리 손잡이) 대신 편집 메뉴를 띄운다.
     /// 꾹 누르기는 누른 자리를 알려 주지 않아서, 손가락이 닿은 자리는 pressLocationGesture가 따로 받아 둔다
     private var longPressGesture: some Gesture {
         LongPressGesture(minimumDuration: Layout.longPressDuration)
             .onEnded { _ in
                 guard let pressLocation,
-                      case .element(let element)? = tapResult(at: pressLocation),
-                      element.isStamp else { return }
+                      case .element(let element)? = tapResult(at: pressLocation) else { return }
                 menuTarget = element
                 onTap(.element(element))
             }
@@ -364,6 +398,83 @@ private struct StampScreenPoints: Equatable {
     let handle: CGPoint
 }
 
+// 고른 창문의 테두리 손잡이와 편집 메뉴
+// 테두리 손잡이(FloorPlan3DBuilder가 3D 막대로 만듦)를 끌면 그 테두리만 움직여 폭·높이가 바뀌고(위치 이동은 없음),
+// 창문을 꾹 누르면 손잡이 대신 삭제 메뉴가 뜬다
+extension FloorPlan3DView {
+    /// 위 테두리 위에 띄우는 삭제 메뉴. 창문은 복제하지 않는다
+    @ViewBuilder
+    private var windowControls: some View {
+        if case .doorWindow(let id)? = selection, menuTarget == selection, let windowMenuPoint {
+            StampEditMenuView(onDuplicate: nil, onDelete: { onEdit(.delete(.doorWindow(id))) })
+                .fixedSize()
+                .position(x: windowMenuPoint.x, y: windowMenuPoint.y - Layout.windowMenuGap)
+        }
+    }
+
+    /// 끌기가 고른 창문의 테두리 손잡이 위에서 시작했으면 그 테두리를 끌 준비를 한다
+    private func beginWindowEdgeDrag(at point: CGPoint) -> DragKind? {
+        guard case .doorWindow(let id)? = selection, let hit = firstHit(at: point),
+              let edge = FloorPlan3DBuilder.windowEdge(of: hit.entity) else { return nil }
+        return .windowEdge(windowId: id, edge: edge)
+    }
+
+    /// 끄는 동안은 미리 보기 도면만 바꾼다
+    private func previewWindowEdge(windowId: String, edge: WindowEdge, at point: CGPoint) {
+        guard let spot = wallSpot(at: point, windowId: windowId) else { return }
+        var preview = planData
+        preview.resizeWindow(id: windowId, edge: edge, along: spot.along, height: spot.height)
+        windowPreview = preview
+    }
+
+    /// 손을 떼면 미리 보기를 지우고 도면을 한 번 바꾼다
+    private func finishWindowEdge(windowId: String, edge: WindowEdge, at point: CGPoint) {
+        windowPreview = nil
+        guard let spot = wallSpot(at: point, windowId: windowId) else { return }
+        onEdit(.resizeWindow(id: windowId, edge: edge, along: spot.along, height: spot.height))
+    }
+
+    /// 화면 점에서 그은 직선이 창문이 달린 벽의 가운데 면과 만나는 자리 (벽 시작점에서 거리, 바닥에서 높이, m).
+    /// 벽 상자에 직선을 쏘면 창문 구멍 위에서는 맞는 것이 없어서, 벽 면과 만나는 점을 직접 계산한다
+    private func wallSpot(at point: CGPoint, windowId: String) -> (along: Double, height: Double)? {
+        guard let cameraContent,
+              let window = planData.doorWindows.first(where: { $0.id == windowId }),
+              let wall = planData.wall(id: window.wallId), let line = planData.line(of: wall),
+              let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
+        // 핀치 배율을 빼려고 직선을 sceneRoot 기준으로 바꾼다
+        let origin = sceneRoot.convert(position: ray.origin, from: nil)
+        let direction = sceneRoot.convert(direction: ray.direction, from: nil)
+        let space = PlanSpace(plan: planData)
+        let wallStart = space.world(line.start)
+        let normal = SIMD3<Float>(Float(line.leftNormal.x), 0, Float(line.leftNormal.y))
+        let facing = simd_dot(direction, normal)
+        // 직선이 벽 면과 거의 나란하면 만나는 점이 너무 멀어 쓰지 않는다
+        guard abs(facing) > 0.0001 else { return nil }
+        let hit = origin + direction * (simd_dot(wallStart - origin, normal) / facing)
+        let along = ((space.plan(hit) - line.start) * line.direction).sum()
+        return (along, Double(hit.y))
+    }
+
+    /// 고른 창문의 위 테두리 가운데 점 (sceneRoot 기준). 창문이 아니면 nil
+    private func windowTop(of selection: PlanSelection?, in plan: PlanData) -> SIMD3<Float>? {
+        guard case .doorWindow(let id)? = selection,
+              let window = plan.doorWindows.first(where: { $0.id == id }),
+              let wall = plan.wall(id: window.wallId), let line = plan.line(of: wall) else { return nil }
+        let point = line.point(along: window.centerAlongWall)
+        return PlanSpace(plan: plan).world(point, height: window.sillHeight + window.height)
+    }
+
+    /// 위 테두리 점을 화면 점으로 바꾼다. 카메라 뒤에 있으면 nil
+    private func updateWindowMenuPoint(using content: RealityViewCameraContent) {
+        let point = selectedWindowTop.flatMap {
+            content.project(point: sceneRoot.convert(position: $0, to: nil), to: .local)
+        }
+        if point != windowMenuPoint {
+            windowMenuPoint = point
+        }
+    }
+}
+
 // 확대 민감도
 extension FloorPlan3DView {
     /// 기본 조작의 확대(카메라가 다가감)에 더해 도면 배율을 바꾼다.
@@ -386,9 +497,12 @@ extension FloorPlan3DView {
 
 // 장면 만들기
 extension FloorPlan3DView {
+    /// 창문 테두리를 끄는 중이면 미리 보기 도면으로 만든다
     private func rebuildScene() {
+        let plan = windowPreview ?? planData
         sceneRoot.children.removeAll()
-        sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: planData, selection: selection))
+        sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: plan, selection: selection))
+        selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
         case .marker?, .wallFixture?:
             selectedStampEntity = selection.flatMap { FloorPlan3DBuilder.entity(for: $0, in: sceneRoot) }
@@ -442,6 +556,8 @@ extension FloorPlan3DView {
         static let sceneSpace = "floorPlan3D"
         /// 편집 메뉴를 띄우는 꾹 누르기 시간 (초)
         static let longPressDuration = 0.5
+        /// 창문 위 테두리와 삭제 메뉴 가운데 사이 (pt)
+        static let windowMenuGap: CGFloat = 40
     }
 }
 
