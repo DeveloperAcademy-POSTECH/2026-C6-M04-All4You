@@ -24,6 +24,9 @@ struct CaseListView: View {
     @State private var searchText = ""
     @State private var isPresentingRegistration = false
     
+    @State private var isPresentingFloorPlan = false
+    @State private var pendingFloorPlan: FireCase?
+    
     // 사이드바 / 탭 바 편집 상태 저장
     @AppStorage("caseListTabCustomization")
     private var customization: TabViewCustomization
@@ -69,23 +72,37 @@ struct CaseListView: View {
             selectedCaseID = nil
         }
         
-        .sheet(isPresented: $isPresentingRegistration) {
-            
+        .sheet(
+            isPresented: $isPresentingRegistration,
+            onDismiss: {
+                // 사건 등록 시트가 닫힌 후 전체 화면 표시
+                if pendingFloorPlan != nil {
+                    isPresentingFloorPlan = true
+                }
+            }
+        ) {
             CaseRegistrationView { newCase in
-                
                 modelContext.insert(newCase)
                 
                 do {
+                    // 1. SwiftData에 사건 저장
                     try modelContext.save()
-                    isPresentingRegistration = false
+                    
+                    // 2. 다음 화면에 전달할 사건 보관
+                    pendingFloorPlan = newCase
+                    
+                    // 3. 조사 중 목록으로 이동
                     filter = .inProgress
+                    
+                    // 4. 사건 등록 시트 닫기
+                    isPresentingRegistration = false
+                    
                 } catch {
                     modelContext.delete(newCase)
+                    
                     saveErrorMessage = "사건 저장 실패: \(error.localizedDescription)"
                     showsSaveError = true
                 }
-                
-                // TODO: 평면도 생성 화면 연결
             }
             .presentationDragIndicator(.visible)
             .alert("저장 실패", isPresented: $showsSaveError) {
@@ -94,6 +111,22 @@ struct CaseListView: View {
                 Text(saveErrorMessage)
             }
         }
+        .fullScreenCover(
+            isPresented: $isPresentingFloorPlan,
+            onDismiss: {
+                pendingFloorPlan = nil
+            }
+        ) {
+            if let pendingFloorPlan {
+                NavigationStack {
+                    FloorPlanMethodSelectionView(
+                        address: pendingFloorPlan.address,
+                        createdAt: pendingFloorPlan.occurredAt
+                    )
+                }
+            }
+        }
+        
     }
     
     private func presentRegistration() {
@@ -169,7 +202,7 @@ extension CaseListView {
             )
         }
     }
-
+    
     
     /// Figma 기준 커스텀 검색창
     private var searchField: some View {
