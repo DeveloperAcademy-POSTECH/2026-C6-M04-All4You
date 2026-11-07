@@ -217,7 +217,7 @@ extension FloorPlan3DBuilder {
 @MainActor
 private enum Materials {
     static let floor = UnlitMaterial(color: UIColor(resource: .gray50))
-    static let wall = SimpleMaterial(color: UIColor(resource: .white), roughness: 0.85, isMetallic: false)
+    static let wall = SimpleMaterial(color: .white, roughness: 0.85, isMetallic: false)
     static let stamp = SimpleMaterial(color: UIColor(resource: .brand500), roughness: 0.6, isMetallic: false)
     static let glass: PhysicallyBasedMaterial = {
         var material = PhysicallyBasedMaterial()
