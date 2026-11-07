@@ -15,6 +15,9 @@ enum CaseRoute: Hashable {
 struct CaseFlowView: View {
     @State private var path: [CaseRoute] = []
     @State private var isCaseMainShown = false
+    /// 2D·3D 수정 화면이 함께 보고 고치는 도면
+    // TEMP: 도면을 만들고 저장하는 흐름(SwiftData)이 연결되기 전이라 더미 도면을 여기서 들고 있음 — 앱을 끄면 고친 것이 사라짐
+    @State private var planData = DummyFloorPlan.planData
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -45,7 +48,7 @@ extension CaseFlowView {
         case .conversionLoading:
             ConversionLoadingView(onFinished: replaceLoadingWithEdit3D)
         case .edit3D:
-            FloorPlanEdit3DView(onBack: goBack, onDone: showCaseMain)
+            FloorPlanEdit3DView(planData: $planData, onBack: goBack, onDone: showCaseMain)
         }
     }
 }
