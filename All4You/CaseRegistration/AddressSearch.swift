@@ -89,14 +89,43 @@ extension AddressSearch {
 
 /// 현재 위치의 도로명 주소를 한 번 가져온다
 enum CurrentAddress {
+    private static let timeoutSeconds: UInt64 = 10
+
     /// 위치 권한을 허용하지 않았거나 주소를 찾지 못하면 nil
     static func fetch() async -> String? {
-        // 권한 팝업을 확실히 띄우기 위해 직접 요청한다. 답을 받을 때까지 manager를 살려 둔다
+        await withTaskGroup(of: String?.self) { group in
+            // 현재 위치 및 주소 요청
+            group.addTask {
+                await fetchLocation()
+            }
+
+            // 최대 10초 대기
+            group.addTask {
+                try? await Task.sleep(
+                    for: .seconds(timeoutSeconds)
+                )
+                return nil
+            }
+
+            let result = await group.next() ?? nil
+
+            // 먼저 완료된 작업의 결과를 사용하고 나머지는 취소
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private static func fetchLocation() async -> String? {
         let manager = CLLocationManager()
+
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
         }
-        let session = CLServiceSession(authorization: .whenInUse)
+
+        let session = CLServiceSession(
+            authorization: .whenInUse
+        )
+
         defer {
             session.invalidate()
             _ = manager
@@ -104,28 +133,40 @@ enum CurrentAddress {
 
         do {
             for try await update in CLLocationUpdate.liveUpdates() {
-                // TEMP: 위치 확인용 로그 — 확인 후 삭제
-                print("위치 업데이트:", update.location as Any,
-                      "거부:", update.authorizationDenied,
-                      "요청 중:", update.authorizationRequestInProgress)
+                if Task.isCancelled {
+                    return nil
+                }
+
+                if update.authorizationDenied ||
+                    update.authorizationDeniedGlobally ||
+                    update.authorizationRestricted {
+                    return nil
+                }
+
                 if let location = update.location {
                     return await address(of: location)
                 }
-                if update.authorizationDenied || update.authorizationDeniedGlobally || update.authorizationRestricted {
-                    return nil
-                }
             }
         } catch {
-            print("위치 오류:", error)
-            return nil
+            if !Task.isCancelled {
+                print("위치 오류:", error)
+            }
         }
+
         return nil
     }
-    
-    private static func address(of location: CLLocation) async -> String? {
-        guard let request = MKReverseGeocodingRequest(location: location),
-              let mapItem = try? await request.mapItems.first,
-              let address = mapItem.address?.fullAddress else { return nil }
+
+    private static func address(
+        of location: CLLocation
+    ) async -> String? {
+        guard let request = MKReverseGeocodingRequest(
+            location: location
+        ),
+        let mapItem = try? await request.mapItems.first,
+        let address = mapItem.address?.fullAddress else {
+            return nil
+        }
+
         return AddressSearch.removingCountry(address)
     }
 }
