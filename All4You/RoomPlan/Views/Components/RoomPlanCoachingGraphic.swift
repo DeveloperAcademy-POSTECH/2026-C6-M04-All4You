@@ -5,42 +5,25 @@
 //  Created by 채유성 on 11/3/26.
 //
 
-// 스캔 안내에 사용되는 도형들 컴포넌트
+// 스캔 시작 전 안내에 띄우는 아이패드 모형
 import SwiftUI
 
-
 struct RoomPlanCoachingGraphic: View {
-    // 공간 프레임, 특징점, 기기 모양의 안내 도형 구성
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.white.opacity(0.9), lineWidth: 2)
-                .frame(width: 184, height: 168)
+            RoundedRectangle(cornerRadius: 11)
+                .fill(.white)
+                .frame(width: 64, height: 86)
             
-            VStack(spacing: 9) {
-                ForEach(0..<4, id: \.self) { _ in
-                    HStack(spacing: 11) {
-                        ForEach(0..<5, id: \.self) { _ in
-                            Circle()
-                                .fill(.white.opacity(0.85))
-                                .frame(width: 3, height: 3)
-                        }
-                    }
-                }
-            }
-            .offset(x: -25, y: -28)
-            
-            RoundedRectangle(cornerRadius: 5)
-                .fill(.white.opacity(0.75))
-                .frame(width: 31, height: 54)
+            RoundedRectangle(cornerRadius: 7)
+                .fill(Color(white: 0.84))
+                .frame(width: 54, height: 76)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(.white, lineWidth: 3)
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Color(white: 0.67), lineWidth: 2)
                 }
-                .offset(x: 58, y: 1)
         }
-        .frame(width: 190, height: 174)
+        .frame(width: 64, height: 86)
         .accessibilityHidden(true)
     }
 }
-

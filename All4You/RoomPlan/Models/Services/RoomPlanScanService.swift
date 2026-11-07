@@ -85,7 +85,6 @@ import RoomPlan
     private var captureSession: RoomCaptureSession?
     // 새 ARSession이 이전 구간의 좌표계에 맞춰질 때까지 촬영 시작 차단
     private var needsRelocalization = false
-    private var guidanceTimer: Task<Void, Never>?
     private var ending: CaptureEnd?
     private var pendingAction: PendingAction = .none
     private var pauseGeneration = UUID()
@@ -143,7 +142,6 @@ import RoomPlan
             return
         }
         issue = nil
-        guidance = RoomPlanGuidanceService.defaultScanning
         currentRoom = nil
         pausedRoom = nil
         pausedSegmentSaved = false
@@ -152,20 +150,8 @@ import RoomPlan
         pendingAction = .none
         phase = .scanning
         var configuration = RoomCaptureSession.Configuration()
-        
-        // TODO: RoomPlan 기본 코칭 비활성화와 앱 한국어 안내 사용 - 애니메이션까지 같이 꺼져서 수정 필요
-        configuration.isCoachingEnabled = false
+        configuration.isCoachingEnabled = true
         captureSession.run(configuration: configuration)
-        guidanceTimer?.cancel()
-        guidanceTimer = Task { [weak self] in
-            var index = 0
-            while !Task.isCancelled {
-                guard let self, self.phase == .scanning else { break }
-                self.guidance = RoomPlanGuidanceService.alternating(at: index)
-                index += 1
-                try? await Task.sleep(for: .seconds(4))
-            }
-        }
         tracking.startMonitoring()
     }
     
@@ -191,7 +177,6 @@ import RoomPlan
         phase = hasContent ? .paused : .ready
         if !hasContent { guidance = RoomPlanGuidanceService.beforeStart }
         tracking.stopMonitoring()
-        guidanceTimer?.cancel()
         tracking.checkpointWorldMap()
         captureSession.stop(pauseARSession: false)
     }
@@ -232,7 +217,6 @@ import RoomPlan
         ending = .stop
         // 결과 유무를 확인하기 전에는 저장 화면으로 전환하지 않음
         tracking.stopMonitoring()
-        guidanceTimer?.cancel()
         tracking.checkpointWorldMap()
         captureSession.stop(pauseARSession: false)
     }
@@ -291,20 +275,11 @@ import RoomPlan
     
     // 화면 이탈 시 작업 취소와 카메라·손전등 자원 해제
     func detach() {
-        guidanceTimer?.cancel()
         turnTorchOff()
         captureSession?.delegate = nil
         captureSession?.stop()
         tracking.stop()
         captureSession = nil
-    }
-    
-    // RoomPlan 안내 이벤트에 한국어 문구 반영
-    nonisolated func captureSession(_ session: RoomCaptureSession, didProvide instruction: RoomCaptureSession.Instruction) {
-        Task { @MainActor [weak self] in
-            guard let self, self.captureSession === session, self.phase == .scanning else { return }
-            self.guidance = RoomPlanGuidanceService.message(for: instruction)
-        }
     }
     
     // 실시간 CapturedRoom 갱신과 일시정지용 마지막 스캔 도면 형상 보관
@@ -331,7 +306,6 @@ import RoomPlan
             let wasPaused = self.ending?.isPausing == true
             // RoomPlan 원본 콜백에서 구간 저장, 방 누적, 미리보기 병합으로 이어지는 데이터 흐름
             self.ending = wasPaused ? .processingPause : .processingStop
-            if self.phase == .scanning { self.guidanceTimer?.cancel() }
             self.tracking.stopMonitoring()
             if let captureError = error as? RoomCaptureSession.CaptureError {
                 if captureError == .exceedSceneSizeLimit {
