@@ -134,12 +134,9 @@ struct PlanSpace {
     let size: SIMD2<Double>
 
     init(plan: PlanData) {
-        let xs = plan.vertices.map(\.x)
-        let ys = plan.vertices.map(\.y)
-        let minPoint = SIMD2(xs.min() ?? 0, ys.min() ?? 0)
-        let maxPoint = SIMD2(xs.max() ?? 0, ys.max() ?? 0)
-        center = (minPoint + maxPoint) / 2
-        size = maxPoint - minPoint
+        let bounds = plan.bounds
+        center = (bounds.min + bounds.max) / 2
+        size = bounds.max - bounds.min
     }
 
     /// 도면 점 p를 바닥에서 height(m) 위의 3D 점으로
