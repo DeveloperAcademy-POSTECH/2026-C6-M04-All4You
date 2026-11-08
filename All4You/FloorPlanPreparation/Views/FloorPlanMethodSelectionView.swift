@@ -18,7 +18,6 @@ struct FloorPlanMethodSelectionView: View {
     let createdAt: Date
     // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
     var onImport: ((UIImage) -> Void)? = nil
-    @Environment(\.dismiss) private var dismiss
     
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
@@ -69,12 +68,9 @@ struct FloorPlanMethodSelectionView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .backOnlyToolbar(title: "이전") {
-            dismiss()
+        .backOnlyToolbar(title: "목록으로", customLayout: true) {
+            print("뒤로가기")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             continueButton
@@ -180,7 +176,11 @@ struct FloorPlanMethodSelectionView: View {
         }
         // 기존 도면 촬영 화면에서 촬영과 영역 조정을 이어서 처리한다.
         .fullScreenCover(isPresented: $isCameraPresented) {
-            FloorPlanImportView(onImport: onImport, address: address)
+            FloorPlanImportView(
+                onImport: onImport,
+                address: address,
+                onBack: { isCameraPresented = false }
+            )
         }
     }
     
