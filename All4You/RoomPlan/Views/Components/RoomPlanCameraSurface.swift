@@ -33,12 +33,9 @@ struct RoomPlanCameraSurface: UIViewRepresentable {
         view.isModelEnabled = true
     }
     
-    // UIView 제거 시 일 연결 해제와 AR 세션 중단
     static func dismantleUIView(_ view: RoomCaptureView, coordinator: ResultPresentationDelegate) {
         view.delegate = nil
         view.captureSession.delegate = nil
-        view.captureSession.stop()
-        view.captureSession.arSession.pause()
     }
 }
 

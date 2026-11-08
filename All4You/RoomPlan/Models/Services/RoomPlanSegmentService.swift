@@ -85,7 +85,7 @@ struct RoomPlanSegmentService {
     }
 
     // 한 구간은 CapturedRoom 자체를, 여러 구간은 병합된 CapturedStructure를 최종 결과로 저장
-    func saveFinalModel(from rooms: [CapturedRoom]) async throws -> URL {
+    func saveFinalModel(from rooms: [CapturedRoom], structure: CapturedStructure? = nil) async throws -> URL {
         if rooms.count == 1, let room = rooms.first {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let dataURL = directory.appendingPathComponent("final-room.json")
@@ -95,12 +95,20 @@ struct RoomPlanSegmentService {
             try room.export(to: modelURL)
             return modelURL
         }
-        return try await saveMergedStructure(from: rooms)
+        return try await saveMergedStructure(from: rooms, prebuiltStructure: structure)
     }
     
     // 최종 병합된 3D 구조의 JSON 및 USDZ 파일 내보내기
-    func saveMergedStructure(from rooms: [CapturedRoom]) async throws -> URL {
-        let structure = try await buildStructure(from: rooms)
+    func saveMergedStructure(
+        from rooms: [CapturedRoom],
+        prebuiltStructure: CapturedStructure? = nil
+    ) async throws -> URL {
+        let structure: CapturedStructure
+        if let prebuiltStructure {
+            structure = prebuiltStructure
+        } else {
+            structure = try await buildStructure(from: rooms)
+        }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         
         let url = directory.appendingPathComponent("merged-structure.json")

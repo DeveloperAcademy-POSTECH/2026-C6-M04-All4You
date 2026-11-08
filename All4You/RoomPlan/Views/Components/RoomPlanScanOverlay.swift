@@ -27,16 +27,17 @@ struct RoomPlanScanOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
-            if phase == .ready || phase == .scanning {
-                Text(guidance)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal, 100)
-                    .allowsHitTesting(false)
+            if phase == .ready {
+                VStack(spacing: 28) {
+                    RoomPlanCoachingGraphic()
+                    
+                    Text(guidance)
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+                .allowsHitTesting(false)
             }
         }
         .overlay(alignment: .top) {

@@ -100,6 +100,10 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         
         func updateNode(width: CGFloat, height: CGFloat, length: CGFloat,
                         transform: simd_float4x4, material: SCNMaterial) {
+            // 비정상 수치가 SceneKit 도형 생성 중 예외를 일으키지 않도록 제외
+            guard width.isFinite, height.isFinite, length.isFinite,
+                  width > 0, height > 0, length > 0,
+                  Self.isFinite(transform) else { return }
             let node: SCNNode
             if nodeIndex < context.coordinator.nodes.count {
                 node = context.coordinator.nodes[nodeIndex]
@@ -131,6 +135,8 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
         func updateWalkableFloor(_ floor: CapturedRoom.Surface) {
             let width = CGFloat(max(floor.dimensions.x, 0.02))
             let height = CGFloat(max(floor.dimensions.y, 0.02))
+            guard width.isFinite, height.isFinite, width > 0, height > 0,
+                  Self.isFinite(floor.transform) else { return }
             let node: SCNNode
             if nodeIndex < context.coordinator.nodes.count {
                 node = context.coordinator.nodes[nodeIndex]
@@ -265,6 +271,15 @@ struct RoomPlanScanThumbnailView: UIViewRepresentable {
     }
     
     // 벽, 바닥, 물체 요소가 자연스럽게 보이도록 재질 추가
+    private static func isFinite(_ transform: simd_float4x4) -> Bool {
+        for column in 0..<4 {
+            for row in 0..<4 where !transform[column][row].isFinite {
+                return false
+            }
+        }
+        return true
+    }
+    
     private static func material(color: UIColor, unlit: Bool = false) -> SCNMaterial {
         let value = SCNMaterial()
         value.diffuse.contents = color

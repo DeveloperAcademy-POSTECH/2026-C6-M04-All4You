@@ -15,12 +15,14 @@ import SwiftUI
 struct RoomPlanCameraPreview: UIViewRepresentable {
     let arSession: ARSession
     let isActive: Bool
+    var onFirstFrameRendered: (() -> Void)? = nil
     
     // ARSession을 참조하는 Metal 카메라 화면 생성
     func makeUIView(context: Context) -> ARCameraFrameView {
         let view = ARCameraFrameView(frame: .zero, device: MTLCreateSystemDefaultDevice())
         view.arSession = arSession
         view.isPaused = !isActive
+        view.onFirstFrameRendered = onFirstFrameRendered
         return view
     }
     
@@ -39,7 +41,11 @@ enum RoomPlanCameraSnapshot {
         guard let frame = arSession.currentFrame else { return nil }
         let image = CIImage(cvPixelBuffer: frame.capturedImage)
             .oriented(orientation.imageOrientation)
-        guard let cgImage = imageContext.createCGImage(image, from: image.extent) else { return nil }
+        // 종료 시 RoomBuilder·파일 저장과 겹쳐도 원본 크기 이미지가 메모리를 점유하지 않도록 제한
+        let longestSide = max(image.extent.width, image.extent.height)
+        let scale = min(1, 2_048 / longestSide)
+        let preview = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cgImage = imageContext.createCGImage(preview, from: preview.extent) else { return nil }
         return UIImage(cgImage: cgImage)
     }
 }
@@ -47,6 +53,7 @@ enum RoomPlanCameraSnapshot {
 // ARFrame의 카메라 픽셀 버퍼를 방향과 화면 비율에 맞춰 Metal 표면에 출력하는 뷰
 final class ARCameraFrameView: MTKView, MTKViewDelegate {
     var arSession: ARSession?
+    var onFirstFrameRendered: (() -> Void)?
     private let imageContext: CIContext
     private let commandQueue: MTLCommandQueue?
     
@@ -95,6 +102,12 @@ final class ARCameraFrameView: MTKView, MTKViewDelegate {
             bounds: CGRect(x: 0, y: 0, width: width, height: height),
             colorSpace: CGColorSpaceCreateDeviceRGB()
         )
+        if let onFirstFrameRendered {
+            self.onFirstFrameRendered = nil
+            commandBuffer.addCompletedHandler { _ in
+                DispatchQueue.main.async(execute: onFirstFrameRendered)
+            }
+        }
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }

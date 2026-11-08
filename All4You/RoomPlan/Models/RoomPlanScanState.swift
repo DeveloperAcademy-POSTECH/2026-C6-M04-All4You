@@ -18,9 +18,9 @@ enum RoomPlanScanPhase: Equatable {
     case finished
 }
 
-// 월드맵 용량 임박·초과와 촬영·파일 저장 오류를 화면에 전달하기 위한 state
+// 권장 촬영 시간·RoomPlan 한계와 촬영·파일 저장 오류를 화면에 전달하기 위한 state
 enum RoomPlanScanIssue: Equatable {
-    case approachingLimit
+    case scanTimeLimitReached
     case sceneLimitReached
     case captureFailed(String)
     case saveFailed(String)
