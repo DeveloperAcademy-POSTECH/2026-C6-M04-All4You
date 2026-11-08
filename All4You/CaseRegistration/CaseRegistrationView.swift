@@ -158,9 +158,11 @@ extension CaseRegistrationView {
             }
         }
         ToolbarItem(placement: .confirmationAction) {
-            Button(role: .confirm, action: register)
-                .disabled(!isValid)
-                .tint(.brand500)
+            Button(role: .confirm) {
+                register()
+            }
+            .disabled(!isValid)
+            .tint(.brand500)
         }
     }
 }
