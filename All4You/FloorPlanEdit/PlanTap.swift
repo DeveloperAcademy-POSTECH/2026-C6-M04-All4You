@@ -79,7 +79,7 @@ extension PlanData {
         }
     }
 
-    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기·창문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
+    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기·창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
     /// 맞지 않는 자리이거나 놓을 수 없으면 아무것도 바꾸지 않고 nil
     mutating func place(_ tool: EditTool, at tap: PlanTap) -> PlanSelection? {
         switch (tool, tap) {
@@ -90,7 +90,9 @@ extension PlanData {
         case (.outlet, .wall(let wallId, let point, let height)):
             return addWallFixture(.outlet, wallId: wallId, at: point, height: height).map(PlanSelection.wallFixture)
         case (.window, .wall(let wallId, let point, _)):
-            return addWindow(wallId: wallId, at: point).map(PlanSelection.doorWindow)
+            return addOpening(.window, wallId: wallId, at: point).map(PlanSelection.doorWindow)
+        case (.door, .wall(let wallId, let point, _)):
+            return addOpening(.door, wallId: wallId, at: point).map(PlanSelection.doorWindow)
         default:
             return nil
         }

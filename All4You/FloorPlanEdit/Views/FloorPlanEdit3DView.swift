@@ -14,8 +14,7 @@ struct FloorPlanEdit3DView: View {
     @State private var selection: PlanSelection?
 
     /// 3D에서 가구는 보기만 하고 공간 이름은 라벨로만 보여 주므로 두 도구를 숨긴다
-    /// 문 달기는 아직 2D에만 있어 3D에서는 문 도구도 숨긴다
-    private let hiddenTools: Set<EditTool> = [.roomName, .furniture, .door]
+    private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
         FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit)

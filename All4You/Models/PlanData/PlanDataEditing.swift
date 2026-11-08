@@ -202,25 +202,38 @@ extension PlanData {
     fileprivate static let newWindowWidth = 1.0
     fileprivate static let newWindowHeight = 1.2
     fileprivate static let newWindowSillHeight = 0.9
-    /// 창문 폭·높이의 가장 작은 값 (m)
+    /// 새 문 크기 (m). 문은 바닥부터 시작한다
+    /// TEMP: 디자인 확인 전이라 흔한 방문 크기로 임시로 정한 값
+    fileprivate static let newDoorWidth = 0.9
+    fileprivate static let newDoorHeight = 2.0
+    /// 창문·문 폭·높이의 가장 작은 값 (m)
     fileprivate static let minimumWindowSize = 0.2
 
-    /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문을 달고 새 id를 돌려준다.
-    /// 벽 끝이나 옆 문·창문과 겹치면 그 사이 빈 칸 안으로 줄이거나 밀어 넣는다. 빈 칸이 너무 좁거나 벽을 찾지 못하면 nil
+    /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문을 달고 새 id를 돌려준다. addOpening(.window, …)과 같다
     mutating func addWindow(wallId: String, at point: SIMD2<Double>) -> String? {
+        addOpening(.window, wallId: wallId, at: point)
+    }
+
+    /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문이나 문을 달고 새 id를 돌려준다.
+    /// 벽 끝이나 옆 문·창문과 겹치면 그 사이 빈 칸 안으로 줄이거나 밀어 넣는다. 빈 칸이 너무 좁거나 벽을 찾지 못하면 nil
+    mutating func addOpening(_ kind: DoorWindowKind, wallId: String, at point: SIMD2<Double>) -> String? {
         guard let wall = wall(id: wallId), let line = line(of: wall) else { return nil }
+        let isDoor = kind == .door
+        let newWidth = isDoor ? Self.newDoorWidth : Self.newWindowWidth
+        let sillHeight = isDoor ? 0 : Self.newWindowSillHeight
+        let newHeight = isDoor ? Self.newDoorHeight : Self.newWindowHeight
         let along = ((point - line.start) * line.direction).sum()
         let gap = openingGap(on: wall, line: line, around: along, excluding: nil)
-        let width = min(Self.newWindowWidth, gap.upperBound - gap.lowerBound)
-        let height = min(Self.newWindowHeight, wall.height - Self.newWindowSillHeight)
+        let width = min(newWidth, gap.upperBound - gap.lowerBound)
+        let height = min(newHeight, wall.height - sillHeight)
         guard width >= Self.minimumWindowSize, height >= Self.minimumWindowSize else { return nil }
         let window = DoorWindow(
             id: UUID().uuidString,
             wallId: wallId,
-            kind: .window,
+            kind: kind,
             centerAlongWall: min(max(along, gap.lowerBound + width / 2), gap.upperBound - width / 2),
             width: width,
-            sillHeight: Self.newWindowSillHeight,
+            sillHeight: sillHeight,
             height: height
         )
         doorWindows.append(window)

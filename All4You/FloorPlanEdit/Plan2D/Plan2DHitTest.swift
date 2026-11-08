@@ -10,6 +10,9 @@ extension PlanScreen {
         }
         let planPoint = self.plan(point)
         if let wallId = wall(at: planPoint, in: plan) {
+            if let opening = opening(on: wallId, at: planPoint, in: plan) {
+                return .element(.doorWindow(opening))
+            }
             return .wall(id: wallId, point: planPoint, height: Plan2DHit.outletHeight)
         }
         return .floor(planPoint)
@@ -30,6 +33,16 @@ extension PlanScreen {
             return .marker(marker.id)
         }
         return nil
+    }
+
+    /// 벽 wallId에서 planPoint 자리에 달린 창문·문 (DoorWindow.id). 문짝 없는 개구부는 고르지 않는다
+    private func opening(on wallId: String, at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
+        guard let wall = plan.wall(id: wallId), let line = plan.line(of: wall) else { return nil }
+        let along = ((planPoint - line.start) * line.direction).sum()
+        return plan.doorWindows.first { opening in
+            opening.wallId == wallId && opening.kind != .passage
+                && abs(along - opening.centerAlongWall) <= opening.width / 2
+        }?.id
     }
 
     /// planPoint에서 가장 가까운 벽. 벽 두께 절반에 손가락 여유를 더한 거리 안에 없으면 nil. 가상 경계선은 고르지 않는다

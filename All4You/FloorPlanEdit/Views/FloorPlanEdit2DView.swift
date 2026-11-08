@@ -97,6 +97,9 @@ extension FloorPlanEdit2DView {
                     stampControls(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
+                    openingControls(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
                 }
                 .coordinateSpace(.named(Layout.planSpace))
@@ -339,10 +342,12 @@ extension FloorPlanEdit2DView {
     private var longPressGesture: some Gesture {
         LongPressGesture(minimumDuration: Layout.longPressDuration)
             .onEnded { _ in
+                // 스탬프와 창문·문 모두 꾹 누르면 메뉴가 뜬다 (창문·문은 삭제만)
                 guard let screen, let pressLocation,
-                      let stamp = screen.stamp(at: pressLocation, in: planData) else { return }
-                selection = stamp
-                menuTarget = stamp
+                      case .element(let element) = screen.tap(at: pressLocation, in: planData) else { return }
+                selectedRoomId = nil
+                selection = element
+                menuTarget = element
             }
     }
 
@@ -355,6 +360,44 @@ extension FloorPlanEdit2DView {
             .onEnded { _ in
                 pressLocation = nil
             }
+    }
+}
+
+// 창문·문 폭 바꾸기·지우기
+extension FloorPlanEdit2DView {
+    /// 고른 창문·문의 양 끝 손잡이, 또는 꾹 눌러 띄운 삭제 메뉴
+    @ViewBuilder
+    private func openingControls(screen: PlanScreen) -> some View {
+        let plan = dragPreview ?? planData
+        if case .doorWindow(let id)? = selection,
+           let opening = plan.doorWindows.first(where: { $0.id == id }),
+           let wall = plan.wall(id: opening.wallId), let line = plan.line(of: wall) {
+            let start = screen.point(line.point(along: opening.centerAlongWall - opening.width / 2))
+            let end = screen.point(line.point(along: opening.centerAlongWall + opening.width / 2))
+            if menuTarget == selection {
+                StampEditMenuView(onDuplicate: nil, onDelete: { handleEdit(.delete(.doorWindow(id))) })
+                    .fixedSize()
+                    .position(x: (start.x + end.x) / 2, y: min(start.y, end.y) - Layout.menuGap)
+            } else {
+                OpeningHandles2DView(
+                    start: start,
+                    end: end,
+                    coordinateSpace: Layout.planSpace,
+                    onDrag: { edge, location in previewOpeningEdge(id, edge: edge, at: location) },
+                    onDragEnded: commitPreview
+                )
+            }
+        }
+    }
+
+    /// 끄는 동안은 미리 보기 도면에서만 그 끝을 손가락이 있는 벽 위 자리로 옮긴다. 높이는 그대로 둔다
+    private func previewOpeningEdge(_ id: String, edge: WindowEdge, at location: CGPoint) {
+        guard let screen, let opening = planData.doorWindows.first(where: { $0.id == id }),
+              let wall = planData.wall(id: opening.wallId), let line = planData.line(of: wall) else { return }
+        let along = ((screen.plan(location) - line.start) * line.direction).sum()
+        var preview = dragPreview ?? planData
+        _ = preview.apply(.resizeWindow(id: id, edge: edge, along: along, height: opening.sillHeight), selection: selection)
+        dragPreview = preview
     }
 }
 

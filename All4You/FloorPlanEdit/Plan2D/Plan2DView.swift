@@ -84,11 +84,20 @@ extension Plan2DView {
         path.addLine(to: screen.point(line.point(along: to)))
     }
 
-    /// 문은 문짝과 열리는 호, 창문은 벽 두께 안의 두 줄. 개구부는 비워 둔다
+    /// 문은 문짝과 열리는 호, 창문은 벽 두께 안의 두 줄. 개구부는 비워 둔다.
+    /// 고른 창문·문은 벽 두께만큼 옅은 주황 띠를 깔고 기호를 주황으로 그린다
     private func drawOpening(_ opening: DoorWindow, wall: Wall, line: WallLine, in context: inout GraphicsContext) {
         let start = line.point(along: opening.centerAlongWall - opening.width / 2)
         let end = line.point(along: opening.centerAlongWall + opening.width / 2)
-        let style = StrokeStyle(lineWidth: Layout.openingLineWidth)
+        let isSelected = selection == .doorWindow(opening.id)
+        if isSelected {
+            var band = Path()
+            band.move(to: screen.point(start))
+            band.addLine(to: screen.point(end))
+            let bandWidth = max(screen.length(wall.thickness), Layout.minimumWallWidth)
+            context.stroke(band, with: .color(.brand500.opacity(Layout.selectedOpeningOpacity)), style: StrokeStyle(lineWidth: bandWidth))
+        }
+        let style = StrokeStyle(lineWidth: isSelected ? Layout.selectedOpeningLineWidth : Layout.openingLineWidth)
         var path = Path()
         switch opening.kind {
         case .door:
@@ -108,7 +117,7 @@ extension Plan2DView {
         case .passage:
             return
         }
-        context.stroke(path, with: .color(.gray600), style: style)
+        context.stroke(path, with: .color(isSelected ? .brand500 : .gray600), style: style)
     }
 }
 
@@ -191,6 +200,9 @@ extension Plan2DView {
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1
+        /// 고른 창문·문의 기호 두께와 바탕 띠 진하기
+        static let selectedOpeningLineWidth: CGFloat = 2
+        static let selectedOpeningOpacity = 0.3
         /// 고른 테두리 두께 (pt)
         static let selectionLineWidth: CGFloat = 1.5
         /// 공간 이름 캡슐을 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
