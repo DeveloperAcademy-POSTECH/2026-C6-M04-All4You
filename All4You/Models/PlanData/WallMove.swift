@@ -359,6 +359,8 @@ extension PlanData {
         }
 
         guard result.hasNoCrossingWalls, result.retraceRooms() else { return nil }
+        // 방 안에 잘 있던 사람·발화지점이 벽에 걸리거나 방 밖이 되는 자리로는 옮기지 않는다
+        guard markers.filter(fits).allSatisfy(result.fits) else { return nil }
         result.refreshRoomLabels()
         return result
     }
