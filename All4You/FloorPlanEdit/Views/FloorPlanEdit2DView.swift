@@ -41,6 +41,12 @@ struct FloorPlanEdit2DView: View {
     @State private var canvasSize: CGSize = .zero
     /// 이름 고치기 때문에 도면을 올리기 전 자리. 고치기를 끝내면 되돌린다
     @State private var screenBeforeEditing: PlanScreen?
+    /// 손 도구로 고른 벽 묶음 (일직선 줄 전체 또는 한 구간). 비스듬한 벽을 고르면 nil
+    @State private var wallSelection: WallSelection?
+    /// 벽을 끌기 시작할 때의 도면과 이동 범위. 끄는 내내 이 도면에 이동량을 더해 계산한다
+    @State private var wallDragBase: (plan: PlanData, limits: MoveLimits)?
+    /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
+    @State private var wallBlockedReason: String?
 
     var body: some View {
         GeometryReader { proxy in
@@ -86,6 +92,7 @@ extension FloorPlanEdit2DView {
                 selection: selection,
                 editingRoomId: editingRoomId,
                 selectedRoomId: selectedRoomId,
+                selectedWallIds: wallSelection?.wallIds ?? [],
                 roomLabelActions: RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag)
             )
                 .contentShape(.rect)
@@ -100,11 +107,18 @@ extension FloorPlanEdit2DView {
                     openingControls(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
+                    wallMenu(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
                 }
                 .coordinateSpace(.named(Layout.planSpace))
                 .onChange(of: selection) {
                     if menuTarget != selection { menuTarget = nil }
+                    if case .wall? = selection {} else { wallSelection = nil }
+                }
+                .overlay(alignment: .top) {
+                    wallBlockedNotice
                 }
         }
     }
@@ -168,6 +182,10 @@ extension FloorPlanEdit2DView {
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
+        if drawingTool == .hand {
+            handleHandTap(tap)
+            return
+        }
         switch (selectedTool, tap) {
         case (_, .element(let element)):
             selection = element
@@ -278,6 +296,7 @@ extension FloorPlanEdit2DView {
         DragGesture(minimumDistance: Layout.dragStartDistance)
             .onChanged { value in
                 guard let screen, let selection else { return }
+                if dragWall(value, screen: screen) { return }
                 if stampDragStart == nil {
                     guard screen.stamp(at: value.startLocation, in: planData) == selection else { return }
                     stampDragStart = stampPoint(of: selection)
@@ -293,6 +312,8 @@ extension FloorPlanEdit2DView {
             .onEnded { _ in
                 commitPreview()
                 stampDragStart = nil
+                wallDragBase = nil
+                wallBlockedReason = nil
             }
     }
 
@@ -310,8 +331,87 @@ extension FloorPlanEdit2DView {
             return plan.markers.first { $0.id == id }?.position
         case .wallFixture(let id):
             return plan.wallFixtures.first { $0.id == id }.flatMap(plan.point(of:))
-        case .doorWindow:
+        case .doorWindow, .wall:
             return nil
+        }
+    }
+}
+
+// 벽 고르기·옮기기
+// 손 도구일 때만 벽을 고른다. 한 번 누르면 일직선으로 이어진 줄 전체, 고른 벽을 다시 누르면 그 구간만 고른다.
+// 고른 벽을 끌면 가로 벽은 위아래로, 세로 벽은 좌우로만 옮기고, 다른 벽에 너무 가까워지거나 벽이 너무 짧아지면 멈춘다.
+// 비스듬한 벽은 줄로 묶지 않고 벽과 수직으로만 평행 이동한다
+extension FloorPlanEdit2DView {
+    /// 손 도구로 누른 곳이 벽이면 그 벽을 고른다. 창문·문·스탬프는 도구와 상관없이 그것을 고른다
+    private func handleHandTap(_ tap: PlanTap) {
+        switch tap {
+        case .element(let element):
+            selection = element
+        case .wall(let id, _, _):
+            if case .wall? = selection, let current = wallSelection, current.wallIds.contains(id) {
+                // 고른 벽을 다시 누르면 줄 전체 ↔ 이 구간만
+                wallSelection = current.isWholeLine ? planData.wallSegment(id) : planData.wallLine(containing: id)
+            } else {
+                wallSelection = planData.wallLine(containing: id)
+            }
+            selection = .wall(id)
+        case .floor:
+            selection = nil
+        }
+    }
+
+    /// 고른 벽 위에서 시작한 끌기면 벽을 옮긴다. 옮겼으면 true
+    private func dragWall(_ value: DragGesture.Value, screen: PlanScreen) -> Bool {
+        guard case .wall(let id)? = selection,
+              case .wall(let startId, _, _) = screen.tap(at: value.startLocation, in: wallDragBase?.plan ?? planData),
+              startId == id || wallSelection?.wallIds.contains(startId) == true else { return false }
+        menuTarget = nil
+        let moved = screen.plan(value.location) - screen.plan(value.startLocation)
+        guard let wallSelection else {
+            // 비스듬한 벽: 벽과 수직으로 평행 이동만
+            guard let wall = planData.wall(id: id), let line = planData.line(of: wall) else { return true }
+            var preview = planData
+            _ = preview.apply(.moveWall(id: id, distance: (moved * line.leftNormal).sum()), selection: selection)
+            dragPreview = preview
+            return true
+        }
+        let base = wallDragBase ?? (planData, planData.moveLimits(wallSelection))
+        wallDragBase = base
+        let resolved = base.limits.resolve(moved[wallSelection.axis.across])
+        wallBlockedReason = resolved.blockedBy
+        // 도면이 깨지는 자리면 마지막으로 맞는 미리 보기를 그대로 둔다
+        if let next = base.plan.movingWalls(wallSelection, by: resolved.delta) {
+            dragPreview = next
+        }
+        return true
+    }
+
+    /// 벽이 범위 끝에 막혔을 때 위쪽에 잠깐 보여 주는 이유
+    @ViewBuilder
+    private var wallBlockedNotice: some View {
+        if let wallBlockedReason {
+            Text(wallBlockedReason)
+                .font(AppTypography.subheadline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, Layout.labelHorizontalPadding)
+                .padding(.vertical, Layout.labelVerticalPadding)
+                .background(Color.gray900, in: .capsule)
+                .padding(.top, Layout.noticeTopPadding)
+        }
+    }
+
+    /// 고른 벽을 꾹 눌러 띄운 복제·삭제 메뉴. 벽 가운데 위에 둔다
+    @ViewBuilder
+    private func wallMenu(screen: PlanScreen) -> some View {
+        if case .wall(let id)? = selection, menuTarget == selection,
+           let wall = planData.wall(id: id), let line = planData.line(of: wall) {
+            let middle = screen.point(line.point(along: line.length / 2))
+            StampEditMenuView(
+                onDuplicate: { handleEdit(.duplicate(.wall(id))) },
+                onDelete: { handleEdit(.delete(.wall(id))) }
+            )
+            .fixedSize()
+            .position(x: middle.x, y: middle.y - Layout.menuGap)
         }
     }
 }
@@ -343,11 +443,21 @@ extension FloorPlanEdit2DView {
         LongPressGesture(minimumDuration: Layout.longPressDuration)
             .onEnded { _ in
                 // 스탬프와 창문·문 모두 꾹 누르면 메뉴가 뜬다 (창문·문은 삭제만)
-                guard let screen, let pressLocation,
-                      case .element(let element) = screen.tap(at: pressLocation, in: planData) else { return }
+                guard let screen, let pressLocation else { return }
+                let target: PlanSelection
+                switch screen.tap(at: pressLocation, in: planData) {
+                case .element(let element):
+                    target = element
+                case .wall(let id, _, _) where drawingTool == .hand:
+                    // 손 도구일 때는 벽도 꾹 눌러 복제·삭제 메뉴를 띄운다. 복제·삭제는 누른 벽 한 구간에만 한다
+                    target = .wall(id)
+                    wallSelection = planData.wallSegment(id)
+                default:
+                    return
+                }
                 selectedRoomId = nil
-                selection = element
-                menuTarget = element
+                selection = target
+                menuTarget = target
             }
     }
 
@@ -443,6 +553,8 @@ extension FloorPlanEdit2DView {
         static let labelVerticalPadding: CGFloat = 6
         /// 키보드가 올라와도 가리지 않는 위쪽 몫. 이름 캡슐이 이보다 아래면 도면을 올린다
         static let keyboardFreeShare = 0.4
+        /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
+        static let noticeTopPadding: CGFloat = 8
     }
 }
 

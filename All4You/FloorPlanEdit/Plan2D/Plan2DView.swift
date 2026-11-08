@@ -13,6 +13,8 @@ struct Plan2DView: View {
     var editingRoomId: String? = nil
     /// 고른 표시(주황 사각 테두리)를 그릴 공간 이름 캡슐 (Room.id)
     var selectedRoomId: String? = nil
+    /// 함께 고른 벽들 (Wall.id). 일직선 줄 전체를 고르면 여러 개다
+    var selectedWallIds: Set<String> = []
     /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
     var roomLabelActions: RoomLabelActions? = nil
 
@@ -74,7 +76,9 @@ extension Plan2DView {
         }
         addSegment(line, from: solidStart, to: line.length + cornerOverlap, to: &wallPath)
         let width = max(screen.length(wall.thickness), Layout.minimumWallWidth)
-        context.stroke(wallPath, with: .color(.gray900), style: StrokeStyle(lineWidth: width, lineCap: .butt))
+        // 고른 벽은 문·창문 자리까지 한 줄 전체를 주황으로 그린다
+        let isSelected = selection == .wall(wall.id) || selectedWallIds.contains(wall.id)
+        context.stroke(wallPath, with: .color(isSelected ? .brand500 : .gray900), style: StrokeStyle(lineWidth: width, lineCap: .butt))
     }
 
     /// 벽 시작점에서 from~to(m) 구간을 선으로 더한다

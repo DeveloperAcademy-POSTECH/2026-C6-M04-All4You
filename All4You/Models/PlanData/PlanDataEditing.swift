@@ -195,6 +195,56 @@ extension PlanData {
     }
 }
 
+// 벽 한 줄
+extension PlanData {
+    /// 복제한 벽을 원래 벽에서 떨어뜨리는 거리 (m)
+    /// TEMP: 복제 자리는 디자인 확인 전이라 임시로 정한 값
+    fileprivate static let wallDuplicateGap = 0.5
+
+    /// 벽을 방향은 그대로 두고 수직으로 distance(m)만큼 평행 이동한다. +는 벽의 왼쪽 면 쪽.
+    /// 양 끝 꼭짓점을 함께 쓰는 이웃 벽은 늘거나 줄어 이어진 채로 남고, 벽에 달린 창문·문·콘센트는 벽 기준 위치라 함께 간다
+    mutating func moveWall(id: String, by distance: Double) {
+        guard let wall = wall(id: id), let line = line(of: wall) else { return }
+        let offset = line.leftNormal * distance
+        for vertexId in [wall.startVertex, wall.endVertex] {
+            guard let index = vertices.firstIndex(where: { $0.id == vertexId }) else { continue }
+            vertices[index].x += offset.x
+            vertices[index].y += offset.y
+        }
+    }
+
+    /// 벽 한 줄을 같은 길이·두께·높이로 옆에 하나 더 놓고 새 id를 돌려준다.
+    /// 왼쪽 면 쪽으로 떨어뜨리되 그쪽이 방 밖이면 반대쪽에 놓는다. 이웃 벽과 잇지 않은 따로 선 벽이다
+    mutating func duplicateWall(id: String) -> String? {
+        guard let original = wall(id: id), let line = line(of: original) else { return nil }
+        let middle = line.point(along: line.length / 2)
+        let towardLeft = line.leftNormal * Self.wallDuplicateGap
+        let offset = isInsideRoom(middle + towardLeft) ? towardLeft : -towardLeft
+        let start = Vertex(id: UUID().uuidString, x: line.start.x + offset.x, y: line.start.y + offset.y)
+        let end = Vertex(id: UUID().uuidString, x: line.end.x + offset.x, y: line.end.y + offset.y)
+        let copy = Wall(
+            id: UUID().uuidString,
+            startVertex: start.id,
+            endVertex: end.id,
+            thickness: original.thickness,
+            height: original.height,
+            isVirtual: false
+        )
+        vertices += [start, end]
+        walls.append(copy)
+        return copy.id
+    }
+
+    /// 벽을 지운다. 방 경계(Room.boundary)가 이 벽을 가리키므로 실제로 빼지 않고 가상 경계선으로 바꿔, 2D·3D에 그리지 않는다.
+    /// 그 벽에 달린 창문·문·콘센트는 붙을 곳이 없어지므로 함께 지운다
+    mutating func removeWall(id: String) {
+        guard let index = walls.firstIndex(where: { $0.id == id }) else { return }
+        walls[index].isVirtual = true
+        doorWindows.removeAll { $0.wallId == id }
+        wallFixtures.removeAll { $0.wallId == id }
+    }
+}
+
 // 창문
 extension PlanData {
     /// 새 창문 크기 (m)

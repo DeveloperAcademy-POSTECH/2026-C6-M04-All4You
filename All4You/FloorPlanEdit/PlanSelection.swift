@@ -8,4 +8,6 @@ enum PlanSelection: Equatable {
     case wallFixture(String)
     /// 창문·문 (DoorWindow.id). 문짝 없는 개구부는 고르지 않는다
     case doorWindow(String)
+    /// 벽 한 줄 (Wall.id). 2D에서 손 도구로만 고른다
+    case wall(String)
 }
