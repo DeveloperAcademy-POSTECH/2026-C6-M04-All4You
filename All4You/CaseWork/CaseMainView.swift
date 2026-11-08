@@ -7,7 +7,7 @@ struct CaseMainView: View {
     // 뒤로가기, 편집하기(펜 아이콘)
     let onBack: () -> Void
     let onEdit: () -> Void
-
+    
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
     // 사이드바에서 고른 줄. 도면의 2D·3D도 여기서 정해진다
@@ -17,7 +17,8 @@ struct CaseMainView: View {
     @State private var memoRows = Copy.memoRows
     // 거절된 권한. 값이 있으면 설정 앱으로 안내하는 알림이 뜬다
     @State private var deniedPermission: DeniedPermission?
-
+    @State private var isExportSheetPresented = false
+    
     var body: some View {
         CaseTabView(selection: $selection, albumRows: albumRows, memoRows: memoRows, onClearRow: clearRow) {
             withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: dimension))
@@ -39,6 +40,12 @@ struct CaseMainView: View {
         } message: { permission in
             Text(permission.message)
         }
+        .sheet(isPresented: $isExportSheetPresented) {
+            FloorPlanSaveView { configuration in
+                // TODO: configuration(사용자가 선택한 저장 옵션 및 도면 타입)을 이용해 실제 저장 로직 구현
+                print("저장됨: \(configuration)")
+            }
+        }
     }
 }
 
@@ -51,7 +58,7 @@ extension CaseMainView {
             set: { selection = $0 == .threeD ? .floorPlan3D : .floorPlan2D }
         )
     }
-
+    
     /// 탭마다 상단 바가 따로 있어서, 어느 탭에서든 같은 상단 바 버튼이 보이도록 각 탭 내용에 붙인다
     private func withCaseToolbars(_ content: some View) -> some View {
         content
@@ -64,7 +71,7 @@ extension CaseMainView {
                 onImportPhoto: importPhoto,
                 onEdit: onEdit,
                 onExport: {
-                    // TODO: 내보내기
+                    isExportSheetPresented = true
                 }
             )
             .caseTitleToolbar(
@@ -78,10 +85,10 @@ extension CaseMainView {
                     // TODO: 새 조사 차수 만들기
                 }
             )
-            // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
+        // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
             .backOnlyToolbar(onBack: onBack)
     }
-
+    
     /// 사이드바에서 삭제를 확인한 장소의 사진·메모를 비운다. 장소 줄은 남고 개수만 0이 된다
     private func clearRow(_ value: CaseTabSelection) {
         switch value {
@@ -98,7 +105,7 @@ extension CaseMainView {
             return
         }
     }
-
+    
     /// "사진 촬영하기": 카메라, 그다음 위치 권한을 확인한다. 위치는 촬영 위치를 남기는 데 필요해서 거절하면 촬영하지 않는다
     // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func takePhoto() {
@@ -108,7 +115,7 @@ extension CaseMainView {
             // TODO: 사진 촬영 화면 띄우기 (Figma 17:5114~, 이후 묶음)
         }
     }
-
+    
     /// "사진 불러오기": 사진 보관함 권한을 확인한다
     // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func importPhoto() {
@@ -117,7 +124,7 @@ extension CaseMainView {
             // TODO: 사진 선택 화면 띄우기 (Figma 17:4837 "사진" 시트, 이후 묶음)
         }
     }
-
+    
     /// 허용이면 true. 방금 알림에서 거절했으면 메인에 그대로 두고(Figma 40:35726),
     /// 전에 이미 거절했으면 다시 물을 수 없으므로 설정 이동 알림을 띄운다
     private func checkAllowed(_ result: PermissionService.Result, deniedPermission permission: DeniedPermission) -> Bool {
@@ -131,7 +138,7 @@ extension CaseMainView {
             return false
         }
     }
-
+    
     /// 설정 이동 알림은 deniedPermission에 값이 있을 때 뜨고, 닫히면 값을 지운다
     private var isDeniedAlertShown: Binding<Bool> {
         Binding(
@@ -141,7 +148,7 @@ extension CaseMainView {
             }
         )
     }
-
+    
     /// 아직 내용이 없는 앨범·메모 탭의 빈 화면
     private func emptyTab(_ placeholder: String) -> some View {
         Text(placeholder)
@@ -158,7 +165,7 @@ extension CaseMainView {
         static let title = "청암로 77"
         static let sessionNumber = 1
         static let sessionNumbers = [1, 2]
-
+        
         // TEMP: 장소·사진·메모 데이터가 생기기 전 임시 값 — 데이터가 생기면 장소별 개수로 바꿔야 함
         // name은 ERD Room.name. count는 ERD에 없는 계산값으로, 앨범은 evidencePhotoCount, 메모는 memoCount라는 이름으로 쓸 예정 (임시 이름, PR에 명시)
         static let albumRows = [
@@ -173,10 +180,10 @@ extension CaseMainView {
             CaseSidebarRow(name: "안방", systemImage: "bed.double", count: 2),
             CaseSidebarRow(name: "방1", systemImage: "fork.knife", count: 6)
         ]
-
+        
         static let albumPlaceholder = "앨범 자리"
         static let memoPlaceholder = "메모 자리"
-
+        
         // TEMP: Figma에 거절 알림이 없어 임의로 작성한 문구 — 팀 확정 필요
         static let openSettings = "설정으로 이동"
         static let cancel = "취소"
@@ -187,13 +194,13 @@ extension CaseMainView {
         static let locationDeniedTitle = "위치 접근이 꺼져 있습니다"
         static let locationDeniedMessage = "사진의 촬영 위치를 남기려면 설정에서 위치 접근을 허용해 주세요."
     }
-
+    
     /// 거절돼서 설정 앱으로 안내해야 하는 권한과 그 알림 문구
     private enum DeniedPermission {
         case camera
         case photoLibrary
         case location
-
+        
         var title: String {
             switch self {
             case .camera: Copy.cameraDeniedTitle
@@ -201,7 +208,7 @@ extension CaseMainView {
             case .location: Copy.locationDeniedTitle
             }
         }
-
+        
         var message: String {
             switch self {
             case .camera: Copy.cameraDeniedMessage
