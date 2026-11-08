@@ -171,30 +171,6 @@ extension FloorPlan3DView {
     }
 }
 
-/// 3D에서 누른 곳을 도면 기준 값으로 바꾼 것
-enum PlanTap {
-    /// 고를 수 있는 요소 (스탬프·콘센트·창문)
-    case element(PlanSelection)
-    /// 바닥 위 도면 점 (m)
-    case floor(SIMD2<Double>)
-    /// 벽 면 위 도면 점 (m)과 바닥에서 높이 (m)
-    case wall(id: String, point: SIMD2<Double>, height: Double)
-}
-
-/// 3D에서 스탬프를 바꾼 것. 끌기는 손을 뗄 때 한 번 알린다
-enum PlanEdit {
-    /// 스탬프를 도면 점 (m)과 바닥에서 높이 (m)로 옮김. 사람·발화지점은 높이를 쓰지 않는다
-    case move(PlanSelection, point: SIMD2<Double>, height: Double)
-    /// 사람·발화지점(PlanMarker.id)의 방향을 yaw(도)로 바꿈
-    case rotate(markerId: String, yaw: Double)
-    /// 스탬프를 옆에 하나 더 만듦
-    case duplicate(PlanSelection)
-    /// 스탬프·창문을 지움
-    case delete(PlanSelection)
-    /// 창문(DoorWindow.id) 테두리 edge를 벽 시작점에서 along(m), 바닥에서 height(m) 자리로 옮김
-    case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
-}
-
 // 스탬프 끌어 옮기기
 // 끄는 동안은 엔티티만 움직이고 도면은 손을 뗄 때 한 번 바꾼다 (끄는 내내 장면을 다시 만들지 않게)
 extension FloorPlan3DView {

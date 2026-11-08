@@ -48,17 +48,9 @@ extension FloorPlanEdit3DView {
             selection = element
         case (nil, _):
             selection = nil
-        case (.ignitionPoint?, .floor(let point)?):
-            selection = .marker(planData.addMarker(.ignitionPoint, at: point))
-        case (.person?, .floor(let point)?):
-            selection = .marker(planData.addMarker(.person, at: point))
-        case (.outlet?, .wall(let wallId, let point, let height)?):
-            guard let id = planData.addWallFixture(.outlet, wallId: wallId, at: point, height: height) else { return }
-            selection = .wallFixture(id)
-        case (.window?, .wall(let wallId, let point, _)?):
-            guard let id = planData.addWindow(wallId: wallId, at: point) else { return }
-            selection = .doorWindow(id)
-        default:
+        case (let tool?, let tap?):
+            selection = planData.place(tool, at: tap) ?? selection
+        case (_?, nil):
             break
         }
     }

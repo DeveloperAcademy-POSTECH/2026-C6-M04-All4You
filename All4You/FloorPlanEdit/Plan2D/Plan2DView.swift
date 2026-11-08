@@ -7,6 +7,11 @@ import SwiftUI
 struct Plan2DView: View {
     let planData: PlanData
     let screen: PlanScreen
+    /// 고른 표시(주황 사각 테두리)를 그릴 스탬프
+    var selection: PlanSelection? = nil
+
+    /// 스탬프 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
+    static let stampSize = 0.4
 
     var body: some View {
         Canvas { context, _ in
@@ -88,29 +93,37 @@ extension Plan2DView {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
                 stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName)
+                    .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
                     .position(screen.point(marker.position))
             }
             ForEach(planData.wallFixtures) { fixture in
-                if let point = fixturePoint(fixture) {
+                if let point = planData.point(of: fixture) {
                     stampIcon(EditTool.outlet.iconName)
+                        .overlay { selectionBorder(isSelected: selection == .wallFixture(fixture.id)) }
                         .position(screen.point(point))
                 }
             }
         }
     }
 
+    /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
     private func stampIcon(_ systemName: String) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: screen.length(Layout.stampSize)))
+        let size = screen.length(Self.stampSize)
+        return Image(systemName: systemName)
+            .font(.system(size: size))
             .foregroundStyle(.brand500)
+            .frame(width: size, height: size)
     }
 
-    /// 콘센트가 붙은 벽 면 위의 도면 점
-    private func fixturePoint(_ fixture: WallFixture) -> SIMD2<Double>? {
-        guard let wall = planData.wall(id: fixture.wallId), let line = planData.line(of: wall) else { return nil }
-        let side = fixture.face == .left ? 1.0 : -1.0
-        return line.point(along: fixture.positionAlongWall) + line.leftNormal * (side * wall.thickness / 2)
+    /// 고른 스탬프 둘레의 주황 사각 테두리
+    @ViewBuilder
+    private func selectionBorder(isSelected: Bool) -> some View {
+        if isSelected {
+            Rectangle()
+                .stroke(.brand500, lineWidth: Layout.selectionLineWidth)
+                .padding(-Layout.selectionPadding)
+        }
     }
 
     /// 공간 이름 캡슐. 글자는 확대해도 같은 크기다
@@ -130,8 +143,9 @@ extension Plan2DView {
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1
-        /// 스탬프 아이콘 크기 (m)
-        static let stampSize = 0.4
+        /// 고른 테두리 두께와, 아이콘에서 테두리까지 (pt)
+        static let selectionLineWidth: CGFloat = 1.5
+        static let selectionPadding: CGFloat = 6
     }
 }
 

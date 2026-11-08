@@ -1,4 +1,5 @@
-// 2D 도면 수정 화면. 도면을 화면에 맞춰 보여 주고 두 손가락으로 확대·축소하고 옮긴다. 스탬프·공간 이름·벽 수정은 이어서 들어온다
+// 2D 도면 수정 화면. 도면을 화면에 맞춰 보여 주고 두 손가락으로 확대·축소하고 옮긴다.
+// 스탬프는 도구로 놓고, 눌러 고르고, 끌어 옮긴다. 공간 이름·창문·벽 수정은 이어서 들어온다
 
 import SwiftUI
 
@@ -17,6 +18,12 @@ struct FloorPlanEdit2DView: View {
     @State private var screen: PlanScreen?
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
     @State private var lastMagnification = 1.0
+    /// 고른 스탬프
+    @State private var selection: PlanSelection?
+    /// 고른 스탬프를 끄는 중이면, 끌기를 시작할 때 스탬프가 있던 도면 점
+    @State private var stampDragStart: SIMD2<Double>?
+    /// 스탬프를 끄는 동안 미리 보여 주는 도면. 손을 떼면 planData를 한 번만 바꾼다
+    @State private var dragPreview: PlanData?
 
     var body: some View {
         GeometryReader { proxy in
@@ -51,13 +58,79 @@ extension FloorPlanEdit2DView {
     @ViewBuilder
     private var planCanvas: some View {
         if let screen {
-            Plan2DView(planData: planData, screen: screen)
+            Plan2DView(planData: dragPreview ?? planData, screen: screen, selection: selection)
+                .contentShape(.rect)
+                .gesture(tapGesture)
+                .simultaneousGesture(stampDragGesture)
         }
     }
 
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool)
             .padding()
+    }
+}
+
+// 누르기
+extension FloorPlanEdit2DView {
+    private var tapGesture: some Gesture {
+        SpatialTapGesture()
+            .onEnded { value in
+                guard let screen else { return }
+                handleTap(screen.tap(at: value.location, in: planData))
+            }
+    }
+
+    /// 이미 놓인 스탬프를 누르면 도구와 상관없이 그것을 고른다.
+    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 고른 것을 푼다.
+    /// 도구는 놓은 뒤에도 켜져 있고, 방금 놓은 스탬프를 고른 상태로 둔다 (3D 수정 화면과 같다)
+    private func handleTap(_ tap: PlanTap) {
+        switch (selectedTool, tap) {
+        case (_, .element(let element)):
+            selection = element
+        case (nil, _):
+            selection = nil
+        case (let tool?, _):
+            selection = planData.place(tool, at: tap) ?? selection
+        }
+    }
+}
+
+// 스탬프 끌어 옮기기
+// 끄는 동안은 미리 보기 도면만 바꾸고, 손을 뗄 때 planData를 한 번 바꾼다
+extension FloorPlanEdit2DView {
+    /// 고른 스탬프 위에서 시작한 한 손가락 끌기만 스탬프를 옮긴다. 다른 곳에서 시작한 끌기는 아무것도 하지 않는다
+    private var stampDragGesture: some Gesture {
+        DragGesture(minimumDistance: Layout.dragStartDistance)
+            .onChanged { value in
+                guard let screen, let selection else { return }
+                if stampDragStart == nil {
+                    guard screen.stamp(at: value.startLocation, in: planData) == selection else { return }
+                    stampDragStart = stampPoint(of: selection)
+                }
+                guard let start = stampDragStart else { return }
+                let point = start + screen.plan(value.location) - screen.plan(value.startLocation)
+                var preview = planData
+                preview.moveStamp(selection, to: point)
+                dragPreview = preview
+            }
+            .onEnded { _ in
+                if let dragPreview { planData = dragPreview }
+                dragPreview = nil
+                stampDragStart = nil
+            }
+    }
+
+    /// 스탬프가 놓인 도면 점
+    private func stampPoint(of selection: PlanSelection) -> SIMD2<Double>? {
+        switch selection {
+        case .marker(let id):
+            planData.markers.first { $0.id == id }?.position
+        case .wallFixture(let id):
+            planData.wallFixtures.first { $0.id == id }.flatMap(planData.point(of:))
+        case .doorWindow:
+            nil
+        }
     }
 }
 
@@ -90,6 +163,8 @@ extension FloorPlanEdit2DView {
         static let planFill = 0.85
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
+        /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
+        static let dragStartDistance: CGFloat = 4
     }
 }
 
