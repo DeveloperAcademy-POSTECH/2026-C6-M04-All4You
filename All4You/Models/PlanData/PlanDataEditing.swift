@@ -178,6 +178,23 @@ extension PlanData {
     }
 }
 
+// 공간 이름
+extension PlanData {
+    /// 방 이름을 바꾼다. 앞뒤 빈칸을 빼고 비어 있으면 바꾸지 않는다
+    mutating func renameRoom(id: String, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = rooms.firstIndex(where: { $0.id == id }) else { return }
+        rooms[index].name = trimmed
+    }
+
+    /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
+    mutating func moveRoomLabel(id: String, to point: SIMD2<Double>) {
+        guard room(containing: point)?.id == id, let index = rooms.firstIndex(where: { $0.id == id }) else { return }
+        rooms[index].labelX = point.x
+        rooms[index].labelY = point.y
+    }
+}
+
 // 창문
 extension PlanData {
     /// 새 창문 크기 (m)

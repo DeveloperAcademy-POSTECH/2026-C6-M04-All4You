@@ -23,6 +23,11 @@ extension PlanData {
         }
     }
 
+    /// 점 p(도면 좌표, m)를 품은 방. 어느 방에도 없으면 nil
+    func room(containing p: SIMD2<Double>) -> Room? {
+        rooms.first { Self.polygon(polygon(of: $0), contains: p) }
+    }
+
     /// 방을 한 바퀴 도는 꼭짓점 점들 (도면 좌표). 경계 벽의 도는 방향 쪽 시작점을 차례로 모은다
     func polygon(of room: Room) -> [SIMD2<Double>] {
         room.boundary.compactMap { edge in

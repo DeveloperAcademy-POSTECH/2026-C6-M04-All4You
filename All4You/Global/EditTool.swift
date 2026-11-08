@@ -13,7 +13,7 @@ enum EditTool: CaseIterable {
         case .roomName:      ("공간라벨", "a.square.fill")
         case .furniture:     ("가구라벨", "a.square")
         case .window:        ("창문", "rectangle")
-        case .door:          ("문", "door.left.hand.closed")
+        case .door:          ("문", "button.angledtop.vertical.left")
         }
     }
 

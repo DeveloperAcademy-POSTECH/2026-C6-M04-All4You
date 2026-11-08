@@ -1,5 +1,5 @@
 // 도면을 위에서 본 2D 그림. 벽·문·창문은 선으로, 스탬프는 아이콘으로, 공간 이름은 캡슐로 그린다
-// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다
+// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐만 roomLabelActions로 누르기·끌기를 알린다)
 
 import SwiftUI
 
@@ -9,6 +9,12 @@ struct Plan2DView: View {
     let screen: PlanScreen
     /// 고른 표시(주황 사각 테두리)를 그릴 스탬프
     var selection: PlanSelection? = nil
+    /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 방 (Room.id). 이 방의 캡슐은 그리지 않는다
+    var editingRoomId: String? = nil
+    /// 고른 표시(주황 사각 테두리)를 그릴 공간 이름 캡슐 (Room.id)
+    var selectedRoomId: String? = nil
+    /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
+    var roomLabelActions: RoomLabelActions? = nil
 
     /// 콘센트 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
     static let stampSize = 0.4
@@ -29,13 +35,24 @@ struct Plan2DView: View {
                 drawWall(wall, line: line, in: &context)
             }
         }
-        .overlay(alignment: .topLeading) {
-            stamps
-        }
+        // 공간 이름을 먼저 깔아, 겹치면 스탬프가 위에 보이게 한다
         .overlay(alignment: .topLeading) {
             roomLabels
         }
+        .overlay(alignment: .topLeading) {
+            stamps
+        }
     }
+}
+
+/// 공간 이름 캡슐 누르기·끌기를 받을 곳
+struct RoomLabelActions {
+    /// 캡슐을 눌렀다 (Room.id)
+    let onTap: (String) -> Void
+    /// 캡슐을 끄는 중이다 (Room.id, 끌기 시작부터 움직인 거리)
+    let onDrag: (String, CGSize) -> Void
+    /// 끌기에서 손을 뗐다
+    let onDragEnded: () -> Void
 }
 
 // 벽과 문·창문
@@ -140,9 +157,30 @@ extension Plan2DView {
     private var roomLabels: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.rooms) { room in
-                RoomLabelView(name: room.name)
-                    .position(screen.point(SIMD2(room.labelX, room.labelY)))
+                if room.id != editingRoomId {
+                    roomLabel(room)
+                        .overlay { selectionBorder(isSelected: room.id == selectedRoomId) }
+                        .position(screen.point(SIMD2(room.labelX, room.labelY)))
+                }
             }
+        }
+    }
+
+    /// 공간 이름 캡슐. 받을 곳이 있으면 누르면 이름 고치기, 끌면 자리 옮기기를 알린다
+    @ViewBuilder
+    private func roomLabel(_ room: Room) -> some View {
+        if let actions = roomLabelActions {
+            RoomLabelView(name: room.name)
+                .onTapGesture { actions.onTap(room.id) }
+                .gesture(
+                    // 캡슐이 손가락을 따라 움직이므로, 움직인 거리는 캡슐이 아니라 화면 기준으로 잰다
+                    DragGesture(minimumDistance: Layout.labelDragDistance, coordinateSpace: .global)
+                        .onChanged { actions.onDrag(room.id, $0.translation) }
+                        .onEnded { _ in actions.onDragEnded() }
+                )
+        } else {
+            RoomLabelView(name: room.name)
+                .allowsHitTesting(false)
         }
     }
 }
@@ -155,6 +193,8 @@ extension Plan2DView {
         static let openingLineWidth: CGFloat = 1
         /// 고른 테두리 두께 (pt)
         static let selectionLineWidth: CGFloat = 1.5
+        /// 공간 이름 캡슐을 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
+        static let labelDragDistance: CGFloat = 4
     }
 }
 
