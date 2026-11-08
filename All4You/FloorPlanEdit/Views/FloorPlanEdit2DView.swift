@@ -85,7 +85,8 @@ extension FloorPlanEdit2DView {
         if let selection, let point = stampPoint(of: selection, in: plan) {
             let center = screen.point(point)
             let marker = self.marker(of: selection, in: plan)
-            let halfSize = screen.length(Plan2DView.stampSize * (marker?.drawScale ?? 1)) / 2 + Plan2DView.selectionPadding
+            let iconSize = marker.map(Plan2DView.iconSize(of:)) ?? Plan2DView.stampSize
+            let halfSize = screen.length(iconSize) / 2 + Plan2DView.selectionPadding
             if menuTarget == selection {
                 StampEditMenuView(
                     onDuplicate: { handleEdit(.duplicate(selection)) },

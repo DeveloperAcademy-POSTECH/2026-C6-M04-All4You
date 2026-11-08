@@ -10,8 +10,15 @@ struct Plan2DView: View {
     /// 고른 표시(주황 사각 테두리)를 그릴 스탬프
     var selection: PlanSelection? = nil
 
-    /// 스탬프 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
+    /// 콘센트 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
     static let stampSize = 0.4
+
+    /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라, 2D와 3D 크기가 같다
+    static func iconSize(of marker: PlanMarker) -> Double {
+        let footprint = marker.footprint
+        let delta = footprint.end - footprint.start
+        return max((delta * delta).sum().squareRoot(), footprint.radius * 2)
+    }
     /// 아이콘에서 고른 테두리까지 (pt). 손잡이도 이 테두리 모서리에 붙는다
     static let selectionPadding: CGFloat = 6
 
@@ -94,7 +101,7 @@ extension Plan2DView {
     private var stamps: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
-                stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName, scale: marker.drawScale)
+                stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName, size: Self.iconSize(of: marker))
                     // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
@@ -111,8 +118,8 @@ extension Plan2DView {
     }
 
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
-    private func stampIcon(_ systemName: String, scale: Double = 1) -> some View {
-        let size = screen.length(Self.stampSize * scale)
+    private func stampIcon(_ systemName: String, size meters: Double = Self.stampSize) -> some View {
+        let size = screen.length(meters)
         return Image(systemName: systemName)
             .font(.system(size: size))
             .foregroundStyle(.brand500)

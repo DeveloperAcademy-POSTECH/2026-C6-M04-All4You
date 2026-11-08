@@ -17,16 +17,16 @@ extension PlanScreen {
 
     /// 아이콘 안을 누른 스탬프. 겹치면 나중에 그린(위에 보이는) 것
     func stamp(at point: CGPoint, in plan: PlanData) -> PlanSelection? {
-        /// 크기 배율 scale인 스탬프가 planPoint에 있을 때 누른 점이 아이콘 안인지
-        func isNear(_ planPoint: SIMD2<Double>, scale: Double = 1) -> Bool {
-            let radius = length(Plan2DView.stampSize * scale) / 2 + Plan2DHit.fingerMargin
+        /// 아이콘 크기 size(m)인 스탬프가 planPoint에 있을 때 누른 점이 아이콘 안인지
+        func isNear(_ planPoint: SIMD2<Double>, size: Double = Plan2DView.stampSize) -> Bool {
+            let radius = length(size) / 2 + Plan2DHit.fingerMargin
             let screenPoint = self.point(planPoint)
             return hypot(screenPoint.x - point.x, screenPoint.y - point.y) <= radius
         }
         if let fixture = plan.wallFixtures.last(where: { plan.point(of: $0).map { isNear($0) } ?? false }) {
             return .wallFixture(fixture.id)
         }
-        if let marker = plan.markers.last(where: { isNear($0.position, scale: $0.drawScale) }) {
+        if let marker = plan.markers.last(where: { isNear($0.position, size: Plan2DView.iconSize(of: $0)) }) {
             return .marker(marker.id)
         }
         return nil

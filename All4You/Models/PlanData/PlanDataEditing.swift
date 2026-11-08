@@ -10,11 +10,11 @@ extension PlanData {
 
 // 사람·발화지점
 extension PlanData {
-    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다. 방 안이 아니면(벽 위·벽 바깥·도면 밖) 놓지 않고 nil.
+    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다.
+    /// 스탬프가 차지하는 자리가 방 안에 다 들어가지 않으면(벽에 닿음·벽 바깥·도면 밖) 놓지 않고 nil.
     /// 사람은 늘 누운 자세로 놓는다.
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
     mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String? {
-        guard isInsideRoom(point) else { return nil }
         let marker = PlanMarker(
             id: UUID().uuidString,
             kind: kind,
@@ -23,47 +23,75 @@ extension PlanData {
             yaw: 0,
             lying: kind == .person ? true : nil
         )
+        guard fits(marker) else { return nil }
         markers.append(marker)
         return marker.id
     }
 
-    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다. 방 안이 아니면 옮기지 않는다
+    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다. 옮긴 자리에서 벽에 닿거나 방 밖이면 옮기지 않는다
     mutating func moveMarker(id: String, to point: SIMD2<Double>) {
-        guard isInsideRoom(point), let index = markers.firstIndex(where: { $0.id == id }) else { return }
-        markers[index].position = point
+        updateMarker(id: id) { $0.position = point }
     }
 
-    /// 사람·발화지점의 방향을 yaw(도)로 바꾼다. 0~360° 안으로 맞춘다
+    /// 사람·발화지점의 방향을 yaw(도)로 바꾼다. 0~360° 안으로 맞춘다. 돌린 방향에서 벽에 닿으면 돌리지 않는다
     mutating func rotateMarker(id: String, yaw: Double) {
-        guard let index = markers.firstIndex(where: { $0.id == id }) else { return }
         let degrees = yaw.truncatingRemainder(dividingBy: 360)
-        markers[index].yaw = degrees < 0 ? degrees + 360 : degrees
+        updateMarker(id: id) { $0.yaw = degrees < 0 ? degrees + 360 : degrees }
     }
 
-    /// 사람·발화지점을 같은 종류·방향·자세로 옆에 하나 더 놓고 새 id를 돌려준다.
-    /// 오른쪽부터 왼쪽·아래·위 순서로 방 안인 자리를 찾고, 없으면 복제하지 않고 nil
+    /// 사람·발화지점을 같은 종류·방향·자세·크기로 옆에 하나 더 놓고 새 id를 돌려준다.
+    /// 오른쪽부터 왼쪽·아래·위 순서로 들어가는 자리를 찾고, 없으면 복제하지 않고 nil
     mutating func duplicateMarker(id: String) -> String? {
         guard let original = markers.first(where: { $0.id == id }) else { return nil }
         let gap = Self.duplicateGap
         let offsets = [SIMD2(gap, 0), SIMD2(-gap, 0), SIMD2(0, gap), SIMD2(0, -gap)]
-        guard let position = offsets.map({ original.position + $0 }).first(where: isInsideRoom) else { return nil }
-        let copy = PlanMarker(
-            id: UUID().uuidString,
-            kind: original.kind,
-            position: position,
-            height: original.height,
-            yaw: original.yaw,
-            lying: original.lying,
-            scale: original.scale
-        )
+        let copies = offsets.map { offset in
+            PlanMarker(
+                id: UUID().uuidString,
+                kind: original.kind,
+                position: original.position + offset,
+                height: original.height,
+                yaw: original.yaw,
+                lying: original.lying,
+                scale: original.scale
+            )
+        }
+        guard let copy = copies.first(where: fits) else { return nil }
         markers.append(copy)
         return copy.id
     }
 
-    /// 사람·발화지점의 크기 배율을 바꾼다. markerScaleRange 안으로 맞춘다
+    /// 사람·발화지점의 크기 배율을 바꾼다. markerScaleRange 안으로 맞추고,
+    /// 그 크기로 벽에 닿으면 지금 크기와 바라는 크기 사이에서 들어가는 가장 가까운 크기로 줄인다
     mutating func resizeMarker(id: String, scale: Double) {
+        guard let original = markers.first(where: { $0.id == id }) else { return }
+        let wanted = min(max(scale, Self.markerScaleRange.lowerBound), Self.markerScaleRange.upperBound)
+        var resized = original
+        resized.scale = wanted
+        if !fits(resized) {
+            // 지금 크기(들어감)와 바라는 크기(안 들어감) 사이를 반씩 좁혀 들어가는 가장 큰 크기를 찾는다
+            var fitting = original.drawScale
+            var blocked = wanted
+            for _ in 0..<Self.resizeSearchSteps {
+                let middle = (fitting + blocked) / 2
+                resized.scale = middle
+                if fits(resized) { fitting = middle } else { blocked = middle }
+            }
+            resized.scale = fitting
+        }
+        updateMarker(id: id) { $0.scale = resized.scale }
+    }
+
+    /// 들어가는 크기를 찾을 때 반씩 좁히는 횟수. 10번이면 배율 차이가 0.002 안으로 맞는다
+    private static let resizeSearchSteps = 10
+
+    /// 표시 하나를 change대로 바꿔 보고, 바뀐 자리가 방 안에 다 들어갈 때만 반영한다
+    private mutating func updateMarker(id: String, _ change: (inout PlanMarker) -> Void) {
         guard let index = markers.firstIndex(where: { $0.id == id }) else { return }
-        markers[index].scale = min(max(scale, Self.markerScaleRange.lowerBound), Self.markerScaleRange.upperBound)
+        var changed = markers[index]
+        change(&changed)
+        guard fits(changed) else { return }
+        markers[index] = changed
     }
 
     /// 사람·발화지점 크기 배율의 범위
