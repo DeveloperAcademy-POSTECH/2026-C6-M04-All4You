@@ -24,6 +24,42 @@ enum PlanEdit {
     case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
 }
 
+// 바꾼 것을 도면에 반영하기
+extension PlanData {
+    /// 옮기거나 돌리거나 복제·삭제한 것을 도면에 반영하고, 그 뒤 고를 것을 돌려준다.
+    /// 복제하면 새 것을, 지우면 nil을, 나머지는 selection을 그대로 돌려준다
+    mutating func apply(_ edit: PlanEdit, selection: PlanSelection?) -> PlanSelection? {
+        switch edit {
+        case .duplicate(.marker(let id)):
+            return duplicateMarker(id: id).map(PlanSelection.marker) ?? selection
+        case .duplicate(.wallFixture(let id)):
+            return duplicateWallFixture(id: id).map(PlanSelection.wallFixture) ?? selection
+        case .duplicate(.doorWindow):
+            return selection
+        case .delete(.marker(let id)):
+            removeMarker(id: id)
+            return nil
+        case .delete(.wallFixture(let id)):
+            removeWallFixture(id: id)
+            return nil
+        case .delete(.doorWindow(let id)):
+            removeDoorWindow(id: id)
+            return nil
+        case .resizeWindow(let id, let edge, let along, let height):
+            resizeWindow(id: id, edge: edge, along: along, height: height)
+        case .move(.marker(let id), let point, _):
+            moveMarker(id: id, to: point)
+        case .move(.wallFixture(let id), let point, let height):
+            moveWallFixture(id: id, to: point, height: height)
+        case .move(.doorWindow, _, _):
+            break
+        case .rotate(let markerId, let yaw):
+            rotateMarker(id: markerId, yaw: yaw)
+        }
+        return selection
+    }
+}
+
 // 도구로 빈 곳을 눌러 놓기, 고른 스탬프 옮기기
 extension PlanData {
     /// 고른 스탬프를 도면 점 point로 옮긴다. 벽에 붙은 것은 붙은 벽을 따라서만 움직이고 높이는 그대로 둔다

@@ -57,33 +57,7 @@ extension FloorPlanEdit3DView {
 
     /// 옮기거나 돌리거나 복제·삭제한 스탬프를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
     private func handleEdit(_ edit: PlanEdit) {
-        switch edit {
-        case .duplicate(.marker(let id)):
-            selection = planData.duplicateMarker(id: id).map(PlanSelection.marker) ?? selection
-        case .duplicate(.wallFixture(let id)):
-            selection = planData.duplicateWallFixture(id: id).map(PlanSelection.wallFixture) ?? selection
-        case .delete(.marker(let id)):
-            planData.removeMarker(id: id)
-            selection = nil
-        case .delete(.wallFixture(let id)):
-            planData.removeWallFixture(id: id)
-            selection = nil
-        case .delete(.doorWindow(let id)):
-            planData.removeDoorWindow(id: id)
-            selection = nil
-        case .duplicate(.doorWindow):
-            break
-        case .resizeWindow(let id, let edge, let along, let height):
-            planData.resizeWindow(id: id, edge: edge, along: along, height: height)
-        case .move(.marker(let id), let point, _):
-            planData.moveMarker(id: id, to: point)
-        case .move(.wallFixture(let id), let point, let height):
-            planData.moveWallFixture(id: id, to: point, height: height)
-        case .move(.doorWindow, _, _):
-            break
-        case .rotate(let markerId, let yaw):
-            planData.rotateMarker(id: markerId, yaw: yaw)
-        }
+        selection = planData.apply(edit, selection: selection)
     }
 }
 

@@ -22,8 +22,12 @@ struct FloorPlanEdit2DView: View {
     @State private var selection: PlanSelection?
     /// 고른 스탬프를 끄는 중이면, 끌기를 시작할 때 스탬프가 있던 도면 점
     @State private var stampDragStart: SIMD2<Double>?
-    /// 스탬프를 끄는 동안 미리 보여 주는 도면. 손을 떼면 planData를 한 번만 바꾼다
+    /// 스탬프를 끌거나 돌리는 동안 미리 보여 주는 도면. 손을 떼면 planData를 한 번만 바꾼다
     @State private var dragPreview: PlanData?
+    /// 꾹 눌러 복제·삭제 메뉴를 띄운 스탬프. 다른 것을 고르거나 스탬프를 끌기 시작하면 사라진다
+    @State private var menuTarget: PlanSelection?
+    /// 지금 손가락이 닿아 있는 첫 화면 점. 꾹 누르기가 어느 스탬프 위였는지 알 때 쓴다 (꾹 누르기는 자리를 알려 주지 않아서)
+    @State private var pressLocation: CGPoint?
 
     var body: some View {
         GeometryReader { proxy in
@@ -62,6 +66,42 @@ extension FloorPlanEdit2DView {
                 .contentShape(.rect)
                 .gesture(tapGesture)
                 .simultaneousGesture(stampDragGesture)
+                .simultaneousGesture(longPressGesture)
+                .simultaneousGesture(pressLocationGesture)
+                .overlay(alignment: .topLeading) {
+                    stampControls(screen: screen)
+                }
+                .coordinateSpace(.named(Layout.planSpace))
+                .onChange(of: selection) {
+                    if menuTarget != selection { menuTarget = nil }
+                }
+        }
+    }
+
+    /// 고른 스탬프의 ✕·↻ 손잡이, 또는 꾹 눌러 띄운 복제·삭제 메뉴
+    @ViewBuilder
+    private func stampControls(screen: PlanScreen) -> some View {
+        let plan = dragPreview ?? planData
+        if let selection, let point = stampPoint(of: selection, in: plan) {
+            let center = screen.point(point)
+            let halfSize = screen.length(Plan2DView.stampSize) / 2 + Plan2DView.selectionPadding
+            if menuTarget == selection {
+                StampEditMenuView(
+                    onDuplicate: { handleEdit(.duplicate(selection)) },
+                    onDelete: { handleEdit(.delete(selection)) }
+                )
+                .position(x: center.x, y: center.y - halfSize - Layout.menuGap)
+            } else {
+                StampHandles2DView(
+                    center: center,
+                    halfSize: halfSize,
+                    yaw: markerYaw(of: selection, in: plan),
+                    coordinateSpace: Layout.planSpace,
+                    onDelete: { handleEdit(.delete(selection)) },
+                    onRotate: { yaw in rotatePreview(selection, yaw: yaw) },
+                    onRotateEnded: commitPreview
+                )
+            }
         }
     }
 
@@ -109,6 +149,7 @@ extension FloorPlanEdit2DView {
                     stampDragStart = stampPoint(of: selection)
                 }
                 guard let start = stampDragStart else { return }
+                menuTarget = nil
                 let point = start + screen.plan(value.location) - screen.plan(value.startLocation)
                 // 방 밖으로 끌면 옮겨지지 않으므로, 직전 미리 보기에서 이어 가 마지막으로 놓을 수 있던 자리에 멈춰 있게 한다
                 var preview = dragPreview ?? planData
@@ -116,22 +157,73 @@ extension FloorPlanEdit2DView {
                 dragPreview = preview
             }
             .onEnded { _ in
-                if let dragPreview { planData = dragPreview }
-                dragPreview = nil
+                commitPreview()
                 stampDragStart = nil
             }
     }
 
+    /// 미리 보기 도면이 있으면 planData에 한 번 반영하고 지운다
+    private func commitPreview() {
+        if let dragPreview { planData = dragPreview }
+        dragPreview = nil
+    }
+
     /// 스탬프가 놓인 도면 점
-    private func stampPoint(of selection: PlanSelection) -> SIMD2<Double>? {
+    private func stampPoint(of selection: PlanSelection, in plan: PlanData? = nil) -> SIMD2<Double>? {
+        let plan = plan ?? planData
         switch selection {
         case .marker(let id):
-            planData.markers.first { $0.id == id }?.position
+            return plan.markers.first { $0.id == id }?.position
         case .wallFixture(let id):
-            planData.wallFixtures.first { $0.id == id }.flatMap(planData.point(of:))
+            return plan.wallFixtures.first { $0.id == id }.flatMap(plan.point(of:))
         case .doorWindow:
-            nil
+            return nil
         }
+    }
+}
+
+// 스탬프 돌리기·복제·삭제
+extension FloorPlanEdit2DView {
+    /// 사람·발화지점의 방향 (도). 방향이 없는 것(콘센트)은 nil
+    private func markerYaw(of selection: PlanSelection, in plan: PlanData) -> Double? {
+        guard case .marker(let id) = selection else { return nil }
+        return plan.markers.first { $0.id == id }?.yaw
+    }
+
+    /// 돌리는 동안은 미리 보기 도면만 돌린다
+    private func rotatePreview(_ selection: PlanSelection, yaw: Double) {
+        guard case .marker(let id) = selection else { return }
+        var preview = dragPreview ?? planData
+        _ = preview.apply(.rotate(markerId: id, yaw: yaw), selection: selection)
+        dragPreview = preview
+    }
+
+    /// 복제·삭제를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
+    private func handleEdit(_ edit: PlanEdit) {
+        selection = planData.apply(edit, selection: selection)
+        menuTarget = nil
+    }
+
+    /// 스탬프 위를 꾹 누르면 그것을 고르고 복제·삭제 메뉴를 띄운다
+    private var longPressGesture: some Gesture {
+        LongPressGesture(minimumDuration: Layout.longPressDuration)
+            .onEnded { _ in
+                guard let screen, let pressLocation,
+                      let stamp = screen.stamp(at: pressLocation, in: planData) else { return }
+                selection = stamp
+                menuTarget = stamp
+            }
+    }
+
+    /// 손가락이 처음 닿은 자리를 받아 둔다
+    private var pressLocationGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if pressLocation == nil { pressLocation = value.startLocation }
+            }
+            .onEnded { _ in
+                pressLocation = nil
+            }
     }
 }
 
@@ -166,6 +258,12 @@ extension FloorPlanEdit2DView {
         static let toolBarInset: CGFloat = 90
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
         static let dragStartDistance: CGFloat = 4
+        /// 편집 메뉴를 띄우는 꾹 누르기 시간 (초). 3D와 같다
+        static let longPressDuration = 0.5
+        /// 고른 테두리 위 변과 편집 메뉴 가운데 사이 (pt)
+        static let menuGap: CGFloat = 36
+        /// 손잡이를 끄는 거리를 재는 좌표 공간 이름 (도면 그림 전체)
+        static let planSpace = "plan2D"
     }
 }
 

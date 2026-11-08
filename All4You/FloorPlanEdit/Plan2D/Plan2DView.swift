@@ -12,6 +12,8 @@ struct Plan2DView: View {
 
     /// 스탬프 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
     static let stampSize = 0.4
+    /// 아이콘에서 고른 테두리까지 (pt). 손잡이도 이 테두리 모서리에 붙는다
+    static let selectionPadding: CGFloat = 6
 
     var body: some View {
         Canvas { context, _ in
@@ -93,6 +95,7 @@ extension Plan2DView {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
                 stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName)
+                    // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
                     .position(screen.point(marker.position))
@@ -122,7 +125,7 @@ extension Plan2DView {
         if isSelected {
             Rectangle()
                 .stroke(.brand500, lineWidth: Layout.selectionLineWidth)
-                .padding(-Layout.selectionPadding)
+                .padding(-Self.selectionPadding)
         }
     }
 
@@ -143,9 +146,8 @@ extension Plan2DView {
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1
-        /// 고른 테두리 두께와, 아이콘에서 테두리까지 (pt)
+        /// 고른 테두리 두께 (pt)
         static let selectionLineWidth: CGFloat = 1.5
-        static let selectionPadding: CGFloat = 6
     }
 }
 
