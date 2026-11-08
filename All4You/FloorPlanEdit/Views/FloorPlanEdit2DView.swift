@@ -10,6 +10,9 @@ struct FloorPlanEdit2DView: View {
     let onDone: () -> Void
 
     @State private var selectedTool: EditTool?
+    /// 아래 막대에서 고른 펜·지우개·손. 손은 벽을 골라 옮길 때 쓴다
+    // TEMP: 펜·지우개는 막대만 있고 아직 하는 일이 없음 — 할 일이 정해지면 연결
+    @State private var drawingTool = DrawingTool.pen
     /// 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
@@ -21,12 +24,15 @@ struct FloorPlanEdit2DView: View {
                 .onAppear { fitPlan(in: proxy.size) }
                 .onChange(of: proxy.size) { _, size in fitPlan(in: size) }
         }
-        // 처음 맞출 때 도면이 도구 막대 아래에서 시작하게 한다
-        .padding(.top, Layout.toolBarInset)
+        // 처음 맞출 때 도면이 위·아래 도구 막대와 겹치지 않게 한다
+        .padding(.vertical, Layout.toolBarInset)
         .background(.white)
         .gesture(zoomGesture)
         .overlay(alignment: .topLeading) {
             toolBar
+        }
+        .overlay {
+            DrawingToolBar(selectedTool: $drawingTool)
         }
         .navigationTitle(Copy.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -76,7 +82,7 @@ extension FloorPlanEdit2DView {
     private enum Layout {
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
-        /// 도구 막대가 차지하는 위쪽 높이 (pt)
+        /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
     }
 }
