@@ -11,10 +11,10 @@ struct FloorPlanSavedToast: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 24, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
             
             Text("도면이 사진보관함에 저장되었어요")
-                .font(.system(size: 20, weight: .medium))
+                .font(.subheadline)
                 .fixedSize(horizontal: true, vertical: false)
         }
         .foregroundStyle(.white)
