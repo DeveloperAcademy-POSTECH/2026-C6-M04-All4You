@@ -1,5 +1,5 @@
 //
-//  FlorPlanSaveView.swift
+//  FlorPlanExportView.swift
 //  All4You
 //
 //  Created by 채유성 on 11/8/26.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct FloorPlanSaveView: View {
+struct FloorPlanExportView: View {
     
     @Environment(\.dismiss) private var dismiss
     @State private var planType: SavedPlanType = .twoD
@@ -213,7 +213,7 @@ private struct FloorPlanSaveSheetPreviewHost: View {
             isSavePresented = true
         }
         .sheet(isPresented: $isSavePresented) {
-            FloorPlanSaveView { _ in
+            FloorPlanExportView { _ in
                 isSavePresented = false
             }
         }

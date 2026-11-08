@@ -41,7 +41,7 @@ struct CaseMainView: View {
             Text(permission.message)
         }
         .sheet(isPresented: $isExportSheetPresented) {
-            FloorPlanSaveView { configuration in
+            FloorPlanExportView { configuration in
                 // TODO: configuration(사용자가 선택한 저장 옵션 및 도면 타입)을 이용해 실제 저장 로직 구현
                 print("저장됨: \(configuration)")
             }
