@@ -14,7 +14,9 @@ struct ConversionLoadingView: View {
     var body: some View {
         GeometryReader { proxy in
             let fit = PlanScreen(plan: planData, in: proxy.size, fill: Layout.planFill)
-            wallLines(fit: fit)
+            // 변환할 도면을 흐리게 깐다
+            Plan2DView(planData: planData, screen: fit)
+                .opacity(Layout.planOpacity)
                 .overlay(alignment: .topLeading) {
                     scanLine(width: proxy.size.width, fit: fit)
                 }
@@ -35,21 +37,6 @@ struct ConversionLoadingView: View {
 
 // 서브 뷰
 extension ConversionLoadingView {
-    /// 벽만 연한 회색 선으로 그린 도면. 가상 경계선은 그리지 않는다
-    // TEMP: 2D 도면 그리기가 아직 없어 벽 선만 그림 — 2D 도면이 생기면 그것을 흐리게 깔도록 바꿈
-    private func wallLines(fit: PlanScreen) -> some View {
-        Canvas { context, _ in
-            for wall in planData.walls where !wall.isVirtual {
-                guard let line = planData.line(of: wall) else { continue }
-                var path = Path()
-                path.move(to: fit.point(line.start))
-                path.addLine(to: fit.point(line.end))
-                let width = max(fit.length(wall.thickness), Layout.minimumWallWidth)
-                context.stroke(path, with: .color(Color.gray300), style: StrokeStyle(lineWidth: width, lineCap: .square))
-            }
-        }
-    }
-
     /// 화면 가로 전체를 가로지르는 주황 선. 위아래로 주황빛이 흐리게 번진다
     private func scanLine(width: CGFloat, fit: PlanScreen) -> some View {
         Rectangle()
@@ -84,8 +71,8 @@ extension ConversionLoadingView {
     private enum Layout {
         /// 화면에서 도면이 차지하는 몫 (가로·세로 중 꽉 차는 쪽 기준)
         static let planFill = 0.8
-        /// 벽이 아주 얇아도 이만큼(pt)은 보이게
-        static let minimumWallWidth = 1.0
+        /// 흐리게 깐 도면의 진하기
+        static let planOpacity = 0.3
         static let lineHeight: CGFloat = 3
         /// 선 위아래로 번지는 주황빛의 전체 높이 (pt)
         static let glowHeight: CGFloat = 60
