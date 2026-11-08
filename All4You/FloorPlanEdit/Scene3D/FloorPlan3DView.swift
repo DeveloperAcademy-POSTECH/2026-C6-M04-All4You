@@ -1,4 +1,4 @@
-// 도면을 3D로 보여 주는 뷰. 한 손가락으로 돌리고, 두 손가락으로 확대·축소한다
+// 도면을 3D로 보여 주는 뷰. 한 손가락으로 돌리고, 두 손가락으로 확대·축소하고 끌어 옮긴다
 //
 // 카메라 조작은 애플 기본 조작(.realityViewCameraControls(.orbit))을 쓴다.
 // 기본 조작은 확대 민감도를 바꿀 수 없어서, 같은 핀치로 도면 자체를 원점 기준으로 더 키우고 줄여 확대를 세게 만든다
@@ -68,6 +68,7 @@ struct FloorPlan3DView: View {
         .simultaneousGesture(longPressGesture)
         .simultaneousGesture(pressLocationGesture)
         .simultaneousGesture(stampDragGesture)
+        .gesture(TwoFingerPanGesture(onChanged: panPlan))
         .overlay(alignment: .topLeading) {
             roomLabels
         }
@@ -492,6 +493,25 @@ extension FloorPlan3DView {
     private func zoom(for magnification: CGFloat) -> Float {
         let extra = pow(Float(magnification), Layout.extraZoomPower)
         return min(max(committedZoom * extra, Layout.zoomRange.lowerBound), Layout.zoomRange.upperBound)
+    }
+}
+
+// 두 손가락으로 옮기기
+extension FloorPlan3DView {
+    /// 손가락 아래의 바닥 점이 손가락을 따라오도록 도면 전체를 바닥과 나란히 옮긴다.
+    /// 카메라가 어느 쪽을 보든 손가락 방향대로 움직인다
+    private func panPlan(to location: CGPoint, from previous: CGPoint) {
+        guard let from = floorPoint(at: previous), let to = floorPoint(at: location) else { return }
+        sceneRoot.position += SIMD3(to.x - from.x, 0, to.z - from.z)
+    }
+
+    /// 화면 점에서 3D 안쪽으로 그은 직선이 도면 바닥 높이와 만나는 점. 직선이 바닥과 거의 나란하거나 카메라 뒤면 nil
+    private func floorPoint(at point: CGPoint) -> SIMD3<Float>? {
+        guard let ray = cameraContent?.ray(through: point, in: .local, to: .scene),
+              abs(ray.direction.y) > 0.0001 else { return nil }
+        let distance = (sceneRoot.position.y - ray.origin.y) / ray.direction.y
+        guard distance > 0 else { return nil }
+        return ray.origin + ray.direction * distance
     }
 }
 

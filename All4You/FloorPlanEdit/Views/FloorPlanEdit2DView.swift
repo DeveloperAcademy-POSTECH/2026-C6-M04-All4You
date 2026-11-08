@@ -1,4 +1,4 @@
-// 2D 도면 수정 화면. 도면을 화면에 맞춰 보여 주고 두 손가락으로 확대·축소한다. 스탬프·공간 이름·벽 수정은 이어서 들어온다
+// 2D 도면 수정 화면. 도면을 화면에 맞춰 보여 주고 두 손가락으로 확대·축소하고 옮긴다. 스탬프·공간 이름·벽 수정은 이어서 들어온다
 
 import SwiftUI
 
@@ -28,6 +28,7 @@ struct FloorPlanEdit2DView: View {
         .padding(.vertical, Layout.toolBarInset)
         .background(.white)
         .gesture(zoomGesture)
+        .gesture(TwoFingerPanGesture(onChanged: panPlan))
         .overlay(alignment: .topLeading) {
             toolBar
         }
@@ -74,6 +75,11 @@ extension FloorPlanEdit2DView {
             .onEnded { _ in
                 lastMagnification = 1
             }
+    }
+
+    /// 두 손가락으로 끈 만큼 도면을 옮긴다
+    private func panPlan(to location: CGPoint, from previous: CGPoint) {
+        screen = screen?.moved(by: CGSize(width: location.x - previous.x, height: location.y - previous.y))
     }
 }
 
