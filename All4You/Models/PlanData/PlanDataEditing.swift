@@ -10,10 +10,11 @@ extension PlanData {
 
 // 사람·발화지점
 extension PlanData {
-    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다.
+    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다. 방 안이 아니면(벽 위·벽 바깥·도면 밖) 놓지 않고 nil.
     /// 사람은 늘 누운 자세로 놓는다.
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
-    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String {
+    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String? {
+        guard isInsideRoom(point) else { return nil }
         let marker = PlanMarker(
             id: UUID().uuidString,
             kind: kind,
@@ -26,9 +27,9 @@ extension PlanData {
         return marker.id
     }
 
-    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다
+    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다. 방 안이 아니면 옮기지 않는다
     mutating func moveMarker(id: String, to point: SIMD2<Double>) {
-        guard let index = markers.firstIndex(where: { $0.id == id }) else { return }
+        guard isInsideRoom(point), let index = markers.firstIndex(where: { $0.id == id }) else { return }
         markers[index].position = point
     }
 
@@ -39,13 +40,17 @@ extension PlanData {
         markers[index].yaw = degrees < 0 ? degrees + 360 : degrees
     }
 
-    /// 사람·발화지점을 같은 종류·방향·자세로 옆에 하나 더 놓고 새 id를 돌려준다
+    /// 사람·발화지점을 같은 종류·방향·자세로 옆에 하나 더 놓고 새 id를 돌려준다.
+    /// 오른쪽부터 왼쪽·아래·위 순서로 방 안인 자리를 찾고, 없으면 복제하지 않고 nil
     mutating func duplicateMarker(id: String) -> String? {
         guard let original = markers.first(where: { $0.id == id }) else { return nil }
+        let gap = Self.duplicateGap
+        let offsets = [SIMD2(gap, 0), SIMD2(-gap, 0), SIMD2(0, gap), SIMD2(0, -gap)]
+        guard let position = offsets.map({ original.position + $0 }).first(where: isInsideRoom) else { return nil }
         let copy = PlanMarker(
             id: UUID().uuidString,
             kind: original.kind,
-            position: original.position + SIMD2(Self.duplicateGap, 0),
+            position: position,
             height: original.height,
             yaw: original.yaw,
             lying: original.lying
@@ -62,14 +67,16 @@ extension PlanData {
 // 콘센트처럼 벽에 붙는 것
 extension PlanData {
     /// 벽 wallId의 면 위 점 point(도면 좌표)와 바닥에서 높이 height(m)에 콘센트 같은 것을 붙이고 새 id를 돌려준다.
-    /// 벽을 찾지 못하면 nil
+    /// 누른 쪽 면이 방 안을 보지 않으면(벽 바깥) 반대쪽 면에 붙인다. 두 면 다 방 안이 아니거나 벽을 찾지 못하면 nil
     mutating func addWallFixture(_ kind: FixtureKind, wallId: String, at point: SIMD2<Double>, height: Double) -> String? {
         guard let spot = wallSpot(wallId: wallId, point: point, height: height) else { return nil }
+        let otherFace: WallFace = spot.face == .left ? .right : .left
+        guard let face = [spot.face, otherFace].first(where: { facesRoom(wallId: wallId, face: $0, along: spot.along) }) else { return nil }
         let fixture = WallFixture(
             id: UUID().uuidString,
             wallId: wallId,
             kind: kind,
-            face: spot.face,
+            face: face,
             positionAlongWall: spot.along,
             heightFromFloor: spot.height
         )
@@ -106,6 +113,17 @@ extension PlanData {
     mutating func removeWallFixture(id: String) {
         wallFixtures.removeAll { $0.id == id }
     }
+
+    /// 벽 시작점에서 along(m) 자리의 face 쪽 면 바로 앞이 방 안인지
+    private func facesRoom(wallId: String, face: WallFace, along: Double) -> Bool {
+        guard let wall = wall(id: wallId), let line = line(of: wall) else { return false }
+        let side = face == .left ? 1.0 : -1.0
+        let inFront = line.point(along: along) + line.leftNormal * (side * (wall.thickness / 2 + Self.faceCheckGap))
+        return isInsideRoom(inFront)
+    }
+
+    /// 벽 면 앞 몇 m를 방 안인지 볼지. 면 바로 위는 벽 두께와 겹쳐 조금 떨어진 곳을 본다
+    private static let faceCheckGap = 0.05
 
     /// 도면 점과 높이를 벽 기준 자리로 바꾼다. 벽을 따라간 위치는 벽 안으로, 높이는 벽 높이 안으로 맞춘다
     private func wallSpot(wallId: String, point: SIMD2<Double>, height: Double) -> (face: WallFace, along: Double, height: Double)? {

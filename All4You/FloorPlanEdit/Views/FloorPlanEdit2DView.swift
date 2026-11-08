@@ -110,7 +110,8 @@ extension FloorPlanEdit2DView {
                 }
                 guard let start = stampDragStart else { return }
                 let point = start + screen.plan(value.location) - screen.plan(value.startLocation)
-                var preview = planData
+                // 방 밖으로 끌면 옮겨지지 않으므로, 직전 미리 보기에서 이어 가 마지막으로 놓을 수 있던 자리에 멈춰 있게 한다
+                var preview = dragPreview ?? planData
                 preview.moveStamp(selection, to: point)
                 dragPreview = preview
             }

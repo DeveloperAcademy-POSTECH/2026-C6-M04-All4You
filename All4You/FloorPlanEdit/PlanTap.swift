@@ -44,9 +44,9 @@ extension PlanData {
     mutating func place(_ tool: EditTool, at tap: PlanTap) -> PlanSelection? {
         switch (tool, tap) {
         case (.ignitionPoint, .floor(let point)):
-            return .marker(addMarker(.ignitionPoint, at: point))
+            return addMarker(.ignitionPoint, at: point).map(PlanSelection.marker)
         case (.person, .floor(let point)):
-            return .marker(addMarker(.person, at: point))
+            return addMarker(.person, at: point).map(PlanSelection.marker)
         case (.outlet, .wall(let wallId, let point, let height)):
             return addWallFixture(.outlet, wallId: wallId, at: point, height: height).map(PlanSelection.wallFixture)
         case (.window, .wall(let wallId, let point, _)):

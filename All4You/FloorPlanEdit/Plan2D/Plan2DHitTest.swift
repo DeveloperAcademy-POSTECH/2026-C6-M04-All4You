@@ -46,15 +46,6 @@ extension PlanScreen {
     }
 }
 
-extension WallLine {
-    /// 점 p에서 이 선분까지 가장 짧은 거리 (m)
-    func distance(to p: SIMD2<Double>) -> Double {
-        let along = min(max(((p - start) * direction).sum(), 0), length)
-        let delta = p - point(along: along)
-        return (delta * delta).sum().squareRoot()
-    }
-}
-
 extension PlanData {
     /// 콘센트처럼 벽에 붙은 것이 놓인 도면 점. 붙은 면 쪽 벽 표면 위다. 벽을 찾지 못하면 nil
     func point(of fixture: WallFixture) -> SIMD2<Double>? {
