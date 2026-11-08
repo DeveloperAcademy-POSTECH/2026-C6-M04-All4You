@@ -34,6 +34,7 @@ import RoomPlan
     // 화면에 전달되는 촬영 단계, 안내, 미리보기 및 저장 상태
     @Published private(set) var phase: RoomPlanScanPhase = .checklist
     @Published private(set) var issue: RoomPlanScanIssue?
+    @Published private(set) var isScanLimitReached = false
     @Published private(set) var guidance = RoomPlanGuidanceService.beforeStart
     private var currentRoom: CapturedRoom?
     private var pausedRoom: CapturedRoom?
@@ -51,6 +52,7 @@ import RoomPlan
     @Published private(set) var mergeError: String?
     @Published private(set) var segmentID = UUID()
     var arSession: ARSession { tracking.arSession }
+    var onAutomaticStop: (() -> Void)?
     
     // 미리보기에 전달할 저장 완료 공간 결과
     var finishedRooms: [CapturedRoom] { completedRooms }
@@ -59,20 +61,32 @@ import RoomPlan
     private let store = RoomPlanSegmentService()
     private lazy var tracking: RoomPlanTrackingService = {
         let tracking = RoomPlanTrackingService(scanID: store.scanID)
-        tracking.onApproachingLimit = { [weak self] in
+        tracking.onScanLimitReached = { [weak self] in
             guard let self, self.phase == .scanning else { return }
+            self.isScanLimitReached = true
             self.needsRelocalization = true
-            self.issue = .approachingLimit
+            self.issue = .scanTimeLimitReached
+            self.tracking.stopMonitoring()
+            // 한계 도달 즉시 촬영을 종료하고, 저장 진행 안내를 표시
+            self.onAutomaticStop?()
             self.stop()
         }
         tracking.onRelocalized = { [weak self] in
             guard let self else { return }
-            self.isRelocalizing = false
-            self.needsRelocalization = false
-            self.begin()
+            let startedAt = self.relocalizationStartedAt
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.waitForMinimumProgressDuration(since: startedAt)
+                guard self.isRelocalizing else { return }
+                self.relocalizationStartedAt = nil
+                self.isRelocalizing = false
+                self.needsRelocalization = false
+                self.begin()
+            }
         }
         tracking.onRelocalizationTimeout = { [weak self] in
             guard let self else { return }
+            self.relocalizationStartedAt = nil
             self.isRelocalizing = false
             self.issue = .captureFailed("이전 스캔 위치를 찾지 못했습니다. 마지막으로 촬영한 공간을 다시 비춰주세요")
         }
@@ -118,6 +132,9 @@ import RoomPlan
     private var previewMergeID = UUID()
     private var restartAfterEmptyScan = false
     private var cameraNeedsReset = false
+    private var isDetached = false
+    private let minimumProgressDuration: TimeInterval = 0.5
+    private var relocalizationStartedAt: TimeInterval?
     
     // 완료 구간과 일시정지 순간의 방을 중복 없이 결합한 미리보기 입력
     var previewRooms: [CapturedRoom] {
@@ -143,6 +160,7 @@ import RoomPlan
     func attach(_ session: RoomCaptureSession) {
         // 새 구간에서 월드맵 재현지화 또는 기존 세션의 추적 시작
         guard session.arSession === arSession else { return }
+        isDetached = false
         captureSession = session
         session.delegate = self
         tracking.attach()
@@ -183,6 +201,7 @@ import RoomPlan
             return
         }
         issue = nil
+        isScanLimitReached = false
         currentRoom = nil
         pausedRoom = nil
         pausedSegmentSaved = false
@@ -254,17 +273,28 @@ import RoomPlan
             return
         }
         guard phase == .scanning, ending == nil, let captureSession else { return }
+        if isScanLimitReached {
+            needsRelocalization = true
+            issue = .scanTimeLimitReached
+        }
         turnTorchOff()
         ending = .stop
-        // 결과 유무를 확인하기 전에는 저장 화면으로 전환하지 않음
+        // 자동 종료일 때만 즉시 저장 화면으로 전환; 일반 종료는 결과 콜백을 기다림
         tracking.stopMonitoring()
-        tracking.checkpointWorldMap()
+        // 권장 시간 도달 시 월드맵은 시간 감시기에서 이미 저장함; 일반 종료에는 불필요
+        if isScanLimitReached { phase = .saving }
         captureSession.stop(pauseARSession: false)
     }
     
     // 촬영 완료 후 한 구간은 단독 결과로, 여러 구간은 병합 결과로 내보내기
     func finish() {
         guard phase == .segmentSaved else { return }
+        // 중간 구조 생성이 끝나기 전 최종 내보내기를 동시에 시작하지 않음
+        if isMergingPreview {
+            pendingAction = .finish
+            return
+        }
+        pendingAction = .none
         turnTorchOff()
         phase = .finished
         tracking.stop()
@@ -275,11 +305,12 @@ import RoomPlan
         isMergingStructure = true
         mergeError = nil
         let rooms = completedRooms
+        let structure = mergedPreview
         let store = store
         Task { @MainActor [weak self] in
             do {
                 let url = try await Task.detached(priority: .utility) {
-                    try await store.saveFinalModel(from: rooms)
+                    try await store.saveFinalModel(from: rooms, structure: structure)
                 }.value
                 self?.finalModelURL = url
                 self?.isMergingStructure = false
@@ -291,10 +322,10 @@ import RoomPlan
         }
     }
     
-    // 일반 구간의 연속 촬영 또는 용량 한계 도달 후 월드맵 relocalization
+    // 일반 구간의 연속 촬영 또는 권장 시간·RoomPlan 한계 도달 후 월드맵 relocalization
     func continueScanning() {
         guard phase == .segmentSaved else { return }
-        if issue == .approachingLimit || issue == .sceneLimitReached {
+        if issue == .scanTimeLimitReached || issue == .sceneLimitReached {
             needsRelocalization = true
         }
         // 타임아웃으로 issue가 바뀌어도 위치를 찾기 전에는 새 구간을 시작하지 않음
@@ -304,6 +335,7 @@ import RoomPlan
                 return
             }
             isRelocalizing = true
+            relocalizationStartedAt = ProcessInfo.processInfo.systemUptime
             captureSession?.delegate = nil
             captureSession = nil
             currentRoom = nil
@@ -316,11 +348,14 @@ import RoomPlan
     
     // 화면 이탈 시 작업 취소와 카메라·손전등 자원 해제
     func detach() {
+        guard !isDetached else { return }
+        isDetached = true
         turnTorchOff()
-        captureSession?.delegate = nil
-        captureSession?.stop()
-        tracking.stop()
+        let session = captureSession
         captureSession = nil
+        session?.delegate = nil
+        if phase == .scanning { session?.stop() }
+        tracking.stop()
     }
     
     // 실시간 CapturedRoom 갱신과 일시정지용 마지막 스캔 도면 형상 보관
@@ -353,8 +388,12 @@ import RoomPlan
             self.tracking.stopMonitoring()
             if let captureError = error as? RoomCaptureSession.CaptureError {
                 if captureError == .exceedSceneSizeLimit {
+                    self.isScanLimitReached = true
                     self.needsRelocalization = true
                     self.issue = .sceneLimitReached
+                    // RoomPlan이 먼저 세션을 끝낸 경우에만 다음 구간용 위치 저장 시도
+                    self.tracking.checkpointWorldMap()
+                    self.onAutomaticStop?()
                 } else {
                     self.issue = .captureFailed(captureError.localizedDescription)
                 }
@@ -365,22 +404,34 @@ import RoomPlan
             let fallbackRoom = wasPaused ? self.pausedRoom : self.currentRoom
             if wasPaused { self.unsavedPauseData = data }
             if !wasPaused { self.phase = .saving }
+            let savingStartedAt = ProcessInfo.processInfo.systemUptime
             // 카메라 화면 지연 방지를 위한 CapturedRoomData 백그라운드 인코딩
             let result = await self.saveSegment(data, fallbackRoom: fallbackRoom)
             guard self.captureSession === session else { return }
+            if !wasPaused {
+                // 저장 결과와 관계없이 진행 화면의 최소 표시 시간 확보
+                await self.waitForMinimumProgressDuration(since: savingStartedAt)
+                guard self.captureSession === session else { return }
+            }
             switch result {
             case .success(let saved):
                 self.applySavedSegment(saved, wasPaused: wasPaused, pauseGeneration: pauseGeneration)
             case .failure(let error as RoomPlanSegmentService.SaveError) where error == .emptyScan:
-                // 인식된 부분이 없으면 중단된 RoomCaptureView와 ARSession도 함께 폐기
+                // 빈 구간은 저장하지 않고, 기존 결과 유무와 종료 목적에 따라 복구 또는 최종화
                 self.logger.notice("인식된 공간 없이 촬영 종료; 빈 세션 복구")
                 let startRequested = self.pendingAction == .resume
                 self.unsavedPauseData = nil
                 if self.completedRooms.isEmpty {
                     self.restartAfterEmptyScan = startRequested
                     self.resetEmptyScan()
+                } else if !wasPaused {
+                    // 추가 구간이 비어 있어도 이전에 저장한 구간으로 최종 도면 제공
+                    self.ending = nil
+                    self.finishWithSavedRooms()
                 } else {
-                    // 앞 구간이 있으면 좌표계를 버리지 않고 새 촬영 입력을 기다림
+                    // 빈 일시정지 구간은 종료된 캡처 세션만 교체하고 AR 좌표계는 유지
+                    self.captureSession?.delegate = nil
+                    self.captureSession = nil
                     self.pausedRoom = nil
                     self.currentRoom = nil
                     self.isSavingPause = false
@@ -388,8 +439,9 @@ import RoomPlan
                     self.pendingAction = .none
                     self.issue = nil
                     self.guidance = RoomPlanGuidanceService.beforeStart
+                    self.restartAfterEmptyScan = startRequested
                     self.phase = .ready
-                    if startRequested { self.begin() }
+                    self.segmentID = UUID()
                 }
                 return
             case .failure(let error):
@@ -406,8 +458,13 @@ import RoomPlan
             self.isSavingPause = false
             self.ending = nil
             if case .saveFailed = self.issue, !self.needsRelocalization, !wasPaused {
+                if !self.completedRooms.isEmpty {
+                    // 새 구간 저장에 실패해도 앞서 저장한 결과는 미리보기로 전달
+                    self.finishWithSavedRooms()
+                    return
+                }
                 self.guidance = "스캔 결과를 저장하지 못했어요. 다시 촬영해 주세요"
-                self.phase = .ready
+                self.resetEmptyScan()
                 return
             }
             if wasPaused {
@@ -437,8 +494,10 @@ import RoomPlan
         ending = nil
         pendingAction = .none
         issue = nil
+        isScanLimitReached = false
         needsRelocalization = false
         isRelocalizing = false
+        relocalizationStartedAt = nil
         cameraNeedsReset = false
         guidance = RoomPlanGuidanceService.beforeStart
         phase = .ready
@@ -477,12 +536,25 @@ import RoomPlan
     }
     
     // 정상 종료는 최종 미리보기로 이동, 스캔 한계에 도달했을 때 중단하는 경우에는 SegmentDialog뷰 띄움
+    private func finishWithSavedRooms() {
+        needsRelocalization = false
+        isScanLimitReached = false
+        issue = nil
+        currentRoom = nil
+        pausedRoom = nil
+        completeStoppedCapture()
+    }
+    
     private func completeStoppedCapture() {
         pendingAction = .none
         guard !completedRooms.isEmpty else {
             needsRelocalization = false
-            issue = nil
-            guidance = RoomPlanGuidanceService.beforeStart
+            if case .saveFailed = issue {
+                guidance = "스캔 결과를 저장하지 못했어요. 다시 촬영해 주세요"
+            } else {
+                issue = nil
+                guidance = RoomPlanGuidanceService.beforeStart
+            }
             phase = .ready
             return
         }
@@ -496,6 +568,7 @@ import RoomPlan
         let id = UUID()
         previewMergeID = id
         isMergingPreview = true
+        let mergingStartedAt = ProcessInfo.processInfo.systemUptime
         let rooms = completedRooms
         let store = store
         Task { @MainActor [weak self] in
@@ -503,11 +576,17 @@ import RoomPlan
                 try? await store.buildStructure(from: rooms)
             }.value
             guard let self, self.previewMergeID == id else { return }
+            await self.waitForMinimumProgressDuration(since: mergingStartedAt)
+            guard self.previewMergeID == id else { return }
             self.mergedPreview = result
             self.isMergingPreview = false
             self.renderRevision += 1
             if result == nil {
                 self.logger.error("중간 스캔 병합 실패; 개별 방 결과를 계속 표시합니다")
+            }
+            if self.pendingAction == .finish, self.phase == .segmentSaved {
+                self.finish()
+                return
             }
             if self.pendingAction == .resume,
                self.phase == .paused || self.phase == .segmentSaved || self.phase == .ready {
@@ -530,6 +609,14 @@ import RoomPlan
                 return Result.failure(error)
             }
         }.value
+    }
+    
+    // 작업이 빨리 끝나도 사용자가 진행 상태를 인지할 수 있도록 최소 노출 시간 보장
+    private func waitForMinimumProgressDuration(since startedAt: TimeInterval?) async {
+        guard let startedAt else { return }
+        let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
+        let remaining = max(0, minimumProgressDuration - elapsed)
+        if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
     }
     
     // 저장된 구간의 URL·방 누적과 일시정지 순간 나오는 스캔 결과 형상 중복 제거 (겹치는 현상 방지)

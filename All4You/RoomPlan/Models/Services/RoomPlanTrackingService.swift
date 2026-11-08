@@ -5,7 +5,7 @@
 //  Created by 채유성 on 11/4/26.
 //
 
-// RoomPlan과 공유하는 ARSession, 월드맵 체크포인트, 룸플랜 스캔 최대 용량 감시, relocalization 흐름을 관리하는 로직
+// RoomPlan과 공유하는 ARSession, 월드맵 체크포인트, 구간 촬영 시간, relocalization 흐름을 관리하는 로직
 import ARKit
 import Foundation
 import OSLog
@@ -14,18 +14,21 @@ import UIKit
 
 @MainActor final class RoomPlanTrackingService: NSObject, ARSessionDelegate {
     private(set) var arSession = ARSession()
-    var onApproachingLimit: (() -> Void)?
+    var onScanLimitReached: (() -> Void)?
     var onRelocalized: (() -> Void)?
     var onRelocalizationTimeout: (() -> Void)?
     var onSessionFailure: ((Error) -> Void)?
     var onFrameStalled: (() -> Void)?
     
     private let worldMapStore: RoomPlanWorldMapService
-    private let mapWarningBytes = 40 * 1_024 * 1_024
+    // 1회 스캔 한도 5분으로 설정
+    // TODO: 추후 거리 제한하는 변수도 필요 - 20m * 20m 로 맞춰야할듯. 직선 거리 길어지면 방향 틀 것을 제안하는 등 방법 필요.
+    private let scanLimitSeconds: TimeInterval = 5 * 60
+    private var didNotifyScanLimit = false
+    private var elapsedScanSeconds: TimeInterval = 0
     private var latestWorldMap: ARWorldMap?
     private var monitor: Task<Void, Never>?
     private var monitorGeneration = UUID()
-    private var mapCheckInFlight = false
     private var restartPending = false
     private var isRelocalizing = false
     private var relocalizedFrameCount = 0
@@ -62,21 +65,41 @@ import UIKit
         startFrameWatchdog()
     }
     
-    // 새 RoomPlan 구간을 위한 월드맵 용량 모니터링 시작
+    // 실제 카메라 프레임이 진행되는 동안의 구간별 촬영 시간 감시 시작
     func startMonitoring() {
         stopMonitoring()
+        didNotifyScanLimit = false
+        elapsedScanSeconds = 0
         startFrameWatchdog()
         let generation = monitorGeneration
         monitor = Task { [weak self] in
+            var previousTick = ProcessInfo.processInfo.systemUptime
+            var previousFrameTimestamp = self?.arSession.currentFrame?.timestamp
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(12))
-                guard !Task.isCancelled else { break }
-                self?.checkMapSize(generation: generation)
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, self.monitorGeneration == generation else { break }
+                let now = ProcessInfo.processInfo.systemUptime
+                let elapsed = now - previousTick
+                previousTick = now
+                let frameTimestamp = self.arSession.currentFrame?.timestamp
+                defer { previousFrameTimestamp = frameTimestamp }
+                guard UIApplication.shared.applicationState == .active,
+                      let frameTimestamp,
+                      frameTimestamp > (previousFrameTimestamp ?? -.infinity),
+                      elapsed <= 3 else { continue }
+                
+                // 백그라운드 복귀 후의 큰 시간 간격과 멈춘 카메라 프레임은 촬영 시간에서 제외
+                self.elapsedScanSeconds += elapsed
+                if self.elapsedScanSeconds >= self.scanLimitSeconds, !self.didNotifyScanLimit {
+                    self.didNotifyScanLimit = true
+                    self.checkpointWorldMap()
+                    self.onScanLimitReached?()
+                }
             }
         }
     }
     
-    // 종료된 구간의 오래된 용량 검사 결과 무효화
+    // 종료된 구간의 시간 감시 작업 무효화
     func stopMonitoring() {
         monitor?.cancel()
         monitor = nil
@@ -98,7 +121,7 @@ import UIKit
         }
     }
     
-    // 스캔 용량 한계 이후 이전 월드맵을 복원할 새 ARSession 준비
+    // 스캔 구간 한계 이후 이전 월드맵을 복원할 새 ARSession 준비
     func prepareRestart() -> Bool {
         guard latestWorldMap != nil || (try? worldMapStore.load()) != nil else { return false }
         stopMonitoring()
@@ -133,27 +156,6 @@ import UIKit
         isRelocalizing = false
         arSession.delegate = nil
         arSession.pause()
-    }
-    
-    private func checkMapSize(generation: UUID) {
-        guard generation == monitorGeneration, !mapCheckInFlight else { return }
-        mapCheckInFlight = true
-        arSession.getCurrentWorldMap { [weak self] map, _ in
-            Task.detached { [weak self] in
-                let size = map.flatMap {
-                    try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true).count
-                }
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    self.mapCheckInFlight = false
-                    guard generation == self.monitorGeneration else { return }
-                    if let map { self.latestWorldMap = map }
-                    if let size, size >= self.mapWarningBytes {
-                        self.onApproachingLimit?()
-                    }
-                }
-            }
-        }
     }
     
     // ARSession 오류 콜백 없이 카메라의 동일 프레임만 반복되는 상태 감지
