@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FloorPlanImportView: View {
     var onImport: ((UIImage) -> Void)? = nil
+    var address = "청암로 77"
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = FloorPlanImportCamera()
     @Environment(\.scenePhase) private var scenePhase
@@ -28,14 +29,14 @@ struct FloorPlanImportView: View {
             .background(.white)
             .preferredColorScheme(.light)
             .navigationTitle("스캔 결과 확인")
-            .navigationSubtitle("청암로 77") // TODO: 주소 불러온 걸로 바꾸기
+            .navigationSubtitle(address)
             .navigationBarTitleDisplayMode(.inline)
             .bothSidesToolbar(
                 leadingTitle: "뒤로 가기",
                 trailingTitle: "저장",
                 customLayout: true,
                 barTitle: "스캔 결과 확인",
-                barSubtitle: "청암로 77", // TODO: 주소 불러온 걸로 바꾸기
+                barSubtitle: address,
                 onBack: {
                     // 원본 사진은 유지하고 결과만 비워 영역 조정 화면으로 돌아간다.
                     result = nil
@@ -54,7 +55,7 @@ struct FloorPlanImportView: View {
         ZStack {
             Color.black.ignoresSafeArea()
             if let source {
-                FloorPlanImportCropView(source: source, onRetake: reset) { correctedImage in
+                FloorPlanImportCropView(source: source, address: address, onRetake: reset) { correctedImage in
                     result = correctedImage
                 }
             } else {
