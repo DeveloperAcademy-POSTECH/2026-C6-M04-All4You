@@ -25,7 +25,7 @@ struct CaseMainView: View {
         } album: {
             withCaseToolbars(emptyTab(Copy.albumPlaceholder))
         } memo: {
-            withCaseToolbars(emptyTab(Copy.memoPlaceholder))
+            withCaseToolbars(FloorPlanMemoView())
         }
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
