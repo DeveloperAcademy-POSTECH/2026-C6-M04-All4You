@@ -16,10 +16,15 @@ struct FloorPlanExportView: View {
     @State private var showsRoomNames = true
     @State private var showsFurniture = true
     @State private var showsStamps = true
+    @State private var isSaving = false
+    @State private var isSavedToastVisible = false
+    @State private var toastDismissTask: Task<Void, Never>?
+    @State private var saveError: String?
     
-    let saveAction: (FloorPlanSaveConfiguration) -> Void
+    // 실제 사진 보관함 저장이 끝나면 반환하고, 실패하면 오류를 던지는 저장 작업
+    let saveAction: (FloorPlanSaveConfiguration) async throws -> Void
     
-    init(saveAction: @escaping (FloorPlanSaveConfiguration) -> Void = { _ in }) {
+    init(saveAction: @escaping (FloorPlanSaveConfiguration) async throws -> Void = { _ in }) {
         self.saveAction = saveAction
     }
     
@@ -65,7 +70,7 @@ struct FloorPlanExportView: View {
                 
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
-                        saveAction(configuration)
+                        Task { await save() }
                     } label: {
                         Image(systemName: "square.and.arrow.down")
                             .font(.system(size: 17, weight: .semibold))
@@ -77,14 +82,63 @@ struct FloorPlanExportView: View {
                     .glassEffect(.regular.tint(.brand500).interactive(), in: .circle)
                     .offset(y: 3)
                     .accessibilityLabel("저장")
+                    .disabled(isSaving)
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
+        }
+        .overlay(alignment: .bottom) {
+            if isSavedToastVisible {
+                FloorPlanSavedToast()
+                    .padding(.bottom, 28)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .zIndex(1)
+            }
+        }
+        .alert("도면을 저장하지 못했어요", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("확인", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "다시 시도해 주세요")
+        }
+        .onDisappear {
+            toastDismissTask?.cancel()
         }
         .presentationSizing(FloorPlanSaveSheetSizing())
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(.white)
+    }
+    
+    @MainActor
+    private func save() async {
+        guard !isSaving else { return }
+        isSaving = true
+        defer { isSaving = false }
+        
+        do {
+            try await saveAction(configuration)
+            showSavedToast()
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
+    
+    @MainActor
+    private func showSavedToast() {
+        toastDismissTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isSavedToastVisible = true
+        }
+        toastDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isSavedToastVisible = false
+            }
+        }
     }
     
     private var configuration: FloorPlanSaveConfiguration {
@@ -213,9 +267,7 @@ private struct FloorPlanSaveSheetPreviewHost: View {
             isSavePresented = true
         }
         .sheet(isPresented: $isSavePresented) {
-            FloorPlanExportView { _ in
-                isSavePresented = false
-            }
+            FloorPlanExportView { _ in }
         }
     }
 }
