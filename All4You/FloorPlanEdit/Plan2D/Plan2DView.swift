@@ -94,7 +94,7 @@ extension Plan2DView {
     private var stamps: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
-                stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName)
+                stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName, scale: marker.drawScale)
                     // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
@@ -111,8 +111,8 @@ extension Plan2DView {
     }
 
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
-    private func stampIcon(_ systemName: String) -> some View {
-        let size = screen.length(Self.stampSize)
+    private func stampIcon(_ systemName: String, scale: Double = 1) -> some View {
+        let size = screen.length(Self.stampSize * scale)
         return Image(systemName: systemName)
             .font(.system(size: size))
             .foregroundStyle(.brand500)

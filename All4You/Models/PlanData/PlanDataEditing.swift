@@ -53,11 +53,22 @@ extension PlanData {
             position: position,
             height: original.height,
             yaw: original.yaw,
-            lying: original.lying
+            lying: original.lying,
+            scale: original.scale
         )
         markers.append(copy)
         return copy.id
     }
+
+    /// 사람·발화지점의 크기 배율을 바꾼다. markerScaleRange 안으로 맞춘다
+    mutating func resizeMarker(id: String, scale: Double) {
+        guard let index = markers.firstIndex(where: { $0.id == id }) else { return }
+        markers[index].scale = min(max(scale, Self.markerScaleRange.lowerBound), Self.markerScaleRange.upperBound)
+    }
+
+    /// 사람·발화지점 크기 배율의 범위
+    /// TEMP: 디자인 확인 전이라 임시로 정한 값 (기본의 절반 ~ 2.5배)
+    static let markerScaleRange = 0.5...2.5
 
     mutating func removeMarker(id: String) {
         markers.removeAll { $0.id == id }

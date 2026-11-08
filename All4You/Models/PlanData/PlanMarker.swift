@@ -12,6 +12,11 @@ struct PlanMarker: Codable, Equatable, Identifiable {
     var yaw: Double
     /// 누운 자세 (사람만, 나머지는 nil)
     var lying: Bool?
+    /// 기본 크기에 곱하는 배율. nil이면 1 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
+    var scale: Double?
+
+    /// 그릴 때 쓰는 배율. 저장된 값이 없으면 1
+    var drawScale: Double { scale ?? 1 }
 }
 
 /// 표시 종류

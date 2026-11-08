@@ -16,6 +16,8 @@ enum PlanEdit {
     case move(PlanSelection, point: SIMD2<Double>, height: Double)
     /// 사람·발화지점(PlanMarker.id)의 방향을 yaw(도)로 바꿈
     case rotate(markerId: String, yaw: Double)
+    /// 사람·발화지점(PlanMarker.id)의 크기 배율을 scale로 바꿈
+    case resize(markerId: String, scale: Double)
     /// 스탬프를 옆에 하나 더 만듦
     case duplicate(PlanSelection)
     /// 스탬프·창문을 지움
@@ -55,6 +57,8 @@ extension PlanData {
             break
         case .rotate(let markerId, let yaw):
             rotateMarker(id: markerId, yaw: yaw)
+        case .resize(let markerId, let scale):
+            resizeMarker(id: markerId, scale: scale)
         }
         return selection
     }

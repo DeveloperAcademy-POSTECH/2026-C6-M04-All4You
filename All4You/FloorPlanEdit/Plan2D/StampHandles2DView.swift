@@ -1,9 +1,9 @@
-// 2D에서 고른 스탬프의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌린다
+// 2D에서 고른 스탬프의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌리고, 오른쪽 아래 ↔는 끌어서 크기를 바꾼다
 // 스탬프가 돌면 테두리와 손잡이도 함께 돈다
 
 import SwiftUI
 
-/// ✕·↻ 손잡이. 돌릴 수 없는 스탬프(콘센트)는 yaw를 nil로 넘겨 ✕만 보인다
+/// ✕·↻·↔ 손잡이. 돌리거나 크기를 바꿀 수 없는 스탬프(콘센트)는 yaw·scale을 nil로 넘겨 ✕만 보인다
 struct StampHandles2DView: View {
     /// 스탬프 가운데 (화면 점)
     let center: CGPoint
@@ -11,16 +11,22 @@ struct StampHandles2DView: View {
     let halfSize: CGFloat
     /// 스탬프 방향 (도). nil이면 돌리는 손잡이를 두지 않는다
     let yaw: Double?
+    /// 스탬프 크기 배율. nil이면 크기 손잡이를 두지 않는다
+    let scale: Double?
     /// 끄는 손가락 자리를 잴 좌표 공간 이름 (center와 같은 공간)
     let coordinateSpace: String
     let onDelete: () -> Void
     /// 돌리는 동안 새 방향(도)을 알린다
     let onRotate: (Double) -> Void
-    /// 손을 떼면 알린다
-    let onRotateEnded: () -> Void
+    /// 크기를 바꾸는 동안 새 배율을 알린다
+    let onResize: (Double) -> Void
+    /// 돌리기·크기 바꾸기에서 손을 떼면 알린다
+    let onDragEnded: () -> Void
 
     /// 돌리기를 시작할 때의 방향. 돌리는 동안 yaw가 바뀌어도 여기서부터 잰다
     @State private var startYaw: Double?
+    /// 크기 바꾸기를 시작할 때의 배율
+    @State private var startScale: Double?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -31,6 +37,13 @@ struct StampHandles2DView: View {
                     .accessibilityLabel(Copy.rotate)
                     .position(corner(x: 1, y: -1))
                     .gesture(rotateGesture)
+            }
+            if scale != nil {
+                // 오른쪽 아래 모서리에서 가운데를 잇는 대각선 방향의 양쪽 화살표
+                handleIcon("arrow.up.left.and.arrow.down.right")
+                    .accessibilityLabel(Copy.resize)
+                    .position(corner(x: 1, y: 1))
+                    .gesture(resizeGesture)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -86,8 +99,29 @@ extension StampHandles2DView {
             }
             .onEnded { _ in
                 startYaw = nil
-                onRotateEnded()
+                onDragEnded()
             }
+    }
+
+    /// 가운데에서 손가락까지 거리가 처음보다 늘어난 비율만큼 크기를 바꾼다. 바깥으로 끌면 커지고 안으로 끌면 작아진다
+    private var resizeGesture: some Gesture {
+        DragGesture(coordinateSpace: .named(coordinateSpace))
+            .onChanged { value in
+                guard let scale else { return }
+                let start = startScale ?? scale
+                startScale = start
+                let startDistance = max(distance(to: value.startLocation), 1)
+                onResize(start * distance(to: value.location) / startDistance)
+            }
+            .onEnded { _ in
+                startScale = nil
+                onDragEnded()
+            }
+    }
+
+    /// 가운데에서 point까지 거리 (pt)
+    private func distance(to point: CGPoint) -> CGFloat {
+        hypot(point.x - center.x, point.y - center.y)
     }
 }
 
@@ -103,5 +137,6 @@ extension StampHandles2DView {
     private enum Copy {
         static let delete = "삭제"
         static let rotate = "회전"
+        static let resize = "크기"
     }
 }

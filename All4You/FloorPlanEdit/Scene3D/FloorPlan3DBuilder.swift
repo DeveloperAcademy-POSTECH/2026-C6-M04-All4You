@@ -328,6 +328,7 @@ extension FloorPlan3DBuilder {
         let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
+        entity.scale = SIMD3(repeating: Float(marker.drawScale))
         makeSelectable(entity, as: tag)
         return entity
     }

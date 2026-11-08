@@ -309,6 +309,9 @@ extension FloorPlan3DView {
                 RotateHandleView()
                     .position(stampScreenPoints.handle)
                     .gesture(rotateGesture(markerId: id, center: stampScreenPoints.center))
+                ResizeHandleView()
+                    .position(stampScreenPoints.resizeHandle)
+                    .gesture(resizeGesture(markerId: id, center: stampScreenPoints.center))
             }
         }
     }
@@ -330,6 +333,25 @@ extension FloorPlan3DView {
         let yaw = planData.markers.first { $0.id == markerId }?.yaw ?? 0
         func angle(_ point: CGPoint) -> Double { atan2(point.y - center.y, point.x - center.x) }
         return yaw + (angle(drag.location) - angle(drag.startLocation)) * 180 / .pi
+    }
+
+    /// 크기 손잡이를 가운데에서 멀어지게 끌면 커지고, 가까워지게 끌면 작아진다. 끄는 동안은 엔티티만 키우고 손을 뗄 때 도면을 한 번 바꾼다
+    private func resizeGesture(markerId: String, center: CGPoint) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center)))
+            }
+            .onEnded { value in
+                onEdit(.resize(markerId: markerId, scale: resizedScale(markerId: markerId, drag: value, center: center)))
+            }
+    }
+
+    /// 화면에서 가운데와 손가락 사이 거리가 늘어난 비율만큼 곱한 배율. 2D와 같은 범위 안으로 맞춘다
+    private func resizedScale(markerId: String, drag: DragGesture.Value, center: CGPoint) -> Double {
+        let scale = planData.markers.first { $0.id == markerId }?.drawScale ?? 1
+        func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
+        let resized = scale * distance(drag.location) / max(distance(drag.startLocation), 1)
+        return min(max(resized, PlanData.markerScaleRange.lowerBound), PlanData.markerScaleRange.upperBound)
     }
 
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
@@ -356,7 +378,10 @@ extension FloorPlan3DView {
                 .flatMap { content.project(point: $0, to: .local) } ?? above(center)
             if let screenCenter = content.project(point: center, to: .local),
                let menu = above(center), let handle {
-                points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle)
+                // 크기 손잡이는 가운데의 오른쪽 아래. 스탬프가 화면에서 커 보일수록 멀리 둔다
+                let reach = max(screenCenter.y - menu.y - Layout.rotateHandleGap, 0) + Layout.resizeHandleGap
+                let resizeHandle = CGPoint(x: screenCenter.x + reach, y: screenCenter.y + reach / 2)
+                points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: resizeHandle)
             }
         }
         if points != stampScreenPoints {
@@ -373,6 +398,8 @@ private struct StampScreenPoints: Equatable {
     let menu: CGPoint
     /// 회전 손잡이 자리 (사람은 머리 너머 머리 높이)
     let handle: CGPoint
+    /// 크기 손잡이 자리 (가운데의 오른쪽 아래)
+    let resizeHandle: CGPoint
 }
 
 // 고른 창문의 테두리 손잡이와 편집 메뉴
@@ -546,6 +573,8 @@ extension FloorPlan3DView {
         static let labelUpdateInterval: TimeInterval = 1.0 / 60
         /// 스탬프 꼭대기와 회전 손잡이·편집 메뉴 가운데 사이 (pt)
         static let rotateHandleGap: CGFloat = 36
+        /// 스탬프 가장자리와 크기 손잡이 사이 (pt)
+        static let resizeHandleGap: CGFloat = 40
         /// 사람의 회전 손잡이를 머리에서 몸 바깥쪽으로 더 내놓는 거리 (m)
         static let handleBeyondHead: Float = 0.45
         /// 회전 손잡이를 끄는 거리를 재는 좌표 공간 이름 (3D 뷰 전체)

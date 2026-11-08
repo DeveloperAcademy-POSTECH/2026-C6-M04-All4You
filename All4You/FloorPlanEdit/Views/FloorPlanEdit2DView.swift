@@ -78,13 +78,14 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 고른 스탬프의 ✕·↻ 손잡이, 또는 꾹 눌러 띄운 복제·삭제 메뉴
+    /// 고른 스탬프의 ✕·↻·↔ 손잡이, 또는 꾹 눌러 띄운 복제·삭제 메뉴
     @ViewBuilder
     private func stampControls(screen: PlanScreen) -> some View {
         let plan = dragPreview ?? planData
         if let selection, let point = stampPoint(of: selection, in: plan) {
             let center = screen.point(point)
-            let halfSize = screen.length(Plan2DView.stampSize) / 2 + Plan2DView.selectionPadding
+            let marker = self.marker(of: selection, in: plan)
+            let halfSize = screen.length(Plan2DView.stampSize * (marker?.drawScale ?? 1)) / 2 + Plan2DView.selectionPadding
             if menuTarget == selection {
                 StampEditMenuView(
                     onDuplicate: { handleEdit(.duplicate(selection)) },
@@ -95,11 +96,13 @@ extension FloorPlanEdit2DView {
                 StampHandles2DView(
                     center: center,
                     halfSize: halfSize,
-                    yaw: markerYaw(of: selection, in: plan),
+                    yaw: marker?.yaw,
+                    scale: marker?.drawScale,
                     coordinateSpace: Layout.planSpace,
                     onDelete: { handleEdit(.delete(selection)) },
-                    onRotate: { yaw in rotatePreview(selection, yaw: yaw) },
-                    onRotateEnded: commitPreview
+                    onRotate: { yaw in preview(selection) { .rotate(markerId: $0, yaw: yaw) } },
+                    onResize: { scale in preview(selection) { .resize(markerId: $0, scale: scale) } },
+                    onDragEnded: commitPreview
                 )
             }
         }
@@ -184,17 +187,17 @@ extension FloorPlanEdit2DView {
 
 // 스탬프 돌리기·복제·삭제
 extension FloorPlanEdit2DView {
-    /// 사람·발화지점의 방향 (도). 방향이 없는 것(콘센트)은 nil
-    private func markerYaw(of selection: PlanSelection, in plan: PlanData) -> Double? {
+    /// 고른 것이 사람·발화지점이면 그 표시. 콘센트처럼 방향·크기가 없는 것은 nil
+    private func marker(of selection: PlanSelection, in plan: PlanData) -> PlanMarker? {
         guard case .marker(let id) = selection else { return nil }
-        return plan.markers.first { $0.id == id }?.yaw
+        return plan.markers.first { $0.id == id }
     }
 
-    /// 돌리는 동안은 미리 보기 도면만 돌린다
-    private func rotatePreview(_ selection: PlanSelection, yaw: Double) {
+    /// 돌리거나 크기를 바꾸는 동안은 미리 보기 도면만 바꾼다. edit는 표시 id로 바꿀 것을 만든다
+    private func preview(_ selection: PlanSelection, _ edit: (String) -> PlanEdit) {
         guard case .marker(let id) = selection else { return }
         var preview = dragPreview ?? planData
-        _ = preview.apply(.rotate(markerId: id, yaw: yaw), selection: selection)
+        _ = preview.apply(edit(id), selection: selection)
         dragPreview = preview
     }
 
