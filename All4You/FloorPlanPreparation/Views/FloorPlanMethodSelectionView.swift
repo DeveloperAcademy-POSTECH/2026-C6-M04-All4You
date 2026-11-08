@@ -5,7 +5,7 @@
 //  Created by 채유성 on 11/1/26.
 //
 
-import PhotosUI
+import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
@@ -16,17 +16,28 @@ import UIKit
 struct FloorPlanMethodSelectionView: View {
     let address: String
     let createdAt: Date
-    @Environment(\.dismiss) private var dismiss
+    // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
+    var onImport: ((UIImage) -> Void)? = nil
     
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
     @State private var isImportMenuPresented = false
-    @State private var isPhotoPickerPresented = false
+    @State private var importMethod: ImportMethod?
+    @State private var isCheckingPhotoPermission = false
+    @State private var showsPhotoSettings = false
+    @State private var showsFileImportError = false
+    @State private var showsAlbum = false
+    @State private var importedImage: UIImage?
+    @State private var croppedImage: UIImage?
+    @State private var showsImportCrop = false
     @State private var isFileImporterPresented = false
     @State private var isCameraPresented = false
-    @State private var selectedPhotoItem: PhotosPickerItem?
     
+    private enum ImportMethod {
+        case camera, album, file
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             Color(uiColor: .systemGray6)
@@ -44,6 +55,7 @@ struct FloorPlanMethodSelectionView: View {
                         ) {
                             // 같은 항목을 다시 누르면 선택을 해제하고 계속 버튼도 비활성화
                             selectedSourceType = selectedSourceType == sourceType ? nil : sourceType
+                            importMethod = nil
                             // 외부 가져오기 메뉴는 해당 항목이 선택되어 있을 때만 표시
                             isImportMenuPresented = selectedSourceType == .externalImport
                         }
@@ -56,12 +68,9 @@ struct FloorPlanMethodSelectionView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .backOnlyToolbar(title: "이전") {
-            dismiss()
+        .backOnlyToolbar(title: "목록으로", customLayout: true) {
+            print("뒤로가기")
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             continueButton
@@ -75,15 +84,15 @@ struct FloorPlanMethodSelectionView: View {
                 ExternalImportGlassMenu(
                     onCameraTap: {
                         isImportMenuPresented = false
-                        openCamera()
+                        importMethod = .camera
                     },
                     onPhotoLibraryTap: {
                         isImportMenuPresented = false
-                        isPhotoPickerPresented = true
+                        importMethod = .album
                     },
                     onFileTap: {
                         isImportMenuPresented = false
-                        isFileImporterPresented = true
+                        importMethod = .file
                     }
                 )
                 .offset(x: 340, y: 80)
@@ -91,7 +100,6 @@ struct FloorPlanMethodSelectionView: View {
             }
         }
         .animation(.linear(duration: 0.15), value: isImportMenuPresented)
-        // TODO: 실제 화면으로 교체 (이 View를 사용하는 쪽에는 NavigationStack이 있어야 함)
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
@@ -101,29 +109,83 @@ struct FloorPlanMethodSelectionView: View {
                 // TODO: 직접 그리기 화면 연결
                 Text("직접 그리기 화면 준비 중")
             case .externalImport:
-                // 외부 가져오기는 ExternalImportGlassMenu로 처리하기에 다른 뷰로 이동하지 않지만 우선 놔둠
                 EmptyView()
             }
         }
-        .photosPicker(
-            isPresented: $isPhotoPickerPresented,
-            selection: $selectedPhotoItem,
-            matching: .images
-        )
+        // 앨범과 파일이 같은 영역 조정 및 결과 화면을 사용한다.
+        .navigationDestination(isPresented: $showsImportCrop) {
+            if let croppedImage {
+                Image(uiImage: croppedImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationTitle("스캔 결과 확인")
+                    .navigationSubtitle(address)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .bothSidesToolbar(
+                        leadingTitle: "뒤로 가기",
+                        trailingTitle: "저장",
+                        customLayout: true,
+                        barTitle: "스캔 결과 확인",
+                        barSubtitle: address,
+                        onBack: { self.croppedImage = nil },
+                        onDone: {
+                            onImport?(croppedImage)
+                            showsImportCrop = false
+                        }
+                    )
+            } else if let importedImage {
+                FloorPlanImportCropView(
+                    source: importedImage,
+                    address: address,
+                    onRetake: { showsImportCrop = false },
+                    onConfirm: { croppedImage = $0 }
+                )
+            }
+        }
+        // 사진을 확정한 경우에만 시트가 닫힌 뒤 크롭 화면을 연다.
+        .sheet(isPresented: $showsAlbum, onDismiss: {
+            if importedImage != nil {
+                showsImportCrop = true
+            }
+        }) {
+            FloorPlanAlbumView { image in
+                importedImage = image
+                showsAlbum = false
+            }
+            .presentationSizing(.page)
+            .presentationDetents([.fraction(0.85), .large])
+            .presentationDragIndicator(.visible)
+        }
+        .alert("사진 접근이 꺼져 있습니다", isPresented: $showsPhotoSettings) {
+            Button("설정으로 이동") { PermissionService.openSettings() }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("사진을 불러오려면 설정에서 사진 접근을 허용해 주세요.")
+        }
         .fileImporter(
             isPresented: $isFileImporterPresented,
             allowedContentTypes: [.image, .pdf]
-        ) { _ in }
-            .fullScreenCover(isPresented: $isCameraPresented) {
-                CameraPicker { _ in
-                    // TODO: 도면 변환 로직 연결
-                }
-                .ignoresSafeArea()
-            }
+        ) { result in
+            importFile(result)
+        }
+        .alert("파일을 불러오지 못했어요", isPresented: $showsFileImportError) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text("열 수 있는 이미지나 PDF 파일을 선택해 주세요.")
+        }
+        // 기존 도면 촬영 화면에서 촬영과 영역 조정을 이어서 처리한다.
+        .fullScreenCover(isPresented: $isCameraPresented) {
+            FloorPlanImportView(
+                onImport: onImport,
+                address: address,
+                onBack: { isCameraPresented = false }
+            )
+        }
     }
     
     private var continueButton: some View {
-        ContinueButton(isEnabled: selectedSourceType != nil) {
+        ContinueButton(isEnabled: canContinue) {
             guard let selectedSourceType else { return }
             switch selectedSourceType {
             case .roomPlan, .iPadDrawing:
@@ -131,14 +193,97 @@ struct FloorPlanMethodSelectionView: View {
                 isImportMenuPresented = false
                 destination = selectedSourceType
             case .externalImport:
-                // 별도 선택 화면 없이 ExternalImportGlassMenu 표시
-                isImportMenuPresented = true
+                switch importMethod {
+                case .camera:
+                    openCamera()
+                case .album:
+                    openAlbum()
+                case .file:
+                    isFileImporterPresented = true
+                case nil:
+                    break
+                }
             }
         }
     }
     
+    // 외부 가져오기는 세부 방식까지 골라야 계속할 수 있다.
+    private var canContinue: Bool {
+        guard let selectedSourceType, !isCheckingPhotoPermission else { return false }
+        return selectedSourceType != .externalImport || importMethod != nil
+    }
+
+    // 권한이 허용되면 앨범을 열고, 이전에 거절했으면 설정을 안내한다.
+    private func openAlbum() {
+        guard !isCheckingPhotoPermission else { return }
+        isCheckingPhotoPermission = true
+        Task {
+            defer { isCheckingPhotoPermission = false }
+            let permission = await PermissionService.requestPhotoLibraryPermission()
+            guard selectedSourceType == .externalImport, importMethod == .album else { return }
+
+            switch permission {
+            case .allowed:
+                importedImage = nil
+                croppedImage = nil
+                showsAlbum = true
+            case .deniedNow:
+                break
+            case .deniedBefore:
+                showsPhotoSettings = true
+            }
+        }
+    }
+
+    private func importFile(_ result: Result<URL, Error>) {
+        do {
+            let url = try result.get()
+            // 파일 앱에서 받은 URL의 접근 권한을 읽기가 끝날 때까지 유지한다.
+            let hasAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
+            let isPDF = contentType?.conforms(to: .pdf) == true
+                || url.pathExtension.lowercased() == "pdf"
+            let image: UIImage?
+            if isPDF {
+                image = firstPDFPage(at: url)
+            } else {
+                image = UIImage(data: try Data(contentsOf: url))
+            }
+
+            guard let image else {
+                showsFileImportError = true
+                return
+            }
+            importedImage = image
+            croppedImage = nil
+            showsImportCrop = true
+        } catch {
+            showsFileImportError = true
+        }
+    }
+
+    // PDF 첫 페이지를 크롭에 사용할 이미지로 변환한다.
+    private func firstPDFPage(at url: URL) -> UIImage? {
+        guard let document = PDFDocument(url: url),
+              let page = document.page(at: 0) else { return nil }
+        let size = page.bounds(for: .cropBox).size
+        let longestSide = max(size.width, size.height)
+        guard size.width > 0, size.height > 0, longestSide.isFinite else { return nil }
+        let scale = 2400 / longestSide
+        return page.thumbnail(
+            of: CGSize(width: size.width * scale, height: size.height * scale),
+            for: .cropBox
+        )
+    }
+
     private func openCamera() {
-        // 카메라가 없는 시뮬레이터에서는 UIImagePickerController 실행 막기 (크래시 방지)
+        // 카메라가 없는 기기에서는 촬영 화면을 열지 않는다.
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
         isCameraPresented = true
     }

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct FloorPlanImportView: View {
     var onImport: ((UIImage) -> Void)? = nil
+    var address = "청암로 77"
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = FloorPlanImportCamera()
     @Environment(\.scenePhase) private var scenePhase
@@ -28,14 +30,14 @@ struct FloorPlanImportView: View {
             .background(.white)
             .preferredColorScheme(.light)
             .navigationTitle("스캔 결과 확인")
-            .navigationSubtitle("청암로 77") // TODO: 주소 불러온 걸로 바꾸기
+            .navigationSubtitle(address)
             .navigationBarTitleDisplayMode(.inline)
             .bothSidesToolbar(
                 leadingTitle: "뒤로 가기",
                 trailingTitle: "저장",
                 customLayout: true,
                 barTitle: "스캔 결과 확인",
-                barSubtitle: "청암로 77", // TODO: 주소 불러온 걸로 바꾸기
+                barSubtitle: address,
                 onBack: {
                     // 원본 사진은 유지하고 결과만 비워 영역 조정 화면으로 돌아간다.
                     result = nil
@@ -51,20 +53,38 @@ struct FloorPlanImportView: View {
 
     // 촬영한 원본이 있으면 모서리 조정 화면을, 없으면 카메라를 표시
     private var content: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        Group {
             if let source {
-                FloorPlanImportCropView(source: source, onRetake: reset) { correctedImage in
+                FloorPlanImportCropView(source: source, address: address, onRetake: reset) { correctedImage in
                     result = correctedImage
                 }
             } else {
-                captureScreen
-                    .preferredColorScheme(.dark)
-                    // 카메라에만 적용해 영역 조정 화면의 양쪽 툴바와 겹치지 않게 한다.
-                    .backOnlyToolbar(title: "목록으로", customLayout: true) {
-                        camera.stop()
-                        dismiss()
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    captureScreen
+                }
+                .toolbar(.hidden, for: .navigationBar)
+                // 미리보기보다 앞에 버튼을 배치해 터치를 받도록 한다.
+                .overlay(alignment: .topLeading) {
+                    Button {
+                        if let onBack {
+                            onBack()
+                        } else {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .accessibilityLabel("뒤로 가기")
+                    .padding(.leading, 32)
+                    .padding(.top, 16)
+                }
+                .preferredColorScheme(.dark)
             }
         }
         .onChange(of: camera.image) { _, capturedImage in
@@ -81,6 +101,7 @@ struct FloorPlanImportView: View {
 
             ZStack {
                 FloorPlanImportCameraPreview(camera: camera)
+                    .allowsHitTesting(false)
                 guideFrame(previewSize: geometry.size)
                 captureHint
                 captureControls(landscape: landscape)
@@ -165,7 +186,7 @@ struct FloorPlanImportView: View {
             HStack {
                 Spacer()
                 if camera.detected {
-                    Label("종이 인식됨", systemImage: "checkmark.viewfinder")
+                    Label("종이 인식됨", systemImage: "checkmark.circle")
                         .font(AppTypography.label)
                         .foregroundStyle(.yellow)
                 }

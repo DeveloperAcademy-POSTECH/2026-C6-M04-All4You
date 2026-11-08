@@ -3,6 +3,8 @@ import UIKit
 
 struct FloorPlanImportCropView: View {
     let source: UIImage
+    // 가져오기 화면에서 받은 주소를 상단에 표시한다.
+    var address = "청암로 77"
     let onRetake: () -> Void
     let onConfirm: (UIImage) -> Void
     @State private var normalized: UIImage?
@@ -56,7 +58,7 @@ struct FloorPlanImportCropView: View {
         }
         .foregroundStyle(.primary)
         .navigationTitle("스캔 영역 조정")
-        .navigationSubtitle("청암로 77") // TODO: 주소 불러온 걸로 바꾸기
+        .navigationSubtitle(address)
         .navigationBarTitleDisplayMode(.inline)
         .bothSidesToolbar(
             leadingTitle: "뒤로 가기",
@@ -64,7 +66,7 @@ struct FloorPlanImportCropView: View {
             isDoneDisabled: isConfirmDisabled,
             customLayout: true,
             barTitle: "스캔 영역 조정",
-            barSubtitle: "청암로 77", // TODO: 주소 불러온 걸로 바꾸기
+            barSubtitle: address,
             onBack: onRetake,
             onDone: confirm
         )
