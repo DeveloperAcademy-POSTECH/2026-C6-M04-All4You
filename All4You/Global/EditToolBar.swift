@@ -136,6 +136,6 @@ extension EditToolBar {
 
     VStack(alignment: .leading) {
         EditToolBar(selectedTool: $selectedTool)
-        EditToolBar(selectedTool: $selectedTool, hiddenTools: [.roomName, .furniture])
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: [.roomName, .furniture, .door])
     }
 }

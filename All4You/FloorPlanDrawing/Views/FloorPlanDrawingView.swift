@@ -55,7 +55,7 @@ struct FloorPlanDrawingView: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture])
+            EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture, .door])
                 .padding(8)
                 .background {
                     Rectangle()
