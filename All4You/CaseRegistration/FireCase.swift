@@ -66,10 +66,10 @@ final class FireCase {
         self.lastViewedAt = lastViewedAt
     }
     
-    /// 목록에 보이는 이름. 사건명이 있으면 사건명, 사건명이 없던 예전 사건은 주소 뒤 두 단어
+    /// 목록에 보이는 이름. 사건명이 있으면 사건명, 사건명이 없던 예전 사건은 주소의 도로명·번지 ("청암로 77")
     var title: String {
         guard caseName.isEmpty else { return caseName }
-        return address.split(separator: " ").suffix(2).joined(separator: " ")
+        return Self.shortAddress(address)
     }
     
     enum Status: String {

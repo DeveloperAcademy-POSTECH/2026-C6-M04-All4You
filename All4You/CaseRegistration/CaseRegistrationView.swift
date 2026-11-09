@@ -5,7 +5,8 @@
 //  Created by SIA on 11/2/26.
 //
 
-// 새로운 사건 등록 시트. 사건명(맨 위), 출동 날짜·시간, 주소·상세 주소를 받는다
+// 새로운 사건 등록 시트. 사건명 / 출동 정보(날짜·시간) / 현장 정보(주소·상세 주소) 세 묶음으로 받는다.
+// 사건명은 주소·상세 주소로 자동으로 채우고("청암로 77 1층 207호 화재"), 직접 고치면 그 뒤로는 덮어쓰지 않는다
 
 import SwiftData
 import SwiftUI
@@ -19,8 +20,10 @@ struct CaseRegistrationView: View {
     @State private var time: Date?
     @State private var address = ""
     @State private var detailAddress = ""
-    /// 처음에는 "새 사건_N"으로 채워 두고, 사용자가 고칠 수 있다
+    /// 주소·상세 주소로 자동으로 채운다. 사용자가 고칠 수 있다
     @State private var caseName = ""
+    /// 사용자가 사건명을 직접 고쳤는지. 고쳤으면 주소가 바뀌어도 사건명을 덮어쓰지 않는다 (다 지우면 다시 자동)
+    @State private var isCaseNameEdited = false
     @State private var isDatePickerOpen = false
     @State private var isTimePickerOpen = false
     @State private var addressSearch = AddressSearch()
@@ -31,10 +34,14 @@ struct CaseRegistrationView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                Section(Copy.caseNameSection) {
                     caseNameRow
+                }
+                Section(Copy.dispatchSection) {
                     dateRow
                     timeRow
+                }
+                Section(Copy.siteSection) {
                     addressRow
                     if isAddressFocused {
                         suggestionRows
@@ -47,11 +54,10 @@ struct CaseRegistrationView: View {
             .toolbar { toolbar }
             .onChange(of: address) { _, newValue in
                 addressSearch.update(query: newValue)
+                updateAutoCaseName()
             }
-            .onAppear {
-                if caseName.isEmpty {
-                    caseName = defaultCaseName
-                }
+            .onChange(of: detailAddress) { _, _ in
+                updateAutoCaseName()
             }
             .task {
                 await fillCurrentAddress()
@@ -113,22 +119,24 @@ extension CaseRegistrationView {
         .fontWeight(.semibold)
     }
     
-    /// 동·호수 등 상세 주소. 넣지 않아도 된다
+    /// 층·호수 등 상세 주소. 넣지 않아도 된다. Figma처럼 아이콘 없이 주소 글자 줄에 맞춰 들여 쓴다
     private var detailAddressRow: some View {
-        textRow(systemImage: "building.2", placeholder: Copy.detailAddressPlaceholder, text: $detailAddress)
+        textRow(systemImage: "location", isIconHidden: true, placeholder: Copy.detailAddressPlaceholder, text: $detailAddress)
     }
     
     /// 사건명. 주소·상세 주소로 자동으로 채우고, 직접 고치면 그 뒤로는 자동으로 바꾸지 않는다
     private var caseNameRow: some View {
-        textRow(systemImage: "text.cursor", placeholder: Copy.caseNamePlaceholder, text: $caseName)
+        textRow(systemImage: "doc.text", placeholder: Copy.caseNamePlaceholder, text: caseNameBinding)
     }
     
-    /// 아이콘·입력칸·지우기 버튼으로 된 한 줄 (주소 줄과 같은 모양)
-    // TEMP: Figma에 상세 주소·사건명 칸 디자인이 없어 주소 줄과 같은 모양으로 둠 — 디자인 확인 필요
-    private func textRow(systemImage: String, placeholder: String, text: Binding<String>) -> some View {
+    /// 아이콘·입력칸·지우기 버튼으로 된 한 줄 (주소 줄과 같은 모양).
+    /// isIconHidden이면 아이콘 자리만 비워 두어 위 줄 글자와 시작점을 맞춘다
+    private func textRow(systemImage: String, isIconHidden: Bool = false, placeholder: String, text: Binding<String>) -> some View {
         HStack(spacing: Layout.iconSpacing) {
             Image(systemName: systemImage)
                 .foregroundStyle(text.wrappedValue.isEmpty ? Color(uiColor: .placeholderText) : Color.primary)
+                .opacity(isIconHidden ? 0 : 1)
+                .accessibilityHidden(isIconHidden)
             TextField(placeholder, text: text)
                 .submitLabel(.done)
             if !text.wrappedValue.isEmpty {
@@ -219,15 +227,37 @@ extension CaseRegistrationView {
         Binding(get: { time ?? .now }, set: { time = $0 })
     }
     
+    /// 줄바꿈·쉼표·끝의 우편번호를 정리한 주소
     private var trimmedAddress: String {
-        address.trimmingCharacters(in: .whitespacesAndNewlines)
+        FireCase.cleanedAddress(address)
     }
     
     private var trimmedDetailAddress: String {
         detailAddress.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    /// 기본 사건명 "새 사건_N". N은 이미 있는 "새 사건_숫자" 중 가장 큰 번호 다음
+    /// 사건명 칸. 사용자가 고치면 '직접 고침'으로 표시해 자동 생성이 덮어쓰지 않게 한다
+    private var caseNameBinding: Binding<String> {
+        Binding(
+            get: { caseName },
+            set: { newValue in
+                caseName = newValue
+                isCaseNameEdited = !newValue.isEmpty && newValue != autoCaseName
+            }
+        )
+    }
+    
+    /// 주소·상세 주소로 만든 사건명 ("청암로 77 1층 207호 화재")
+    private var autoCaseName: String {
+        FireCase.autoCaseName(address: trimmedAddress, detailAddress: trimmedDetailAddress)
+    }
+    
+    private func updateAutoCaseName() {
+        guard !isCaseNameEdited else { return }
+        caseName = autoCaseName
+    }
+    
+    /// 사건명도 주소도 없을 때만 쓰는 기본 사건명 "새 사건_N". N은 이미 있는 "새 사건_숫자" 중 가장 큰 번호 다음
     private var defaultCaseName: String {
         let numbers = existingCases.compactMap { fireCase -> Int? in
             guard fireCase.caseName.hasPrefix(Copy.defaultCaseNamePrefix) else { return nil }
@@ -255,7 +285,7 @@ extension CaseRegistrationView {
         return !trimmedAddress.isEmpty && occurredAt <= .now
     }
     
-    /// 사건명을 비워 두면 기본 사건명("새 사건_N")으로 저장한다. 주소·상세 주소·사건명은 따로 저장한다
+    /// 사건명을 비워 두면 주소로 만든 사건명, 그것도 없으면 기본 사건명("새 사건_N")으로 저장한다. 주소·상세 주소·사건명은 따로 저장한다
     private func register() {
         guard isValid, let occurredAt else { return }
         let trimmedCaseName = caseName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -263,7 +293,7 @@ extension CaseRegistrationView {
             FireCase(
                 address: trimmedAddress,
                 detailAddress: trimmedDetailAddress,
-                caseName: trimmedCaseName.isEmpty ? defaultCaseName : trimmedCaseName,
+                caseName: [trimmedCaseName, autoCaseName, defaultCaseName].first { !$0.isEmpty } ?? defaultCaseName,
                 occurredAt: occurredAt
             )
         )
@@ -273,7 +303,7 @@ extension CaseRegistrationView {
     private func fillCurrentAddress() async {
         guard address.isEmpty, let current = await CurrentAddress.fetch() else { return }
         if address.isEmpty {
-            address = current
+            address = FireCase.cleanedAddress(current)
         }
     }
 }
@@ -311,8 +341,11 @@ extension CaseRegistrationView {
         static let datePlaceholder = "년 / 월 / 일"
         static let timePlaceholder = "출동시간"
         static let addressPlaceholder = "주소"
-        static let detailAddressPlaceholder = "상세 주소 (선택)"
-        static let caseNamePlaceholder = "사건명"
+        static let detailAddressPlaceholder = "상세 주소 (층 · 호수)"
+        static let caseNamePlaceholder = "주소 입력 후 자동 생성"
+        static let caseNameSection = "사건명"
+        static let dispatchSection = "출동 정보"
+        static let siteSection = "현장 정보"
         /// 기본 사건명 앞부분. 뒤에 번호를 붙인다
         static let defaultCaseNamePrefix = "새 사건_"
         static let clear = "지우기"
