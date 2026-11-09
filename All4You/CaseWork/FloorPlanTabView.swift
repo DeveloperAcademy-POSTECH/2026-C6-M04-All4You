@@ -202,7 +202,7 @@ extension FloorPlanTabView {
     }
 
     /// 장소 사진 중 필터에 맞는 것을 최근에 찍은 것부터. 북마크를 고르면 북마크한 사진만
-    private func filteredPhotos(inRoom roomID: String) -> [EvidencePhoto] {
+    private func filteredPhotos(inRoom roomID: String) -> [LoadedPhoto] {
         photoStore.photos(inRoom: roomID)
             .filter { photoFilter.scope == .all || $0.isBookmarked }
             .sorted { $0.takenAt > $1.takenAt }
@@ -424,14 +424,14 @@ private struct PhotoPinLayer: View {
 private struct RoomPhotoPanel: View {
     let roomName: String
     /// 최근에 찍은 것부터
-    let photos: [EvidencePhoto]
+    let photos: [LoadedPhoto]
     /// 확대 버튼을 누르면 지금 큰 사진의 id를 알린다
     let onExpand: (UUID) -> Void
 
     /// 크게 보여 줄 사진. 고른 적이 없거나 고른 사진이 사라지면 첫 사진
     @State private var selectedID: UUID?
 
-    private var selectedPhoto: EvidencePhoto? {
+    private var selectedPhoto: LoadedPhoto? {
         photos.first { $0.id == selectedID } ?? photos.first
     }
 
@@ -485,7 +485,7 @@ private struct RoomPhotoPanel: View {
     }
 
     /// 누르면 큰 사진으로 보여 준다. 지금 큰 사진은 주황 테두리
-    private func tile(_ photo: EvidencePhoto) -> some View {
+    private func tile(_ photo: LoadedPhoto) -> some View {
         let isSelected = photo.id == selectedPhoto?.id
         return Button {
             selectedID = photo.id

@@ -64,7 +64,7 @@ extension PhotoMarkupView {
                 image.draw(in: bounds)
                 strokes.draw(in: bounds)
             }
-            let thumbnail = EvidencePhoto.makeThumbnail(from: merged)
+            let thumbnail = LoadedPhoto.makeThumbnail(from: merged)
             await MainActor.run {
                 onSave(merged, thumbnail)
             }

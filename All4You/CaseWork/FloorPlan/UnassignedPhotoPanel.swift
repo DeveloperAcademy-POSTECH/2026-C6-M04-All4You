@@ -11,7 +11,7 @@ import SwiftUI
 
 /// 위치 미지정 사진 목록. 고른 사진을 크게 보여 주고, 나머지는 아래 3열로 늘어놓는다
 struct UnassignedPhotoPanel: View {
-    let photos: [EvidencePhoto]
+    let photos: [LoadedPhoto]
     let onClose: () -> Void
     /// 사진을 끌기 시작하면 그 사진 id를 알린다. 도면이 끄는 동안 미리보기 핀을 보여 주는 데 쓴다
     var onDragStart: (UUID) -> Void = { _ in }
@@ -19,7 +19,7 @@ struct UnassignedPhotoPanel: View {
     /// 크게 보여 줄 사진. 고른 적이 없거나 고른 사진이 장소로 옮겨지면 첫 사진을 보여 준다
     @State private var previewID: UUID?
 
-    private var previewPhoto: EvidencePhoto? {
+    private var previewPhoto: LoadedPhoto? {
         photos.first { $0.id == previewID } ?? photos.first
     }
 
@@ -70,7 +70,7 @@ extension UnassignedPhotoPanel {
     }
 
     /// 크게 보여 주는 고른 사진. 주황빛으로 둘러 지금 옮길 사진임을 보여 준다
-    private func preview(_ photo: EvidencePhoto) -> some View {
+    private func preview(_ photo: LoadedPhoto) -> some View {
         Color.clear
             .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
             .overlay {
@@ -84,7 +84,7 @@ extension UnassignedPhotoPanel {
     }
 
     /// 누르면 크게 보여 주고, 길게 누르면 바로 끌 수 있다
-    private func tile(_ photo: EvidencePhoto) -> some View {
+    private func tile(_ photo: LoadedPhoto) -> some View {
         Button {
             previewID = photo.id
         } label: {
@@ -105,7 +105,7 @@ extension UnassignedPhotoPanel {
 extension View {
     /// 사진 id를 글자로 실어 도면(FloorPlanTabView)에 끌어다 놓을 수 있게 한다. 끄는 동안 작은 사진이 손가락을 따라온다.
     /// draggable은 끌기 시작을 알려 주지 않아서, 시작할 때 부르는 onDrag를 쓴다
-    fileprivate func draggablePhoto(_ photo: EvidencePhoto, onDragStart: @escaping (UUID) -> Void) -> some View {
+    fileprivate func draggablePhoto(_ photo: LoadedPhoto, onDragStart: @escaping (UUID) -> Void) -> some View {
         onDrag {
             onDragStart(photo.id)
             return NSItemProvider(object: photo.id.uuidString as NSString)

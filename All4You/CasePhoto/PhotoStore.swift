@@ -1,5 +1,5 @@
 //
-//  EvidencePhoto.swift
+//  PhotoStore.swift
 //  All4You
 //
 //  Created by SIA on 11/9/26.
@@ -11,8 +11,8 @@
 import Observation
 import UIKit
 
-/// 촬영하거나 불러온 사진 한 장. 이름은 ERD의 EvidencePhoto를 따른다
-struct EvidencePhoto: Identifiable {
+/// 화면에 보이려고 이미지를 읽어 들인 사진 한 장. 저장하는 사진 기록은 ERD 이름을 딴 EvidencePhoto 모델
+struct LoadedPhoto: Identifiable {
     let id: UUID
     /// 원본(마크업하면 마크업이 그려진 사진으로 바뀐다)
     var image: UIImage
@@ -25,7 +25,7 @@ struct EvidencePhoto: Identifiable {
     var roomKey: String?
 }
 
-extension EvidencePhoto {
+extension LoadedPhoto {
     /// 목록용 작은 사진의 긴 변 길이 (px)
     private static let thumbnailLength: CGFloat = 480
 
@@ -45,19 +45,19 @@ extension EvidencePhoto {
 @Observable
 final class PhotoStore {
     /// 추가한 순서대로 쌓인다
-    private(set) var photos: [EvidencePhoto] = []
+    private(set) var photos: [LoadedPhoto] = []
 
     /// 위치 미지정 사진
-    var unassignedPhotos: [EvidencePhoto] {
+    var unassignedPhotos: [LoadedPhoto] {
         photos.filter { $0.roomKey == nil }
     }
 
-    func photo(id: UUID) -> EvidencePhoto? {
+    func photo(id: UUID) -> LoadedPhoto? {
         photos.first { $0.id == id }
     }
 
     /// 장소의 사진. roomKey가 nil이면 위치 미지정 사진
-    func photos(inRoom roomKey: String?) -> [EvidencePhoto] {
+    func photos(inRoom roomKey: String?) -> [LoadedPhoto] {
         photos.filter { $0.roomKey == roomKey }
     }
 
@@ -65,7 +65,7 @@ final class PhotoStore {
     // TODO: 촬영 위치로 장소를 자동 지정하는 단계가 생기면 roomKey를 함께 받기
     @discardableResult
     func add(image: UIImage, thumbnail: UIImage, takenAt: Date) -> UUID {
-        let photo = EvidencePhoto(
+        let photo = LoadedPhoto(
             id: UUID(),
             image: image,
             thumbnail: thumbnail,

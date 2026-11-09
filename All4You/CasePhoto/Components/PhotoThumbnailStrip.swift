@@ -11,7 +11,7 @@ import SwiftUI
 
 /// 사진 작은 그림을 가로로 늘어놓은 띠. 고른 사진은 흰 테두리로 보인다
 struct PhotoThumbnailStrip: View {
-    let photos: [EvidencePhoto]
+    let photos: [LoadedPhoto]
     /// 고른 사진. 촬영 화면처럼 고른 사진이 없으면 nil
     let selectedID: UUID?
     let onSelect: (UUID) -> Void
@@ -41,7 +41,7 @@ struct PhotoThumbnailStrip: View {
 
 // 서브 뷰
 extension PhotoThumbnailStrip {
-    private func thumbnail(_ photo: EvidencePhoto) -> some View {
+    private func thumbnail(_ photo: LoadedPhoto) -> some View {
         let isSelected = photo.id == selectedID
         return Button {
             onSelect(photo.id)
