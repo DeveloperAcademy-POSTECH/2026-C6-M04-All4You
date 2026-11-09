@@ -134,12 +134,9 @@ struct PlanSpace {
     let size: SIMD2<Double>
 
     init(plan: PlanData) {
-        let xs = plan.vertices.map(\.x)
-        let ys = plan.vertices.map(\.y)
-        let minPoint = SIMD2(xs.min() ?? 0, ys.min() ?? 0)
-        let maxPoint = SIMD2(xs.max() ?? 0, ys.max() ?? 0)
-        center = (minPoint + maxPoint) / 2
-        size = maxPoint - minPoint
+        let bounds = plan.bounds
+        center = (bounds.min + bounds.max) / 2
+        size = bounds.max - bounds.min
     }
 
     /// 도면 점 p를 바닥에서 height(m) 위의 3D 점으로
@@ -218,19 +215,24 @@ extension FloorPlan3DBuilder {
         return pieces
     }
 
-    /// 토막 하나를 상자로. 문·개구부는 위쪽만, 창문은 위·아래 벽과 유리
+    /// 토막 하나를 상자로. 개구부는 위쪽 벽만, 창문은 위·아래 벽과 유리, 문은 위쪽 벽과 눌러 고를 수 있는 얇은 판
     private static func boxes(for piece: WallPiece, wall: Wall, selection: PlanSelection?) -> [ModelEntity] {
         guard let opening = piece.opening else {
             return [wallBox(piece, bottom: 0, top: wall.height, depth: wall.thickness)].compactMap { $0 }
         }
         let top = min(opening.sillHeight + opening.height, wall.height)
         var result = [wallBox(piece, bottom: top, top: wall.height, depth: wall.thickness)]
-        if opening.kind == .window {
+        switch opening.kind {
+        case .window:
             result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness))
-            result.append(windowGlass(piece, bottom: opening.sillHeight, top: top, window: opening, selection: selection))
+            result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
+        case .door:
+            result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
+        case .passage:
+            break
         }
         var entities = result.compactMap { $0 }
-        if opening.kind == .window, selection == .doorWindow(opening.id) {
+        if opening.kind != .passage, selection == .doorWindow(opening.id) {
             entities += windowEdgeHandles(piece, bottom: opening.sillHeight, top: top, window: opening, wallThickness: wall.thickness)
         }
         return entities
@@ -245,12 +247,15 @@ extension FloorPlan3DBuilder {
         let horizontal = SIMD3(Float(piece.to - piece.from) * EdgeHandle.lengthRatio, EdgeHandle.thickness, depth)
         let middle = Float((bottom + top) / 2)
         let center = Float((piece.from + piece.to) / 2)
-        let handles: [(edge: WindowEdge, position: SIMD3<Float>, size: SIMD3<Float>)] = [
+        var handles: [(edge: WindowEdge, position: SIMD3<Float>, size: SIMD3<Float>)] = [
             (.wallStart, [Float(piece.from), middle, 0], vertical),
             (.wallEnd, [Float(piece.to), middle, 0], vertical),
             (.top, [center, Float(top), 0], horizontal),
-            (.bottom, [center, Float(bottom), 0], horizontal),
         ]
+        // 문은 바닥부터 시작하므로 아래 테두리는 옮기지 않는다
+        if window.kind == .window {
+            handles.append((.bottom, [center, Float(bottom), 0], horizontal))
+        }
         return handles.map { handle in
             let entity = ModelEntity(
                 mesh: .generateBox(size: handle.size, cornerRadius: EdgeHandle.thickness / 2),
@@ -283,9 +288,10 @@ extension FloorPlan3DBuilder {
         return box(piece, bottom: bottom, top: top, depth: depth, material: Materials.wall, filter: filter)
     }
 
-    /// 창문 유리. 눌러 고를 수 있고, 벽 그룹이 아니라 창 너머 라벨은 가리지 않는다
-    private static func windowGlass(_ piece: WallPiece, bottom: Double, top: Double, window: DoorWindow, selection: PlanSelection?) -> ModelEntity? {
-        let tag = PlanSelection.doorWindow(window.id)
+    /// 창문 유리·문짝 자리의 얇은 판. 눌러 고를 수 있고, 벽 그룹이 아니라 너머 라벨은 가리지 않는다.
+    /// 문도 유리와 같은 반투명 판으로 그려, 문 너머 방이 가려지지 않게 한다
+    private static func openingPanel(_ piece: WallPiece, bottom: Double, top: Double, opening: DoorWindow, selection: PlanSelection?) -> ModelEntity? {
+        let tag = PlanSelection.doorWindow(opening.id)
         let material = tag == selection ? Materials.selectedGlass : Materials.glass
         let glass = box(piece, bottom: bottom, top: top, depth: 0.03, material: material, filter: .default)
         glass?.components.set(PlanSelectionComponent(selection: tag))
@@ -331,6 +337,7 @@ extension FloorPlan3DBuilder {
         let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
+        entity.scale = SIMD3(repeating: Float(marker.drawScale))
         makeSelectable(entity, as: tag)
         return entity
     }
