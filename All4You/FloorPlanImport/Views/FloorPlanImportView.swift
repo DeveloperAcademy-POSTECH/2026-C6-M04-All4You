@@ -13,42 +13,20 @@ struct FloorPlanImportView: View {
     var body: some View {
         NavigationStack {
             if let result {
-                scanResult(image: result)
+                FloorPlanExternalImportResultView(
+                    image: result,
+                    address: address,
+                    onBack: { self.result = nil },
+                    onSave: { image in
+                        onImport?(image)
+                        dismiss()
+                    }
+                )
             } else {
                 content
                     .navigationBarTitleDisplayMode(.inline)
             }
         }
-    }
-
-    // 보정된 도면을 화면에 최대한 크게 표시. 도면이 잘리지 않도록 비율 유지
-    private func scanResult(image: UIImage) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .scaledToFit()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.white)
-            .preferredColorScheme(.light)
-            .navigationTitle("스캔 결과 확인")
-            .navigationSubtitle(address)
-            .navigationBarTitleDisplayMode(.inline)
-            .bothSidesToolbar(
-                leadingTitle: "뒤로 가기",
-                trailingTitle: "저장",
-                customLayout: true,
-                barTitle: "스캔 결과 확인",
-                barSubtitle: address,
-                onBack: {
-                    // 원본 사진은 유지하고 결과만 비워 영역 조정 화면으로 돌아간다.
-                    result = nil
-                },
-                onDone: {
-                    if let onImport {
-                        onImport(image)
-                    }
-                    dismiss()
-                }
-            )
     }
 
     // 촬영한 원본이 있으면 모서리 조정 화면을, 없으면 카메라를 표시
