@@ -105,10 +105,7 @@ extension CaseMainView {
             dimension: dimension,
             planData: planData,
             photoStore: photoStore,
-            isPlacingPhotos: $isPlacingPhotos,
-            onOpenRoomAlbum: { room in
-                selection = .album(room.name)
-            }
+            isPlacingPhotos: $isPlacingPhotos
         )
     }
 
