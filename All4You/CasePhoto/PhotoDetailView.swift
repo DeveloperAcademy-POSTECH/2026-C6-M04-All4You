@@ -52,13 +52,10 @@ struct PhotoDetailView: View {
         .statusBarHidden()
         .alert(Copy.deleteTitle, isPresented: $isDeleteAlertShown) {
             Button(Copy.cancel, role: .cancel) {}
-            // Figma의 삭제 버튼은 빨강이 아니라 주황으로 채워져 있어 기본 동작 버튼으로 두고 주황을 입힌다
-            Button(Copy.delete, action: deleteCurrentPhoto)
-                .keyboardShortcut(.defaultAction)
+            Button(Copy.delete, role: .destructive, action: deleteCurrentPhoto)
         } message: {
             Text(Copy.deleteMessage)
         }
-        .tint(.brand500)
         .fullScreenCover(isPresented: $isMarkupShown) {
             if let currentPhoto {
                 PhotoMarkupView(image: currentPhoto.image) {
