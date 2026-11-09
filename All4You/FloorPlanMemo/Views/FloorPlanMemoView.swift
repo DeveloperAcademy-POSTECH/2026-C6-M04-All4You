@@ -10,7 +10,8 @@ import SwiftUI
 struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
     
-    @State private var selectedLocation: FloorPlanMemoLocation = .all
+    // nil이면 전체, 값이 있으면 Room.id에 해당하는 메모만 보여줌
+    @State private var selectedLocationID: String?
     @State private var selectedMemoID: FloorPlanMemo.ID?
     @State private var isDetailExpanded = false
     @State private var listWidthFraction: CGFloat = 890 / 1352
@@ -21,7 +22,7 @@ struct FloorPlanMemoView: View {
     private let splitHandleWidth: CGFloat = 24
     private let pickerBottomClearance: CGFloat = 82
     
-    init(sections: [FloorPlanMemoSection] = .sample) {
+    init(sections: [FloorPlanMemoSection] = []) {
         self.sections = sections
     }
     
@@ -129,14 +130,16 @@ struct FloorPlanMemoView: View {
                         if dragStartListWidth != nil { $0.animation = nil }
                     }
                 }
+            } else if sections.isEmpty {
+                emptyView
             } else {
                 memoList
             }
         }
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottom) {
-            if !isDetailExpanded {
-                FloorPlanMemoLocationPicker(selection: $selectedLocation)
+            if !isDetailExpanded && !sections.isEmpty {
+                locationPicker
                     .padding(.bottom, 32)
             }
         }
@@ -149,7 +152,7 @@ struct FloorPlanMemoView: View {
                     .padding(24)
             }
         }
-        .onChange(of: selectedLocation) {
+        .onChange(of: selectedLocationID) {
             selectedMemoID = nil
             isDetailExpanded = false
             restoreDragWidth = 0
@@ -176,7 +179,7 @@ struct FloorPlanMemoView: View {
                         .listRowSeparator(.hidden)
                     }
                 } header: {
-                    FloorPlanMemoSectionHeader(title: section.location.rawValue)
+                    FloorPlanMemoSectionHeader(title: section.locationName)
                         .listRowInsets(
                             EdgeInsets(top: 0, leading: 64, bottom: 0, trailing: 64)
                         )
@@ -188,6 +191,35 @@ struct FloorPlanMemoView: View {
         .scrollIndicators(.hidden)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Color.clear.frame(height: pickerBottomClearance)
+        }
+    }
+    
+    private var emptyView: some View {
+        ContentUnavailableView {
+            Label("작성된 메모가 없어요", systemImage: "bubble.left")
+        } description: {
+            Text("상단의 메모 추가 버튼을 누르고\n도면에서 위치를 선택해주세요.")
+        }
+    }
+    
+    /// 도면에 실제로 있는 장소만 동적으로 보여 준다.
+    private var locationPicker: some View {
+        Picker("메모 위치", selection: $selectedLocationID) {
+            Text("전체")
+                .tag(String?.none)
+            ForEach(sections) { section in
+                Text(section.locationName)
+                    .tag(Optional(section.id))
+            }
+        }
+        .pickerStyle(.segmented)
+        .controlSize(.large)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(minWidth: 180, minHeight: 50)
+        .background {
+            Capsule()
+                .fill(Color.gray100)
+                .padding(.top, 1)
         }
     }
     
@@ -289,8 +321,8 @@ struct FloorPlanMemoView: View {
     }
     
     private var visibleSections: [FloorPlanMemoSection] {
-        guard selectedLocation != .all else { return sections }
-        return sections.filter { $0.location == selectedLocation }
+        guard let selectedLocationID else { return sections }
+        return sections.filter { $0.id == selectedLocationID }
     }
     
     private func listWidth(in availableWidth: CGFloat) -> CGFloat {
