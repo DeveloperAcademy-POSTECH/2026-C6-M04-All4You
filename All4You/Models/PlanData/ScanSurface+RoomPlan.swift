@@ -4,14 +4,23 @@ import RoomPlan
 import simd
 
 extension PlanData {
-    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을, 없으면(구간 하나, 또는 합치기 실패) 구간 결과를 모두 모아 쓴다.
-    /// 구간들은 같은 AR 좌표에 있어 그대로 모아도 된다
+    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을, 없으면(구간 하나, 또는 합치기 실패) 가장 큰 구간 하나를 쓴다.
+    /// 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않는다
     init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
         if let structure {
             self.init(scanSurfaces: ScanSurface.surfaces(of: structure), sections: ScanSection.sections(of: structure))
+        } else if let largest = rooms.max(by: { $0.walls.totalWidth < $1.walls.totalWidth }) {
+            self.init(scanSurfaces: ScanSurface.surfaces(of: largest), sections: ScanSection.sections(of: largest))
         } else {
-            self.init(scanSurfaces: rooms.flatMap(ScanSurface.surfaces), sections: rooms.flatMap(ScanSection.sections))
+            self = .empty
         }
+    }
+}
+
+private extension [CapturedRoom.Surface] {
+    /// 벽 폭을 모두 더한 길이. 구간 크기를 비교할 때 쓴다
+    var totalWidth: Float {
+        reduce(0) { $0 + $1.dimensions.x }
     }
 }
 
