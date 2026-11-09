@@ -167,8 +167,24 @@ extension CaseListView {
     /// 로고, 최근 열람, "사건 목록" 아래 조사 중·조사 종결·사용자 목록
     private var sidebar: some View {
         List(selection: $selection) {
-            logo
-                .listRowSeparator(.hidden)
+            
+            // FIRELINE 벡터 로고
+            HStack(spacing: 8) {
+                Image("FirelineFlame")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 24)
+                    .offset(x: -6)
+                
+                Image("FirelineWordmark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 131, height: 24)
+                    .offset(x: -6)
+            }
+            .padding(.vertical, 12)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
             
             defaultRow(.recent)
             
@@ -176,16 +192,19 @@ extension CaseListView {
             Section {
                 defaultRow(.inProgress)
                 defaultRow(.closed)
+                
                 ForEach(folders) { folder in
                     folderRow(folder)
                 }
                 .onMove(perform: moveFolders)
+                
             } header: {
                 Text(Copy.caseList)
             }
         }
         .listStyle(.sidebar)
         .environment(\.editMode, $editMode)
+        
         // 시스템 사이드바 버튼 대신 Figma처럼 오른쪽 위에 직접 둔다
         .toolbar(removing: .sidebarToggle)
         .toolbar {
