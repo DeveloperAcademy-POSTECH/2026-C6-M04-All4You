@@ -39,6 +39,19 @@ extension Furniture {
         let along = SIMD2(-sin(rotation), cos(rotation)) * (depth / 2)
         return [center - across - along, center + across - along, center + across + along, center - across + along]
     }
+
+    /// 도면 점 point가 가구 윗면을 사방으로 margin(m)만큼 넓힌 안인지. 가구를 돌리기 전 방향으로 되돌려 가로·세로 절반과 비교한다
+    func contains(_ point: SIMD2<Double>, margin: Double = 0) -> Bool {
+        let offset = point - center
+        let acrossDistance = offset.x * cos(rotation) + offset.y * sin(rotation)
+        let alongDistance = -offset.x * sin(rotation) + offset.y * cos(rotation)
+        switch shape {
+        case .rectangle:
+            return abs(acrossDistance) <= width / 2 + margin && abs(alongDistance) <= depth / 2 + margin
+        case .circle:
+            return (offset * offset).sum().squareRoot() <= width / 2 + margin
+        }
+    }
 }
 
 extension Furniture {

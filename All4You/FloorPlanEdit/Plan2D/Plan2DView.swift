@@ -136,7 +136,7 @@ extension Plan2DView {
 
 // 가구
 extension Plan2DView {
-    /// 가구 윗면을 옅은 회색으로 채우고 테두리를 긋는다. 바닥에서 띄운 가구(벽 수납장 등)는 테두리를 점선으로
+    /// 가구 윗면을 옅은 회색으로 채우고 테두리를 긋는다. 바닥에서 띄운 가구(벽 수납장 등)는 테두리를 점선으로, 고른 가구는 주황 굵은 테두리로
     private func drawFurniture(_ furniture: Furniture, in context: inout GraphicsContext) {
         let path: Path
         switch furniture.shape {
@@ -151,8 +151,13 @@ extension Plan2DView {
             path = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
         }
         let isFloating = furniture.elevation > Layout.floatingElevation
+        let isSelected = selection == .furniture(furniture.id)
         context.fill(path, with: .color(.gray100))
-        context.stroke(path, with: .color(.gray500), style: StrokeStyle(lineWidth: Layout.furnitureLineWidth, dash: isFloating ? Layout.floatingDash : []))
+        context.stroke(
+            path,
+            with: .color(isSelected ? .brand500 : .gray500),
+            style: StrokeStyle(lineWidth: isSelected ? Layout.selectionLineWidth : Layout.furnitureLineWidth, dash: isFloating ? Layout.floatingDash : [])
+        )
     }
 
     /// 가구 가운데의 이름 캡슐. 가구를 돌려도 글자는 바로 선다

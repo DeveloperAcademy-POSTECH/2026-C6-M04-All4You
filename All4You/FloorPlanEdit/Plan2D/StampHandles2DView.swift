@@ -1,4 +1,4 @@
-// 2D에서 고른 스탬프의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌리고, 오른쪽 아래 ↔는 끌어서 크기를 바꾼다
+// 2D에서 고른 스탬프·가구의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌리고, 오른쪽 아래 ↔는 끌어서 크기를 바꾼다
 // 스탬프가 돌면 테두리와 손잡이도 함께 돈다
 
 import SwiftUI
@@ -7,8 +7,8 @@ import SwiftUI
 struct StampHandles2DView: View {
     /// 스탬프 가운데 (화면 점)
     let center: CGPoint
-    /// 가운데에서 테두리 변까지 (pt)
-    let halfSize: CGFloat
+    /// 가운데에서 테두리 변까지 가로·세로 (pt). 스탬프는 정사각형, 가구는 가구 모양대로
+    let halfSize: CGSize
     /// 스탬프 방향 (도). nil이면 돌리는 손잡이를 두지 않는다
     let yaw: Double?
     /// 스탬프 크기 배율. nil이면 크기 손잡이를 두지 않는다
@@ -52,8 +52,8 @@ struct StampHandles2DView: View {
     /// 테두리 모서리의 화면 점. x·y는 -1(왼쪽·위) 또는 1(오른쪽·아래). 스탬프 방향만큼 가운데를 축으로 돌린다
     private func corner(x: CGFloat, y: CGFloat) -> CGPoint {
         let radians = (yaw ?? 0) * .pi / 180
-        let dx = x * halfSize
-        let dy = y * halfSize
+        let dx = x * halfSize.width
+        let dy = y * halfSize.height
         return CGPoint(
             x: center.x + dx * cos(radians) - dy * sin(radians),
             y: center.y + dx * sin(radians) + dy * cos(radians)

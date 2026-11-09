@@ -127,32 +127,33 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 고른 스탬프의 ✕·↻·↔ 손잡이, 또는 꾹 눌러 띄운 복제·삭제 메뉴
+    /// 고른 스탬프·가구의 ✕·↻·↔ 손잡이, 또는 꾹 눌러 띄운 복제·삭제 메뉴
     @ViewBuilder
     private func stampControls(screen: PlanScreen) -> some View {
         let plan = dragPreview ?? planData
         if let selection, let point = stampPoint(of: selection, in: plan) {
             let center = screen.point(point)
             let marker = self.marker(of: selection, in: plan)
-            let iconSize = marker.map(Plan2DView.iconSize(of:)) ?? Plan2DView.stampSize
-            let halfSize = screen.length(iconSize) / 2 + Plan2DView.selectionPadding
+            let halfSize = handleHalfSize(of: selection, in: plan, screen: screen)
             if menuTarget == selection {
                 StampEditMenuView(
                     onDuplicate: { handleEdit(.duplicate(selection)) },
                     onDelete: { handleEdit(.delete(selection)) }
                 )
-                .position(x: center.x, y: center.y - halfSize - Layout.menuGap)
+                .position(x: center.x, y: center.y - halfSize.height - Layout.menuGap)
             } else {
                 StampHandles2DView(
                     center: center,
                     halfSize: halfSize,
-                    yaw: marker?.yaw,
+                    yaw: handleYaw(of: selection, in: plan),
                     scale: marker?.drawScale,
                     coordinateSpace: Layout.planSpace,
                     onDelete: { handleEdit(.delete(selection)) },
-                    onRotate: { yaw in preview(selection) { .rotate(markerId: $0, yaw: yaw) } },
-                    onResize: { scale in preview(selection) { .resize(markerId: $0, scale: scale) } },
-                    onDragEnded: commitPreview
+                    onRotate: { yaw in rotateEdit(of: selection, yaw: yaw).map(preview) },
+                    onResize: { scale in
+                        if let marker { preview(.resize(markerId: marker.id, scale: scale)) }
+                    },
+                    onDragEnded: endHandleDrag
                 )
             }
         }
@@ -192,7 +193,8 @@ extension FloorPlanEdit2DView {
     }
 
     /// 이미 놓인 스탬프를 누르면 도구와 상관없이 그것을 고른다.
-    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 고른 것을 푼다.
+    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 그 아래 가구를 고르거나 고른 것을 푼다.
+    /// 그래서 도구를 고른 채 가구 위를 누르면 가구를 고르지 않고 그 자리에 스탬프를 놓는다 (침대 위 발화지점 등).
     /// 공간라벨 도구로 방 안을 누르면 그 방 이름을 그 자리로 옮기고 바로 고친다.
     /// 도구는 놓은 뒤에도 켜져 있고, 방금 놓은 스탬프를 고른 상태로 둔다 (3D 수정 화면과 같다).
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
@@ -210,6 +212,8 @@ extension FloorPlanEdit2DView {
         switch (selectedTool, tap) {
         case (_, .element(let element)):
             selection = element
+        case (nil, .floor(let point)):
+            selection = furnitureSelection(at: point)
         case (nil, _):
             selection = nil
         case (.roomName?, .floor(let point)):
@@ -309,10 +313,10 @@ extension FloorPlanEdit2DView {
     }
 }
 
-// 스탬프 끌어 옮기기
+// 스탬프·가구 끌어 옮기기
 // 끄는 동안은 미리 보기 도면만 바꾸고, 손을 뗄 때 planData를 한 번 바꾼다
 extension FloorPlanEdit2DView {
-    /// 고른 스탬프 위에서 시작한 한 손가락 끌기만 스탬프를 옮긴다. 다른 곳에서 시작한 끌기는 아무것도 하지 않는다
+    /// 고른 스탬프·가구 위에서 시작한 한 손가락 끌기만 그것을 옮긴다. 다른 곳에서 시작한 끌기는 아무것도 하지 않는다
     private var stampDragGesture: some Gesture {
         DragGesture(minimumDistance: Layout.dragStartDistance)
             .onChanged { value in
@@ -321,7 +325,7 @@ extension FloorPlanEdit2DView {
                 guard let selection else { return }
                 if dragWall(value, screen: screen) { return }
                 if stampDragStart == nil {
-                    guard screen.stamp(at: value.startLocation, in: planData) == selection else { return }
+                    guard startsOnSelection(value.startLocation, screen: screen) else { return }
                     stampDragStart = stampPoint(of: selection)
                 }
                 guard let start = stampDragStart else { return }
@@ -331,6 +335,7 @@ extension FloorPlanEdit2DView {
                 var preview = dragPreview ?? planData
                 preview.moveStamp(selection, to: point)
                 dragPreview = preview
+                showFurnitureBlocked(furniture(of: selection, in: preview).map { $0.center != point } ?? false)
             }
             .onEnded { _ in
                 commitPreview()
@@ -348,7 +353,7 @@ extension FloorPlanEdit2DView {
         dragPreview = nil
     }
 
-    /// 스탬프가 놓인 도면 점
+    /// 스탬프가 놓인 도면 점. 가구는 가운데
     private func stampPoint(of selection: PlanSelection, in plan: PlanData? = nil) -> SIMD2<Double>? {
         let plan = plan ?? planData
         switch selection {
@@ -356,6 +361,8 @@ extension FloorPlanEdit2DView {
             return plan.markers.first { $0.id == id }?.position
         case .wallFixture(let id):
             return plan.wallFixtures.first { $0.id == id }.flatMap(plan.point(of:))
+        case .furniture:
+            return furniture(of: selection, in: plan)?.center
         case .doorWindow, .wall:
             return nil
         }
@@ -405,15 +412,15 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 화면 점이 고른 스탬프나 고른 벽 위인지
+    /// 화면 점이 고른 스탬프·벽·가구 위인지. 가구는 다른 가구와 겹쳐 아래에 있어도 고른 가구 안이면 맞다
     private func startsOnSelection(_ location: CGPoint, screen: PlanScreen) -> Bool {
         switch screen.tap(at: location, in: planData) {
         case .element(let element):
             return element == selection
         case .wall(let id, _, _):
             return selection == .wall(id) || wallSelection?.wallIds.contains(id) == true
-        case .floor:
-            return false
+        case .floor(let point):
+            return selection.flatMap { furniture(of: $0, in: planData) }?.contains(point) == true
         }
     }
 
@@ -436,7 +443,7 @@ extension FloorPlanEdit2DView {
 // 고른 벽을 끌면 가로 벽은 위아래로, 세로 벽은 좌우로만 옮기고, 다른 벽에 너무 가까워지거나 벽이 너무 짧아지면 멈춘다.
 // 비스듬한 벽은 줄로 묶지 않고 벽과 수직으로만 평행 이동한다
 extension FloorPlanEdit2DView {
-    /// 손 도구로 누른 곳이 벽이면 그 벽을 고른다. 창문·문·스탬프는 도구와 상관없이 그것을 고른다
+    /// 손 도구로 누른 곳이 벽이면 그 벽을 고른다. 창문·문·스탬프는 도구와 상관없이 그것을 고르고, 바닥은 그 아래 가구를 고른다
     private func handleHandTap(_ tap: PlanTap) {
         switch tap {
         case .element(let element):
@@ -449,8 +456,8 @@ extension FloorPlanEdit2DView {
                 wallSelection = planData.wallLine(containing: id)
             }
             selection = .wall(id)
-        case .floor:
-            selection = nil
+        case .floor(let point):
+            selection = furnitureSelection(at: point)
         }
     }
 
@@ -499,7 +506,7 @@ extension FloorPlanEdit2DView {
     }
 }
 
-// 스탬프 돌리기·복제·삭제
+// 스탬프·가구 돌리기·복제·삭제
 extension FloorPlanEdit2DView {
     /// 고른 것이 사람·발화지점이면 그 표시. 콘센트처럼 방향·크기가 없는 것은 nil
     private func marker(of selection: PlanSelection, in plan: PlanData) -> PlanMarker? {
@@ -507,12 +514,62 @@ extension FloorPlanEdit2DView {
         return plan.markers.first { $0.id == id }
     }
 
-    /// 돌리거나 크기를 바꾸는 동안은 미리 보기 도면만 바꾼다. edit는 표시 id로 바꿀 것을 만든다
-    private func preview(_ selection: PlanSelection, _ edit: (String) -> PlanEdit) {
-        guard case .marker(let id) = selection else { return }
+    /// 고른 것이 가구면 그 가구
+    private func furniture(of selection: PlanSelection, in plan: PlanData) -> Furniture? {
+        guard case .furniture(let id) = selection else { return nil }
+        return plan.furniture?.first { $0.id == id }
+    }
+
+    /// 도면 점 아래 가구를 고른 값. 가구가 없으면 nil (고른 것을 푼다)
+    private func furnitureSelection(at point: SIMD2<Double>) -> PlanSelection? {
+        planData.furniture(at: point).map { .furniture($0.id) }
+    }
+
+    /// 손잡이를 붙일 테두리의 가운데에서 변까지 (pt). 스탬프는 아이콘 정사각형, 가구는 가구 가로·세로에 여백을 더한다
+    private func handleHalfSize(of selection: PlanSelection, in plan: PlanData, screen: PlanScreen) -> CGSize {
+        let padding = Plan2DView.selectionPadding
+        if let furniture = furniture(of: selection, in: plan) {
+            return CGSize(width: screen.length(furniture.width / 2) + padding, height: screen.length(furniture.depth / 2) + padding)
+        }
+        let iconSize = marker(of: selection, in: plan).map(Plan2DView.iconSize(of:)) ?? Plan2DView.stampSize
+        let half = screen.length(iconSize) / 2 + padding
+        return CGSize(width: half, height: half)
+    }
+
+    /// 손잡이가 따라 돌 방향 (도). 돌릴 수 없는 것(콘센트)은 nil
+    private func handleYaw(of selection: PlanSelection, in plan: PlanData) -> Double? {
+        marker(of: selection, in: plan)?.yaw
+            ?? furniture(of: selection, in: plan).map { $0.rotation * 180 / .pi }
+    }
+
+    /// 손잡이로 돌린 방향(도)을 도면에 넣을 값으로. 가구는 라디안으로 바꾼다
+    private func rotateEdit(of selection: PlanSelection, yaw: Double) -> PlanEdit? {
+        switch selection {
+        case .marker(let id): .rotate(markerId: id, yaw: yaw)
+        case .furniture(let id): .rotateFurniture(id: id, rotation: yaw * .pi / 180)
+        case .wallFixture, .doorWindow, .wall: nil
+        }
+    }
+
+    /// 돌리거나 크기를 바꾸는 동안은 미리 보기 도면만 바꾼다
+    private func preview(_ edit: PlanEdit) {
         var preview = dragPreview ?? planData
-        _ = preview.apply(edit(id), selection: selection)
+        _ = preview.apply(edit, selection: selection)
         dragPreview = preview
+        if case .rotateFurniture(let id, let rotation) = edit {
+            showFurnitureBlocked(preview.furniture?.first { $0.id == id }.map { $0.rotation != rotation } ?? false)
+        }
+    }
+
+    /// 가구가 벽에 막혀 손가락을 따라가지 못하면 위쪽에 이유를 띄우고, 다시 따라가면 내린다 (벽이 막힐 때와 같은 캡슐)
+    private func showFurnitureBlocked(_ isBlocked: Bool) {
+        wallBlockedReason = isBlocked ? Copy.furnitureBlocked : nil
+    }
+
+    /// 돌리기·크기 바꾸기에서 손을 떼면 미리 보기를 반영하고 막힘 안내를 내린다
+    private func endHandleDrag() {
+        commitPreview()
+        wallBlockedReason = nil
     }
 
     /// 복제·삭제를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
@@ -646,6 +703,7 @@ extension FloorPlanEdit2DView {
 extension FloorPlanEdit2DView {
     private enum Copy {
         static let title = "도면 수정"
+        static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
     }
 }
 

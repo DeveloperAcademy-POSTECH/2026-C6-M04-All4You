@@ -261,7 +261,7 @@ extension FloorPlan3DView {
         case .wallFixture(let id):
             guard let fixture = planData.wallFixtures.first(where: { $0.id == id }) else { return nil }
             wallId = fixture.wallId
-        case .doorWindow, .wall:
+        case .doorWindow, .wall, .furniture:
             return nil
         }
         guard let start = surfacePoint(at: point, wallId: wallId) else { return nil }
@@ -597,8 +597,8 @@ extension FloorPlan3DView {
         switch selection {
         case .marker?, .wallFixture?:
             selectedStampEntity = selection.flatMap { FloorPlan3DBuilder.entity(for: $0, in: sceneRoot) }
-        // 벽은 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
-        case .doorWindow?, .wall?, nil:
+        // 벽·가구는 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
+        case .doorWindow?, .wall?, .furniture?, nil:
             selectedStampEntity = nil
         }
     }
