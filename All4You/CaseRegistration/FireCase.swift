@@ -23,15 +23,18 @@ final class FireCase {
     // SwiftData에 문자열로 저장하고 UI에는 타입 안전한 enum 제공
     private var statusValue: String
     var lastViewedAt: Date
-    // TODO: 사진 및 메모 모델 연결 후 실제 데이터 개수로 대체
-    // 현재는 관계 데이터가 연결되지 않아 개수를 별도로 저장함.
-    // 추후 @Relationship을 통해 연결된 사진 및 메모의 count를 사용하도록 변경 예정.
-    var photoCount: Int
-    var memoCount: Int
     
     /// 조사 차수. 사건을 지우면 함께 지운다
     @Relationship(deleteRule: .cascade, inverse: \InvestigationSession.fireCase)
     var sessions: [InvestigationSession] = []
+    
+    /// 현장 사진. 사건을 지우면 함께 지운다
+    @Relationship(deleteRule: .cascade, inverse: \EvidencePhoto.fireCase)
+    var photos: [EvidencePhoto] = []
+
+    /// 메모. 사건을 지우면 함께 지운다
+    @Relationship(deleteRule: .cascade, inverse: \Memo.fireCase)
+    var memos: [Memo] = []
     
     /// 평면도 (사건 하나에 하나, 아직 없을 수 있음). 사건을 지우면 함께 지운다
     @Relationship(deleteRule: .cascade, inverse: \FloorPlan.fireCase)
@@ -52,9 +55,7 @@ final class FireCase {
         caseName: String = "",
         occurredAt: Date,
         status: Status = .inProgress,
-        lastViewedAt: Date = .now,
-        photoCount: Int = 0,
-        memoCount: Int = 0
+        lastViewedAt: Date = .now
     ) {
         self.id = id
         self.address = address
@@ -63,8 +64,6 @@ final class FireCase {
         self.occurredAt = occurredAt
         self.statusValue = status.rawValue
         self.lastViewedAt = lastViewedAt
-        self.photoCount = photoCount
-        self.memoCount = memoCount
     }
     
     /// 목록에 보이는 이름. 사건명이 있으면 사건명, 사건명이 없던 예전 사건은 주소 뒤 두 단어

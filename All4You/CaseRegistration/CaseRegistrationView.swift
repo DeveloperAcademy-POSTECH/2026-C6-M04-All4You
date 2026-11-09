@@ -5,20 +5,22 @@
 //  Created by SIA on 11/2/26.
 //
 
-// 새로운 사건 등록 시트. 출동 날짜·시간, 주소·상세 주소, 사건명을 받는다
+// 새로운 사건 등록 시트. 사건명(맨 위), 출동 날짜·시간, 주소·상세 주소를 받는다
 
+import SwiftData
 import SwiftUI
 
 struct CaseRegistrationView: View {
     @Environment(\.dismiss) private var dismiss
+    /// 기본 사건명 번호를 정하려고 이미 있는 사건 이름을 본다
+    @Query private var existingCases: [FireCase]
     
     @State private var date: Date?
     @State private var time: Date?
     @State private var address = ""
     @State private var detailAddress = ""
+    /// 처음에는 "새 사건_N"으로 채워 두고, 사용자가 고칠 수 있다
     @State private var caseName = ""
-    /// 사건명을 직접 고쳤는지. 고쳤으면 그 뒤로 주소가 바뀌어도 사건명을 덮어쓰지 않는다
-    @State private var isCaseNameEdited = false
     @State private var isDatePickerOpen = false
     @State private var isTimePickerOpen = false
     @State private var addressSearch = AddressSearch()
@@ -30,6 +32,7 @@ struct CaseRegistrationView: View {
         NavigationStack {
             Form {
                 Section {
+                    caseNameRow
                     dateRow
                     timeRow
                     addressRow
@@ -37,7 +40,6 @@ struct CaseRegistrationView: View {
                         suggestionRows
                     }
                     detailAddressRow
-                    caseNameRow
                 }
             }
             .navigationTitle(Copy.title)
@@ -46,15 +48,10 @@ struct CaseRegistrationView: View {
             .onChange(of: address) { _, newValue in
                 addressSearch.update(query: newValue)
             }
-            // 주소 입력을 마치면(칸을 벗어나면) 주소가 확정된 것으로 보고 사건명을 채운다
-            .onChange(of: isAddressFocused) { _, isFocused in
-                if !isFocused {
-                    fillCaseName()
+            .onAppear {
+                if caseName.isEmpty {
+                    caseName = defaultCaseName
                 }
-            }
-            // 상세 주소를 넣거나 고치거나 지우면 자동 사건명도 따라 바꾼다
-            .onChange(of: detailAddress) {
-                fillCaseName()
             }
             .task {
                 await fillCurrentAddress()
@@ -123,7 +120,7 @@ extension CaseRegistrationView {
     
     /// 사건명. 주소·상세 주소로 자동으로 채우고, 직접 고치면 그 뒤로는 자동으로 바꾸지 않는다
     private var caseNameRow: some View {
-        textRow(systemImage: "text.cursor", placeholder: Copy.caseNamePlaceholder, text: caseNameInput)
+        textRow(systemImage: "text.cursor", placeholder: Copy.caseNamePlaceholder, text: $caseName)
     }
     
     /// 아이콘·입력칸·지우기 버튼으로 된 한 줄 (주소 줄과 같은 모양)
@@ -152,8 +149,6 @@ extension CaseRegistrationView {
                 address = suggestion.address
                 isAddressFocused = false
                 addressSearch.clear()
-                // 추천 주소를 고르면 주소가 확정된 것으로 보고 사건명을 채운다
-                fillCaseName()
             } label: {
                 Text(suggestion.highlighted)
                     .font(.callout)
@@ -232,28 +227,13 @@ extension CaseRegistrationView {
         detailAddress.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    /// 주소와 상세 주소로 만든 사건명. 상세 주소가 없으면 주소만
-    private var generatedCaseName: String {
-        [trimmedAddress, trimmedDetailAddress]
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-    
-    /// 사건명 칸에 직접 입력하면 고친 것으로 표시한다
-    private var caseNameInput: Binding<String> {
-        Binding(
-            get: { caseName },
-            set: { newValue in
-                caseName = newValue
-                isCaseNameEdited = true
-            }
-        )
-    }
-    
-    /// 사건명을 직접 고친 적이 없을 때만 자동 사건명으로 채운다
-    private func fillCaseName() {
-        guard !isCaseNameEdited else { return }
-        caseName = generatedCaseName
+    /// 기본 사건명 "새 사건_N". N은 이미 있는 "새 사건_숫자" 중 가장 큰 번호 다음
+    private var defaultCaseName: String {
+        let numbers = existingCases.compactMap { fireCase -> Int? in
+            guard fireCase.caseName.hasPrefix(Copy.defaultCaseNamePrefix) else { return nil }
+            return Int(fireCase.caseName.dropFirst(Copy.defaultCaseNamePrefix.count))
+        }
+        return Copy.defaultCaseNamePrefix + String((numbers.max() ?? 0) + 1)
     }
     
     /// 고른 날짜에 고른 시각을 합친 출동 일시
@@ -275,7 +255,7 @@ extension CaseRegistrationView {
         return !trimmedAddress.isEmpty && occurredAt <= .now
     }
     
-    /// 사건명을 비워 두면 지금 주소·상세 주소로 다시 만든다. 주소·상세 주소·사건명은 따로 저장한다
+    /// 사건명을 비워 두면 기본 사건명("새 사건_N")으로 저장한다. 주소·상세 주소·사건명은 따로 저장한다
     private func register() {
         guard isValid, let occurredAt else { return }
         let trimmedCaseName = caseName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -283,7 +263,7 @@ extension CaseRegistrationView {
             FireCase(
                 address: trimmedAddress,
                 detailAddress: trimmedDetailAddress,
-                caseName: trimmedCaseName.isEmpty ? generatedCaseName : trimmedCaseName,
+                caseName: trimmedCaseName.isEmpty ? defaultCaseName : trimmedCaseName,
                 occurredAt: occurredAt
             )
         )
@@ -294,7 +274,6 @@ extension CaseRegistrationView {
         guard address.isEmpty, let current = await CurrentAddress.fetch() else { return }
         if address.isEmpty {
             address = current
-            fillCaseName()
         }
     }
 }
@@ -334,6 +313,8 @@ extension CaseRegistrationView {
         static let addressPlaceholder = "주소"
         static let detailAddressPlaceholder = "상세 주소 (선택)"
         static let caseNamePlaceholder = "사건명"
+        /// 기본 사건명 앞부분. 뒤에 번호를 붙인다
+        static let defaultCaseNamePrefix = "새 사건_"
         static let clear = "지우기"
     }
 }

@@ -20,18 +20,19 @@ struct FloorPlanExportView: View {
     @State private var isSavedToastVisible = false
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var saveError: String?
+    /// 미리보기가 화면에 놓인 자리(전역 좌표). 3D는 이 자리를 화면 그대로 찍어 저장한다
+    @State private var previewFrame: CGRect = .zero
     
-    // 실제 사진 보관함 저장이 끝나면 반환하고, 실패하면 오류를 던지는 저장 작업
-    let saveAction: (FloorPlanSaveConfiguration) async throws -> Void
-    
-    init(saveAction: @escaping (FloorPlanSaveConfiguration) async throws -> Void = { _ in }) {
-        self.saveAction = saveAction
-    }
+    /// 저장할 도면
+    let planData: PlanData
+    /// 도면에 사진 핀으로 보일 사진 (메인에서 고른 조사 차수의 사진)
+    let photos: [LoadedPhoto]
     
     var body: some View {
         NavigationStack {
             HStack(spacing: 24) {
-                FloorPlanSavePreview(planType: planType)
+                FloorPlanSavePreview(planType: planType, content: content)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { previewFrame = $0 }
                 FloorPlanSaveOptions(
                     planType: $planType,
                     photoDisplay: $photoDisplay,
@@ -119,7 +120,12 @@ struct FloorPlanExportView: View {
         defer { isSaving = false }
         
         do {
-            try await saveAction(configuration)
+            // 2D는 같은 그림을 큰 이미지로 다시 그리고, 3D는 미리보기 화면을 그대로 찍는다
+            let image = planType == .twoD
+                ? FloorPlanExporter.render2D(content)
+                : FloorPlanExporter.captureScreen(in: previewFrame)
+            guard let image else { throw FloorPlanExporter.ExportError.imageFailed }
+            try await FloorPlanExporter.saveToPhotoLibrary(image)
             showSavedToast()
         } catch {
             saveError = error.localizedDescription
@@ -139,6 +145,11 @@ struct FloorPlanExportView: View {
                 isSavedToastVisible = false
             }
         }
+    }
+    
+    /// 옵션을 반영한 도면과 사진 핀. 미리보기와 저장이 같은 값을 쓴다
+    private var content: FloorPlanExportContent {
+        FloorPlanExportContent(planData: planData, photos: photos, configuration: configuration)
     }
     
     private var configuration: FloorPlanSaveConfiguration {
@@ -164,20 +175,60 @@ private struct FloorPlanSaveSheetSizing: PresentationSizing {
 
 private struct FloorPlanSavePreview: View {
     let planType: SavedPlanType
+    let content: FloorPlanExportContent
     
     var body: some View {
         ZStack {
-            // TODO: 실제 데이터랑 연결해야함
-            ContentUnavailableView {
-                Label("도면 자리", systemImage: planType.previewSymbol)
-            } description: {
-                Text("저장할 \(planType.title) 도면이 이곳에 표시됩니다.")
+            switch planType {
+            case .twoD:
+                FloorPlanExport2DCanvas(content: content)
+            case .threeD:
+                // 3D는 돌리고 확대해 원하는 각도를 맞춘 뒤 그 화면 그대로 저장한다
+                FloorPlan3DView(
+                    planData: plan3D,
+                    selection: nil,
+                    onTap: { _ in },
+                    onEdit: { _ in },
+                    pins: pins3D,
+                    pinView: pinView3D
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(.rect(cornerRadius: 24))
         .accessibilityLabel("저장할 \(planType.title) 도면 미리보기")
     }
+}
+
+// 3D 미리보기
+extension FloorPlanSavePreview {
+    /// 공간 이름을 끄면 3D 이름 라벨도 숨긴다 (3D에서 방은 이름 라벨로만 보인다)
+    private var plan3D: PlanData {
+        var plan = content.planData
+        if !content.showsRoomNames {
+            plan.rooms = []
+        }
+        return plan
+    }
+
+    /// 사진 핀을 장소 이름 자리에 띄운다 (도면 탭 3D와 같은 높이)
+    private var pins3D: [Plan3DPin] {
+        content.planData.rooms
+            .filter { content.pins[$0.id] != nil }
+            .map { Plan3DPin(id: $0.id, point: SIMD2($0.labelX, $0.labelY), height: Self.photoPinHeight) }
+    }
+
+    private func pinView3D(_ roomID: String) -> AnyView {
+        guard let room = content.planData.rooms.first(where: { $0.id == roomID }),
+              let pin = content.pins[roomID] else { return AnyView(EmptyView()) }
+        return AnyView(
+            PhotoPinView(roomName: room.name, pin: pin, isSelected: false, isDimmed: false, onTap: {})
+                .allowsHitTesting(false)
+        )
+    }
+
+    /// 사진 핀을 띄우는 높이 (m)
+    private static let photoPinHeight = 1.5
 }
 
 private struct FloorPlanSaveOptions: View {
@@ -267,7 +318,7 @@ private struct FloorPlanSaveSheetPreviewHost: View {
             isSavePresented = true
         }
         .sheet(isPresented: $isSavePresented) {
-            FloorPlanExportView { _ in }
+            FloorPlanExportView(planData: DummyFloorPlan.planData, photos: [])
         }
     }
 }

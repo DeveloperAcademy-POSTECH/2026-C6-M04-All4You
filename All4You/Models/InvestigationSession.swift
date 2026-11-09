@@ -9,6 +9,9 @@ final class InvestigationSession {
     var sessionNumber: Int
     /// 이 차수가 속한 사건. 반대쪽은 `FireCase.sessions`
     var fireCase: FireCase?
+    /// 이 차수에 찍은 사진. 차수가 없어져도 사진은 사건에 남는다
+    @Relationship(deleteRule: .nullify, inverse: \EvidencePhoto.session)
+    var photos: [EvidencePhoto] = []
 
     init(sessionNumber: Int, fireCase: FireCase? = nil) {
         self.sessionNumber = sessionNumber

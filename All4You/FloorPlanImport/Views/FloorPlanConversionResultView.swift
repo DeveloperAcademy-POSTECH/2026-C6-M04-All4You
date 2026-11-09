@@ -4,7 +4,8 @@ struct FloorPlanConversionResultView: View {
     let plan: FloorPlanConversion
     let address: String
     let onBack: () -> Void
-    let onSave: (UIImage) -> Void
+    /// 저장을 누르면 변환 결과(서버 도면 JSON 포함)를 넘긴다. 받는 쪽이 평면도로 바꿔 저장한다
+    let onSave: (FloorPlanConversion) -> Void
 
     @State private var showsSaveError = false
 
@@ -41,7 +42,7 @@ struct FloorPlanConversionResultView: View {
     private func save() {
         do {
             try plan.save()
-            onSave(plan.preview)
+            onSave(plan)
         } catch {
             showsSaveError = true
         }

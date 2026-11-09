@@ -2,7 +2,8 @@
 //
 // 1) T자 나누기: 떠 있는 벽 끝이 다른 벽 중간 가까이 있으면 그 벽 위에 꼭짓점을 만들고 그 벽을 둘로 나눈다
 //    (스캔의 바깥 벽은 통으로 한 면이라 이 단계가 없으면 칸막이가 방을 닫지 못한다)
-// 2) 틈 메우기: 그래도 떠 있는 끝은 짧은 틈이면 벽을 늘려 가장 가까운 벽에 잇는다
+// 2) 틈 메우기: 그래도 떠 있는 끝은 짧은 틈이면 벽을 늘려 가장 가까운 벽에 잇는다.
+//    긴 틈은 남은 떠 있는 끝끼리 가까운 쌍부터 가상 경계선(isVirtual, 그리지 않는 벽)으로 이어 방을 닫는다
 // 3) 방 찾기: 면 따라 돌기로 닫힌 고리를 찾고, 바깥 고리와 아주 작은 칸은 버린다
 // 4) 이름: 방 안에 든 종류를 이어 붙이고("거실·주방"), 없으면 "공간 N", 같은 이름이 여럿이면 번호를 붙인다
 // 벽 없이 이어진 공간(거실–주방 등)은 하나의 방으로 둔다
@@ -16,7 +17,7 @@ extension PlanData {
         for vertexId in danglingVertexIds() {
             connectDanglingEnd(vertexId)
         }
-        // TODO: 긴 틈이 바깥쪽에 있으면 바닥 윤곽선으로 가상 경계선(isVirtual)을 넣어 방을 닫기 — 지금은 그 방이 만들어지지 않음
+        closeLongGaps()
         makeRooms(sections: sections)
     }
 }
@@ -64,6 +65,38 @@ extension PlanData {
             .min(by: { $0.1 < $1.1 }) {
             merge(vertexId, into: partner.0)
         }
+    }
+
+    /// 짧은 틈 메우기로도 남은 떠 있는 끝을 가까운 쌍부터 가상 경계선으로 잇는다.
+    /// 스캔이 벽 한 구간을 놓치면 방이 닫히지 않아 방이 하나도 생기지 않고, 그러면 공간 이름·사진 장소 옮기기가 모두 동작하지 않는다.
+    /// 같은 벽의 양 끝끼리는 잇지 않는다 (벽 하나가 겹쳐 생길 뿐 방을 닫지 못함)
+    private mutating func closeLongGaps() {
+        while true {
+            let dangling = danglingVertexIds().compactMap { id in vertexPoints[id].map { (id: id, point: $0) } }
+            var best: (from: String, to: String, distance: Double)?
+            for (index, first) in dangling.enumerated() {
+                for second in dangling[(index + 1)...] where !sharesWall(first.id, second.id) {
+                    let distance = simd_distance(first.point, second.point)
+                    if distance < best?.distance ?? .infinity {
+                        best = (first.id, second.id, distance)
+                    }
+                }
+            }
+            guard let best else { return }
+            walls.append(Wall(
+                id: Self.newId("w", among: walls.map(\.id)),
+                startVertex: best.from,
+                endVertex: best.to,
+                thickness: ScanRoomRule.virtualWallThickness,
+                height: 0,
+                isVirtual: true
+            ))
+        }
+    }
+
+    /// 두 꼭짓점이 한 벽의 양 끝인지
+    private func sharesWall(_ first: String, _ second: String) -> Bool {
+        walls.contains { Set([$0.startVertex, $0.endVertex]) == Set([first, second]) }
     }
 
     /// 꼭짓점을 벽 위의 점으로 옮겨 붙인다. 벽 끝 가까이면 그 끝 꼭짓점과 합치고, 중간이면 벽을 둘로 나눈다
@@ -208,4 +241,6 @@ private enum ScanRoomRule {
     static let minRoomArea = 0.5
     /// 이름 없는 방에 붙이는 이름. 뒤에 1부터 번호를 붙인다
     static let unnamedRoom = "공간"
+    /// 가상 경계선 두께. 그리지 않으므로 방 넓이 계산에만 쓰인다
+    static let virtualWallThickness = 0.0
 }

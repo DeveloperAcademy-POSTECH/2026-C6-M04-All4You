@@ -24,9 +24,11 @@ struct CaseListContent: View {
     /// 사건 목록과 미리보기 사이의 사용자 지정 폭
     @State private var preferredListWidth: CGFloat = 380
     @State private var dragStartListWidth: CGFloat?
+    /// 길게 눌러 "사건 삭제"를 고른 사건. 값이 있으면 확인 창이 뜬다
+    @State private var deletingCase: FireCase?
     let onRegister: () -> Void
     /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
-    let onOpen: (FireCase) -> Void
+    let onOpen: (FireCase, CaseStartTab) -> Void
     
     private var cases: [FireCase] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -83,7 +85,7 @@ struct CaseListContent: View {
                                 // 목록과 미리보기 사이를 손가락/포인터로 드래그하여 너비 변경
                                 resizeDivider(availableWidth: geometry.size.width, currentWidth: listWidth)
                                 
-                                CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
+                                CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
                         }
@@ -96,6 +98,18 @@ struct CaseListContent: View {
         }
         .navigationTitle(allCases.isEmpty ? "" : title)
         .navigationBarTitleDisplayMode(allCases.isEmpty ? .inline : .large)
+        .alert(
+            Copy.deleteTitle(deletingCase?.title ?? ""),
+            isPresented: Binding(get: { deletingCase != nil }, set: { if !$0 { deletingCase = nil } }),
+            presenting: deletingCase
+        ) { fireCase in
+            Button(Copy.delete, role: .destructive) {
+                delete(fireCase)
+            }
+            Button(Copy.cancel, role: .cancel) {}
+        } message: { _ in
+            Text(Copy.deleteMessage)
+        }
     }
 }
 
@@ -210,6 +224,9 @@ extension CaseListContent {
         )
         .contextMenu {
             moveMenu(fireCase)
+            Button(Copy.deleteCase, systemImage: "trash", role: .destructive) {
+                deletingCase = fireCase
+            }
         }
     }
     
@@ -237,6 +254,15 @@ extension CaseListContent {
                 move(fireCase, to: nil)
             }
         }
+    }
+    
+    /// 사건을 지운다. 평면도·조사 차수·사진·메모도 함께 지워진다 (사건 모델의 관계 삭제 규칙)
+    private func delete(_ fireCase: FireCase) {
+        if selectedCaseID == fireCase.id {
+            selectedCaseID = nil
+        }
+        modelContext.delete(fireCase)
+        try? modelContext.save()
     }
     
     /// nil이면 목록에서 빼서 상태에 따라 조사 중·조사 종결에 보이게 한다
@@ -307,6 +333,12 @@ extension CaseListContent {
         static let register = "새로운 사건 등록하기"
         static let moveToFolder = "목록으로 이동"
         static let removeFromFolder = "목록에서 빼기"
+        // TEMP: Figma에 사건 삭제 화면이 없어 사이드바 목록 삭제와 같은 형식으로 작성 — 디자인 확인 필요
+        static let deleteCase = "사건 삭제"
+        static let delete = "삭제"
+        static let cancel = "취소"
+        static let deleteMessage = "도면·사진·메모가 모두 삭제되고 되돌릴 수 없어요."
+        static func deleteTitle(_ name: String) -> String { "'\(name)' 사건을 삭제할까요?" }
     }
 }
 
@@ -320,7 +352,7 @@ extension CaseListContent {
             searchText: "",
             selectedCaseID: $selectedCaseID,
             onRegister: {},
-            onOpen: { _ in }
+            onOpen: { _, _ in }
         )
     }
     .modelContainer(for: FireCase.self, inMemory: true)

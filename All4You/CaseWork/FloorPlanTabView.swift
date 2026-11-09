@@ -14,6 +14,8 @@ struct FloorPlanTabView: View {
     let photoStore: PhotoStore
     /// 위치 미확인 사진 패널을 펼쳤는지
     @Binding var isPlacingPhotos: Bool
+    /// 도면에 띄울 저장된 메모. 2D는 도면 위에, 3D는 3D 자리에 핀을 띄운다 (메모 위치를 고르는 동안은 메인의 메모 오버레이가 그린다)
+    var memos: [FloorPlanMemo] = []
 
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
@@ -89,7 +91,7 @@ struct FloorPlanTabView: View {
 extension FloorPlanTabView {
     /// 2D는 화면에 맞춰 그리고 두 손가락으로 확대·이동하며, 3D는 돌리고 확대해 볼 수만 있다. 둘 다 고치기는 받지 않는다.
     /// 2D에는 장소별 사진 핀을 겹치고, 위치 미확인 사진을 끌어다 놓으면 놓은 자리의 장소로 옮긴다
-    // TODO: 3D 도면에도 사진 핀 띄우기 — Figma에 3D 핀 디자인이 나오면
+    /// 3D에는 사진 핀과 메모 핀을 3D 자리에 띄워, 돌리고 확대해도 따라온다. 사진 핀을 누르면 2D와 같이 장소 사진 모음이 열린다
     @ViewBuilder
     private var floorPlanArea: some View {
         if let planData {
@@ -106,6 +108,16 @@ extension FloorPlanTabView {
                             pins: pins,
                             selectedRoomID: selectedRoomID,
                             onTapRoom: selectRoom
+                        )
+                        // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
+                        FloorPlanMemoPlacementOverlay(
+                            planData: planData,
+                            memos: memos,
+                            isPresented: .constant(false),
+                            draft: .constant(nil),
+                            onSave: { _ in },
+                            onCancel: {},
+                            screen: screen
                         )
                     }
                     Color.clear
@@ -133,16 +145,20 @@ extension FloorPlanTabView {
                 .clipped()
                 .contentShape(.rect)
                 // 도면 빈 곳을 누르면 장소 선택을 풀고 사진 모음을 닫는다. 핀(버튼)을 누른 것은 핀이 먼저 받는다
-                .onTapGesture {
-                    withAnimation {
-                        selectedRoomID = nil
-                    }
-                }
+                .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture)
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
             case .threeD:
-                // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작만 남는다
-                FloorPlan3DView(planData: planData, selection: nil, onTap: { _ in }, onEdit: { _ in })
+                // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
+                FloorPlan3DView(
+                    planData: planData,
+                    selection: nil,
+                    // 도면을 누르면 2D처럼 장소 선택을 풀고 오른쪽 사진 모음을 닫는다. 사진 핀(버튼)은 핀이 먼저 받는다
+                    onTap: { _ in clearRoomSelection() },
+                    onEdit: { _ in },
+                    pins: pins3D(in: planData),
+                    pinView: { id in pinView3D(id: id, in: planData) }
+                )
             }
         } else {
             Text(Copy.placeholder)
@@ -195,6 +211,13 @@ extension FloorPlanTabView {
         return planData?.rooms.first { $0.id == selectedRoomID }
     }
 
+    /// 장소 선택을 풀어 오른쪽 사진 모음을 닫는다
+    private func clearRoomSelection() {
+        withAnimation {
+            selectedRoomID = nil
+        }
+    }
+
     private func selectRoom(_ room: Room) {
         withAnimation {
             selectedRoomID = room.id
@@ -202,10 +225,52 @@ extension FloorPlanTabView {
     }
 
     /// 장소 사진 중 필터에 맞는 것을 최근에 찍은 것부터. 북마크를 고르면 북마크한 사진만
-    private func filteredPhotos(inRoom roomID: String) -> [EvidencePhoto] {
+    private func filteredPhotos(inRoom roomID: String) -> [LoadedPhoto] {
         photoStore.photos(inRoom: roomID)
             .filter { photoFilter.scope == .all || $0.isBookmarked }
             .sorted { $0.takenAt > $1.takenAt }
+    }
+}
+
+// 3D 핀
+extension FloorPlanTabView {
+    /// 사진 핀은 장소 이름 자리에, 메모 핀은 메모를 남긴 자리에 띄운다
+    private func pins3D(in planData: PlanData) -> [Plan3DPin] {
+        let photoPins = photoPins(in: planData).keys.compactMap { roomID in
+            planData.rooms.first { $0.id == roomID }.map { room in
+                Plan3DPin(id: Pin3DID.photo + room.id, point: SIMD2(room.labelX, room.labelY), height: Layout.photoPinHeight)
+            }
+        }
+        let memoPins = memos.map { memo in
+            Plan3DPin(id: Pin3DID.memo + memo.id.uuidString, point: memo.anchor.point, height: Layout.memoPinHeight)
+        }
+        return photoPins.sorted { $0.id < $1.id } + memoPins
+    }
+
+    /// 핀 id로 그릴 핀을 고른다
+    private func pinView3D(id: String, in planData: PlanData) -> AnyView {
+        if id.hasPrefix(Pin3DID.photo) {
+            let roomID = String(id.dropFirst(Pin3DID.photo.count))
+            guard let room = planData.rooms.first(where: { $0.id == roomID }),
+                  let pin = photoPins(in: planData)[roomID] else { return AnyView(EmptyView()) }
+            return AnyView(PhotoPinView(
+                roomName: room.name,
+                pin: pin,
+                isSelected: room.id == selectedRoomID,
+                isDimmed: selectedRoomID != nil && room.id != selectedRoomID
+            ) {
+                selectRoom(room)
+            })
+        }
+        let memoID = String(id.dropFirst(Pin3DID.memo.count))
+        guard let index = memos.firstIndex(where: { $0.id.uuidString == memoID }) else { return AnyView(EmptyView()) }
+        return AnyView(MemoPin3DView(number: index + 1))
+    }
+
+    /// 3D 핀 id 앞머리. 사진 핀은 장소 id, 메모 핀은 메모 id가 뒤에 붙는다
+    private enum Pin3DID {
+        static let photo = "photo:"
+        static let memo = "memo:"
     }
 }
 
@@ -285,6 +350,10 @@ extension FloorPlanTabView {
         static let openPanelSpacing: CGFloat = 8
         static let openPanelPadding: CGFloat = 16
         static let openPanelHeight: CGFloat = 48
+        /// 3D에서 사진 핀을 띄울 높이 (m). 공간 이름 라벨과 같은 높이라 벽 너머에서는 가려진다
+        static let photoPinHeight = 1.5
+        /// 3D에서 메모 핀을 띄울 높이 (m). 가구 위에 남긴 메모도 보이게 가구 높이보다 조금 위
+        static let memoPinHeight = 1.0
     }
 }
 
@@ -327,8 +396,8 @@ private struct PhotoDropDelegate: DropDelegate {
     }
 }
 
-/// 도면 위 한 장소의 사진 핀. 그 장소의 대표 사진과 사진 수
-private struct PhotoPin {
+/// 도면 위 한 장소의 사진 핀. 그 장소의 대표 사진과 사진 수. 도면 탭과 내보내기가 함께 쓴다
+struct PhotoPin {
     let thumbnail: UIImage
     let count: Int
     /// 끄는 동안 놓일 자리를 미리 보여 주는 핀이면 true. 주황으로 그린다
@@ -337,7 +406,7 @@ private struct PhotoPin {
 
 /// 팀 공용 Plan2DView 위에 겹쳐 그리는 사진 핀. 같은 screen으로 자리를 맞춰서 확대·이동하면 핀도 따라 움직인다.
 /// "안방 · 13" 캡슐이 도면의 이름 라벨 자리에 그대로 놓이고, 대표 사진은 그 위에 붙는다
-private struct PhotoPinLayer: View {
+struct PhotoPinLayer: View {
     let planData: PlanData
     let screen: PlanScreen
     /// 장소(Room.id)별 사진 핀. 핀이 없는 장소는 그리지 않는다 (이름은 Plan2DView가 그린다)
@@ -360,18 +429,39 @@ private struct PhotoPinLayer: View {
         }
     }
 
-    /// 대표 사진 아래 "안방 · 13" 캡슐. 누르면 그 장소를 고른다
     private func pinView(room: Room, pin: PhotoPin) -> some View {
-        let isSelected = room.id == selectedRoomID
-        let isDimmed = selectedRoomID != nil && !isSelected
-        return Button {
+        PhotoPinView(roomName: room.name, pin: pin, isSelected: room.id == selectedRoomID, isDimmed: selectedRoomID != nil && room.id != selectedRoomID) {
             onTapRoom(room)
-        } label: {
-            VStack(spacing: Layout.pinSpacing) {
+        }
+    }
+
+    /// 캡슐 가운데가 라벨 자리에 오도록 핀을 올릴 높이 (위에 붙은 사진 높이의 절반)
+    private enum Layout {
+        static let pinImageSize = PhotoPinView.imageSize
+        static let pinSpacing = PhotoPinView.spacing
+    }
+}
+
+/// 대표 사진 아래 "안방 · 13" 캡슐. 누르면 그 장소를 고른다. 2D 핀과 3D 핀이 함께 쓴다
+struct PhotoPinView: View {
+    let roomName: String
+    let pin: PhotoPin
+    /// 고른 핀은 검은 캡슐
+    let isSelected: Bool
+    /// 다른 장소를 골랐으면 흐리게
+    let isDimmed: Bool
+    let onTap: () -> Void
+
+    static let imageSize: CGFloat = 64
+    static let spacing: CGFloat = 6
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: Self.spacing) {
                 Image(uiImage: pin.thumbnail)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: Layout.pinImageSize, height: Layout.pinImageSize)
+                    .frame(width: Self.imageSize, height: Self.imageSize)
                     .clipShape(.rect(cornerRadius: Layout.pinCornerRadius))
                     .overlay {
                         RoundedRectangle(cornerRadius: Layout.pinCornerRadius)
@@ -380,7 +470,7 @@ private struct PhotoPinLayer: View {
                     .shadow(radius: Layout.pinShadowRadius)
                 // 도면 이름 라벨(RoomLabelView)과 같은 글자·여백으로 그려서 라벨을 대신한다
                 HStack(spacing: Layout.countSpacing) {
-                    Text(room.name)
+                    Text(roomName)
                     Text("·")
                     Text(pin.count, format: .number)
                         .foregroundStyle(.white.secondary)
@@ -389,33 +479,56 @@ private struct PhotoPinLayer: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, Layout.capsulePadding)
                 .padding(.vertical, Layout.capsuleVerticalPadding)
-                .background(capsuleColor(pin: pin, isSelected: isSelected), in: .capsule)
+                .background(capsuleColor, in: .capsule)
             }
             .opacity(isDimmed ? Layout.dimmedOpacity : 1)
         }
         .buttonStyle(.plain)
         // 미리보기 핀은 끄는 중에만 잠깐 보이는 것이라 누를 수 없게 한다
         .allowsHitTesting(!pin.isPreview)
-        .accessibilityLabel("\(room.name) 사진 \(pin.count)장")
+        .accessibilityLabel("\(roomName) 사진 \(pin.count)장")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func capsuleColor(pin: PhotoPin, isSelected: Bool) -> Color {
+    private var capsuleColor: Color {
         if pin.isPreview { return .brand500 }
         return isSelected ? .black : .gray700
     }
 
     private enum Layout {
-        static let pinImageSize: CGFloat = 64
         static let pinCornerRadius: CGFloat = 12
         static let pinBorderWidth: CGFloat = 2
         static let previewBorderWidth: CGFloat = 3
         static let pinShadowRadius: CGFloat = 4
-        static let pinSpacing: CGFloat = 6
         static let countSpacing: CGFloat = 4
         static let capsulePadding: CGFloat = 14
         static let capsuleVerticalPadding: CGFloat = 6
         static let dimmedOpacity: CGFloat = 0.4
+    }
+}
+
+/// 3D 도면 위 메모 핀. 2D 메모 핀(FloorPlanMemoPlacementOverlay)과 같은 말풍선에 메모 번호
+private struct MemoPin3DView: View {
+    let number: Int
+
+    var body: some View {
+        Image("memoBubble")
+            .resizable()
+            .frame(width: Layout.size, height: Layout.size * Layout.heightRatio)
+            .overlay {
+                Text("\(number)")
+                    .font(AppTypography.subheadlineEmphasized)
+                    .foregroundStyle(.white)
+                    .offset(y: Layout.numberOffset)
+            }
+            .allowsHitTesting(false)
+    }
+
+    private enum Layout {
+        static let size: CGFloat = 38
+        /// 말풍선 그림의 세로·가로 비율
+        static let heightRatio: CGFloat = 37 / 40
+        static let numberOffset: CGFloat = -2
     }
 }
 
@@ -424,14 +537,14 @@ private struct PhotoPinLayer: View {
 private struct RoomPhotoPanel: View {
     let roomName: String
     /// 최근에 찍은 것부터
-    let photos: [EvidencePhoto]
+    let photos: [LoadedPhoto]
     /// 확대 버튼을 누르면 지금 큰 사진의 id를 알린다
     let onExpand: (UUID) -> Void
 
     /// 크게 보여 줄 사진. 고른 적이 없거나 고른 사진이 사라지면 첫 사진
     @State private var selectedID: UUID?
 
-    private var selectedPhoto: EvidencePhoto? {
+    private var selectedPhoto: LoadedPhoto? {
         photos.first { $0.id == selectedID } ?? photos.first
     }
 
@@ -485,7 +598,7 @@ private struct RoomPhotoPanel: View {
     }
 
     /// 누르면 큰 사진으로 보여 준다. 지금 큰 사진은 주황 테두리
-    private func tile(_ photo: EvidencePhoto) -> some View {
+    private func tile(_ photo: LoadedPhoto) -> some View {
         let isSelected = photo.id == selectedPhoto?.id
         return Button {
             selectedID = photo.id

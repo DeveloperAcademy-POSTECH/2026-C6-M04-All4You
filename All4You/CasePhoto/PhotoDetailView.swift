@@ -27,11 +27,11 @@ struct PhotoDetailView: View {
     }
 
     /// 묶음 중 아직 남아 있는 사진. 지운 사진은 저장소에서 사라져 여기서도 빠진다
-    private var photos: [EvidencePhoto] {
+    private var photos: [LoadedPhoto] {
         context.photoIDs.compactMap(store.photo(id:))
     }
 
-    private var currentPhoto: EvidencePhoto? {
+    private var currentPhoto: LoadedPhoto? {
         currentID.flatMap(store.photo(id:))
     }
 
