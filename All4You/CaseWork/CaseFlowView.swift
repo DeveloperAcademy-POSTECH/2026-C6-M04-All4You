@@ -21,6 +21,8 @@ struct CaseFlowView: View {
     /// 메인에서 찍거나 불러온 사진. 메인을 닫았다 열어도 남도록 여기서 들고 있다
     // TEMP: 사진 저장 흐름(SwiftData)이 연결되기 전이라 메모리에만 있음 — 앱을 끄면 사진이 사라짐
     @State private var photoStore = PhotoStore()
+    /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
+    @State private var history = PlanHistory()
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -28,6 +30,9 @@ struct CaseFlowView: View {
                 .navigationDestination(for: CaseRoute.self) { route in
                     destination(for: route)
                 }
+        }
+        .onChange(of: planData) { old, new in
+            history.record(from: old, to: new)
         }
         .fullScreenCover(isPresented: $isCaseMainShown) {
             CaseMainView(planData: planData, photoStore: photoStore, onBack: closeCaseMain, onEdit: showEdit2D)
@@ -39,7 +44,7 @@ struct CaseFlowView: View {
 extension CaseFlowView {
     /// 처음 시작할 때와 메인의 "수정"으로 들어올 때 함께 쓰는 2D 수정 화면
     private var edit2DScreen: some View {
-        FloorPlanEdit2DView(planData: $planData, onBack: goBack, onDone: showConversionLoading)
+        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading)
     }
 
     /// 화면 목록의 값에 맞는 화면을 만든다
@@ -51,7 +56,7 @@ extension CaseFlowView {
         case .conversionLoading:
             ConversionLoadingView(planData: planData, onFinished: replaceLoadingWithEdit3D)
         case .edit3D:
-            FloorPlanEdit3DView(planData: $planData, onBack: goBack, onDone: showCaseMain)
+            FloorPlanEdit3DView(planData: $planData, history: $history, onBack: goBack, onDone: showCaseMain)
         }
     }
 }

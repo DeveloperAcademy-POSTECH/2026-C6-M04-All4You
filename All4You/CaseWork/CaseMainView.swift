@@ -11,7 +11,7 @@ struct CaseMainView: View {
     // 뒤로가기, 편집하기(펜 아이콘)
     let onBack: () -> Void
     let onEdit: () -> Void
-
+    
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
     // 사이드바에서 고른 줄. 도면의 2D·3D도 여기서 정해진다

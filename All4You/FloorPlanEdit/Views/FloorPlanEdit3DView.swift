@@ -6,6 +6,8 @@ import SwiftUI
 struct FloorPlanEdit3DView: View {
     /// 2D·3D 수정 화면과 메인이 함께 보는 도면
     @Binding var planData: PlanData
+    /// 2D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
+    @Binding var history: PlanHistory
     let onBack: () -> Void
     let onDone: () -> Void
 
@@ -21,7 +23,7 @@ struct FloorPlanEdit3DView: View {
             .overlay(alignment: .topLeading) {
                 toolBar
             }
-            .bothSidesToolbar(customLayout: true, barTitle: Copy.title, onBack: onBack, onDone: onDone)
+            .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
     }
 }
 
@@ -30,6 +32,13 @@ extension FloorPlanEdit3DView {
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool, hiddenTools: hiddenTools)
             .padding()
+    }
+
+    /// 되돌리면 고른 것이 사라졌을 수 있어 고르기를 푼다
+    private var undoRedo: some View {
+        UndoRedoCapsule(history: $history, planData: $planData) {
+            selection = nil
+        }
     }
 }
 
@@ -67,7 +76,8 @@ extension FloorPlanEdit3DView {
 
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
+    @Previewable @State var history = PlanHistory()
     NavigationStack {
-        FloorPlanEdit3DView(planData: $planData, onBack: {}, onDone: {})
+        FloorPlanEdit3DView(planData: $planData, history: $history, onBack: {}, onDone: {})
     }
 }
