@@ -16,12 +16,7 @@ struct FloorPlanDrawingView: View {
 
     @State private var selectedTool: DrawingTool = .pen
     @State private var selectedEditTool: EditTool?
-    @State private var toolbarPosition: ToolbarPosition = .bottom
 
-    @GestureState private var toolbarDrag: CGSize = .zero
-
-    private static let toolSize: CGFloat = 44
-    private static let toolbarPadding: CGFloat = 4
     private static let toolbarEdgeInset: CGFloat = 32
 
     var body: some View {
@@ -55,7 +50,7 @@ struct FloorPlanDrawingView: View {
             }
         }
         .overlay(alignment: .topLeading) {
-            EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture])
+            EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture, .door])
                 .padding(8)
                 .background {
                     Rectangle()
@@ -65,111 +60,22 @@ struct FloorPlanDrawingView: View {
                 .padding(Self.toolbarEdgeInset - 8)
         }
         .overlay {
-            let anchor = toolbarPosition.anchor(in: size)
-            drawingToolbar
-                .position(x: anchor.x + toolbarDrag.width, y: anchor.y + toolbarDrag.height)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8, coordinateSpace: .named("drawingSurface"))
-                        .updating($toolbarDrag) { value, offset, _ in
-                            offset = value.translation
-                        }
-                        .onEnded { value in
-                            let destination = CGPoint(
-                                x: anchor.x + value.translation.width,
-                                y: anchor.y + value.translation.height
-                            )
-                            toolbarPosition = ToolbarPosition.allCases.min {
-                                $0.distance(to: destination, in: size) <
-                                    $1.distance(to: destination, in: size)
-                            } ?? .bottom
-                        }
-                )
-        }
-        .coordinateSpace(name: "drawingSurface")
-    }
-
-    // 툴바 방향에 맞춰 펜·지우개·획 선택 버튼을 배열한다.
-    private var drawingToolbar: some View {
-        let layout = toolbarPosition == .bottom
-            ? AnyLayout(HStackLayout(spacing: 4))
-            : AnyLayout(VStackLayout(spacing: 4))
-
-        return layout {
-            ForEach(DrawingTool.allCases) { tool in
-                toolButton(tool)
-            }
-        }
-        .padding(Self.toolbarPadding)
-        .glassEffect(.regular, in: Capsule())
-        .contentShape(Capsule())
-    }
-
-    private func toolButton(_ tool: DrawingTool) -> some View {
-        Button {
-            selectedTool = tool
-        } label: {
-            Image(systemName: tool.icon)
-                .frame(width: Self.toolSize, height: Self.toolSize)
-                .background {
-                    if selectedTool == tool {
-                        Circle().fill(Color(red: 212.0 / 255, green: 212.0 / 255, blue: 214.0 / 255))
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(tool.rawValue)
-        .accessibilityAddTraits(selectedTool == tool ? .isSelected : [])
-    }
-
-    private enum DrawingTool: String, CaseIterable, Identifiable {
-        case pen = "펜"
-        case eraser = "지우개"
-        case hand = "획 선택"
-
-        var id: Self { self }
-
-        var icon: String {
-            switch self {
-            case .pen: "pencil"
-            case .eraser: "eraser"
-            case .hand: "hand.point.up.left"
-            }
-        }
-
-        var pencilKitTool: (any PKTool)? {
-            switch self {
-            case .pen:
-                PKInkingTool(.pen, color: .black, width: 2.0)
-            case .eraser:
-                PKEraserTool(.vector)
-            case .hand:
-                nil
-            }
+            // 펜·지우개·획 선택 막대 (공용 DrawingToolBar)
+            DrawingToolBar(selectedTool: $selectedTool)
         }
     }
+}
 
-    // 드래그를 놓으면 툴바가 가장 가까운 가장자리에 붙는다.
-    private enum ToolbarPosition: String, CaseIterable, Identifiable {
-        case left = "왼쪽"
-        case bottom = "하단"
-        case right = "오른쪽"
-
-        var id: Self { self }
-
-        func anchor(in size: CGSize) -> CGPoint {
-            let centerInset = FloorPlanDrawingView.toolbarEdgeInset
-                + FloorPlanDrawingView.toolbarPadding + FloorPlanDrawingView.toolSize / 2
-
-            switch self {
-            case .left: return CGPoint(x: centerInset, y: size.height / 2)
-            case .bottom: return CGPoint(x: size.width / 2, y: size.height - centerInset)
-            case .right: return CGPoint(x: size.width - centerInset, y: size.height / 2)
-            }
-        }
-
-        func distance(to point: CGPoint, in size: CGSize) -> CGFloat {
-            let anchor = anchor(in: size)
-            return hypot(point.x - anchor.x, point.y - anchor.y)
+// 공용 막대의 도구를 PencilKit 도구로 바꾼다. 이 화면에서만 쓴다
+private extension DrawingTool {
+    var pencilKitTool: (any PKTool)? {
+        switch self {
+        case .pen:
+            PKInkingTool(.pen, color: .black, width: 2.0)
+        case .eraser:
+            PKEraserTool(.vector)
+        case .hand:
+            nil
         }
     }
 }

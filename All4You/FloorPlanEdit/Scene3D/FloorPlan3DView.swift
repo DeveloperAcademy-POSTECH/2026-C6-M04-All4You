@@ -1,7 +1,7 @@
-// 도면을 3D로 보여 주는 뷰. 한 손가락으로 돌리고, 두 손가락으로 확대·축소한다
+// 도면을 3D로 보여 주는 뷰. 한 손가락으로 돌리고, 두 손가락으로 확대·축소하고 끌어 옮긴다
 //
-// 카메라 조작은 애플 기본 조작(.realityViewCameraControls(.orbit))을 쓴다.
-// 기본 조작은 확대 민감도를 바꿀 수 없어서, 같은 핀치로 도면 자체를 원점 기준으로 더 키우고 줄여 확대를 세게 만든다
+// 카메라는 직접 돌린다. 애플 기본 조작(.realityViewCameraControls(.orbit))은 스탬프·창문을 끄는 동안 껐다 켜면
+// 도면을 옮긴 뒤 카메라가 갑자기 다른 자리로 튀어서 쓰지 않는다. 확대는 도면 자체를 원점 기준으로 키우고 줄인다
 
 import RealityKit
 import SwiftUI
@@ -17,6 +17,14 @@ struct FloorPlan3DView: View {
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
+    /// 원점을 바라보며 둘레를 도는 카메라
+    @State private var camera = PerspectiveCamera()
+    /// 카메라가 있는 방향. 한 손가락으로 끌면 바뀐다
+    @State private var orbit = CameraOrbit.initial
+    /// 카메라를 돌리기 시작할 때의 방향
+    @State private var orbitAtDragStart: CameraOrbit?
+    /// 두 손가락으로 확대하거나 옮기는 중인지. 손을 뗄 때까지 카메라를 돌리지 않는다
+    @State private var isUsingTwoFingers = false
     /// 누른 화면 점에서 3D 안쪽으로 가상의 직선을 그을 때 쓰는 카메라 정보. 장면을 처음 만들 때 받아 둔다
     @State private var cameraContent: RealityViewCameraContent?
     /// 핀치를 끝냈을 때의 도면 배율. 다음 핀치는 여기서 이어 간다
@@ -48,7 +56,8 @@ struct FloorPlan3DView: View {
         RealityView { content in
             content.add(sceneRoot)
             content.add(makeLight())
-            content.add(makeCamera())
+            placeCamera()
+            content.add(camera)
             cameraContent = content
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { [content] event in
                 // 라벨마다 벽에 가려졌는지 직선을 그어 확인하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
@@ -61,13 +70,12 @@ struct FloorPlan3DView: View {
             }
         }
         // TODO: 팀원이 만든 도면 미리보기에도 같은 회전·확대 조작이 있음. 나중에 하나로 통일할지 확인
-        // 스탬프나 창문 테두리를 끄는 동안은 카메라가 같이 돌지 않게 기본 조작을 끈다
-        .realityViewCameraControls(isDraggingElement ? .none : .orbit)
-        .simultaneousGesture(extraZoomGesture)
+        .simultaneousGesture(zoomGesture)
         .simultaneousGesture(tapGesture)
         .simultaneousGesture(longPressGesture)
         .simultaneousGesture(pressLocationGesture)
         .simultaneousGesture(stampDragGesture)
+        .gesture(TwoFingerPanGesture(onChanged: panPlan, onEnded: endTwoFingers))
         .overlay(alignment: .topLeading) {
             roomLabels
         }
@@ -170,30 +178,6 @@ extension FloorPlan3DView {
     }
 }
 
-/// 3D에서 누른 곳을 도면 기준 값으로 바꾼 것
-enum PlanTap {
-    /// 고를 수 있는 요소 (스탬프·콘센트·창문)
-    case element(PlanSelection)
-    /// 바닥 위 도면 점 (m)
-    case floor(SIMD2<Double>)
-    /// 벽 면 위 도면 점 (m)과 바닥에서 높이 (m)
-    case wall(id: String, point: SIMD2<Double>, height: Double)
-}
-
-/// 3D에서 스탬프를 바꾼 것. 끌기는 손을 뗄 때 한 번 알린다
-enum PlanEdit {
-    /// 스탬프를 도면 점 (m)과 바닥에서 높이 (m)로 옮김. 사람·발화지점은 높이를 쓰지 않는다
-    case move(PlanSelection, point: SIMD2<Double>, height: Double)
-    /// 사람·발화지점(PlanMarker.id)의 방향을 yaw(도)로 바꿈
-    case rotate(markerId: String, yaw: Double)
-    /// 스탬프를 옆에 하나 더 만듦
-    case duplicate(PlanSelection)
-    /// 스탬프·창문을 지움
-    case delete(PlanSelection)
-    /// 창문(DoorWindow.id) 테두리 edge를 벽 시작점에서 along(m), 바닥에서 height(m) 자리로 옮김
-    case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
-}
-
 // 스탬프 끌어 옮기기
 // 끄는 동안은 엔티티만 움직이고 도면은 손을 뗄 때 한 번 바꾼다 (끄는 내내 장면을 다시 만들지 않게)
 extension FloorPlan3DView {
@@ -240,12 +224,18 @@ extension FloorPlan3DView {
                     stampDrag.entity.position = stampDrag.startPosition + (point - stampDrag.startSurfacePoint)
                 case .windowEdge(let windowId, let edge)?:
                     previewWindowEdge(windowId: windowId, edge: edge, at: value.location)
-                case .camera?, nil:
+                case .camera?:
+                    rotateCamera(by: value.translation)
+                case nil:
                     break
                 }
             }
             .onEnded { value in
-                defer { drag = nil }
+                defer {
+                    drag = nil
+                    orbitAtDragStart = nil
+                    isUsingTwoFingers = false
+                }
                 switch drag {
                 case .stamp(let stampDrag)?:
                     let position = stampDrag.entity.position
@@ -271,7 +261,7 @@ extension FloorPlan3DView {
         case .wallFixture(let id):
             guard let fixture = planData.wallFixtures.first(where: { $0.id == id }) else { return nil }
             wallId = fixture.wallId
-        case .doorWindow:
+        case .doorWindow, .wall:
             return nil
         }
         guard let start = surfacePoint(at: point, wallId: wallId) else { return nil }
@@ -332,6 +322,9 @@ extension FloorPlan3DView {
                 RotateHandleView()
                     .position(stampScreenPoints.handle)
                     .gesture(rotateGesture(markerId: id, center: stampScreenPoints.center))
+                ResizeHandleView()
+                    .position(stampScreenPoints.resizeHandle)
+                    .gesture(resizeGesture(markerId: id, center: stampScreenPoints.center))
             }
         }
     }
@@ -353,6 +346,25 @@ extension FloorPlan3DView {
         let yaw = planData.markers.first { $0.id == markerId }?.yaw ?? 0
         func angle(_ point: CGPoint) -> Double { atan2(point.y - center.y, point.x - center.x) }
         return yaw + (angle(drag.location) - angle(drag.startLocation)) * 180 / .pi
+    }
+
+    /// 크기 손잡이를 가운데에서 멀어지게 끌면 커지고, 가까워지게 끌면 작아진다. 끄는 동안은 엔티티만 키우고 손을 뗄 때 도면을 한 번 바꾼다
+    private func resizeGesture(markerId: String, center: CGPoint) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center)))
+            }
+            .onEnded { value in
+                onEdit(.resize(markerId: markerId, scale: resizedScale(markerId: markerId, drag: value, center: center)))
+            }
+    }
+
+    /// 화면에서 가운데와 손가락 사이 거리가 늘어난 비율만큼 곱한 배율. 2D와 같은 범위 안으로 맞춘다
+    private func resizedScale(markerId: String, drag: DragGesture.Value, center: CGPoint) -> Double {
+        let scale = planData.markers.first { $0.id == markerId }?.drawScale ?? 1
+        func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
+        let resized = scale * distance(drag.location) / max(distance(drag.startLocation), 1)
+        return min(max(resized, PlanData.markerScaleRange.lowerBound), PlanData.markerScaleRange.upperBound)
     }
 
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
@@ -379,7 +391,10 @@ extension FloorPlan3DView {
                 .flatMap { content.project(point: $0, to: .local) } ?? above(center)
             if let screenCenter = content.project(point: center, to: .local),
                let menu = above(center), let handle {
-                points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle)
+                // 크기 손잡이는 가운데의 오른쪽 아래. 스탬프가 화면에서 커 보일수록 멀리 둔다
+                let reach = max(screenCenter.y - menu.y - Layout.rotateHandleGap, 0) + Layout.resizeHandleGap
+                let resizeHandle = CGPoint(x: screenCenter.x + reach, y: screenCenter.y + reach / 2)
+                points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: resizeHandle)
             }
         }
         if points != stampScreenPoints {
@@ -396,6 +411,8 @@ private struct StampScreenPoints: Equatable {
     let menu: CGPoint
     /// 회전 손잡이 자리 (사람은 머리 너머 머리 높이)
     let handle: CGPoint
+    /// 크기 손잡이 자리 (가운데의 오른쪽 아래)
+    let resizeHandle: CGPoint
 }
 
 // 고른 창문의 테두리 손잡이와 편집 메뉴
@@ -475,23 +492,97 @@ extension FloorPlan3DView {
     }
 }
 
-// 확대 민감도
+// 확대
 extension FloorPlan3DView {
-    /// 기본 조작의 확대(카메라가 다가감)에 더해 도면 배율을 바꾼다.
-    /// 손가락 벌린 비율이 m이면 기본 조작이 m만큼, 여기서 m^(extraZoomPower)만큼 더 키운다
-    private var extraZoomGesture: some Gesture {
+    /// 손가락 벌린 비율이 m이면 도면을 m^(zoomPower)만큼 키운다
+    private var zoomGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
+                beginTwoFingers()
                 sceneRoot.scale = SIMD3(repeating: zoom(for: value.magnification))
             }
             .onEnded { value in
                 committedZoom = zoom(for: value.magnification)
+                endTwoFingers()
             }
     }
 
     private func zoom(for magnification: CGFloat) -> Float {
-        let extra = pow(Float(magnification), Layout.extraZoomPower)
-        return min(max(committedZoom * extra, Layout.zoomRange.lowerBound), Layout.zoomRange.upperBound)
+        let factor = pow(Float(magnification), Layout.zoomPower)
+        return min(max(committedZoom * factor, Layout.zoomRange.lowerBound), Layout.zoomRange.upperBound)
+    }
+}
+
+// 카메라 돌리기
+extension FloorPlan3DView {
+    /// 원점에서 본 카메라 방향. 가로로 끌면 둘레를 돌고, 세로로 끌면 위아래로 기운다
+    struct CameraOrbit {
+        /// 위에서 볼 때 도는 각 (라디안)
+        var yaw: Float
+        /// 바닥에서 올려다본 각 (라디안)
+        var pitch: Float
+
+        /// 처음 카메라 방향 (도면 앞쪽 오른쪽 위)
+        static var initial: CameraOrbit {
+            let direction = normalize(Layout.cameraDirection)
+            return CameraOrbit(yaw: atan2(direction.x, direction.z), pitch: asin(direction.y))
+        }
+
+        var direction: SIMD3<Float> {
+            SIMD3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw))
+        }
+    }
+
+    /// 끌기 시작한 방향에서 손가락이 움직인 만큼 카메라를 돌린다. 두 손가락을 쓰는 중이면 돌리지 않는다
+    private func rotateCamera(by translation: CGSize) {
+        guard !isUsingTwoFingers else { return }
+        let start = orbitAtDragStart ?? orbit
+        orbitAtDragStart = start
+        orbit.yaw = start.yaw - Float(translation.width) * Layout.orbitSpeed
+        orbit.pitch = min(max(start.pitch + Float(translation.height) * Layout.orbitSpeed, Layout.pitchRange.lowerBound), Layout.pitchRange.upperBound)
+        placeCamera()
+    }
+
+    /// 두 손가락이 닿으면 한 손가락 끌기로 이미 돌린 만큼을 되돌리고 손을 뗄 때까지 돌리지 않는다
+    private func beginTwoFingers() {
+        guard !isUsingTwoFingers else { return }
+        isUsingTwoFingers = true
+        if let start = orbitAtDragStart {
+            orbit = start
+            placeCamera()
+        }
+    }
+
+    /// 두 손가락을 떼면 다시 돌릴 수 있다. 한 손가락 끌기가 함께 시작됐으면 그 끌기가 끝날 때 풀린다
+    private func endTwoFingers() {
+        if drag == nil { isUsingTwoFingers = false }
+    }
+
+    /// 도면 앞쪽 위에서 원점을 바라보게 카메라를 놓는다. 도면이 클수록 멀리 둔다
+    private func placeCamera() {
+        let space = PlanSpace(plan: planData)
+        let distance = Float(max(space.size.x, space.size.y, Layout.minimumViewSize)) * Layout.cameraDistanceRatio
+        camera.look(at: .zero, from: orbit.direction * distance, relativeTo: nil)
+    }
+}
+
+// 두 손가락으로 옮기기
+extension FloorPlan3DView {
+    /// 손가락 아래의 바닥 점이 손가락을 따라오도록 도면 전체를 바닥과 나란히 옮긴다.
+    /// 카메라가 어느 쪽을 보든 손가락 방향대로 움직인다
+    private func panPlan(to location: CGPoint, from previous: CGPoint) {
+        beginTwoFingers()
+        guard let from = floorPoint(at: previous), let to = floorPoint(at: location) else { return }
+        sceneRoot.position += SIMD3(to.x - from.x, 0, to.z - from.z)
+    }
+
+    /// 화면 점에서 3D 안쪽으로 그은 직선이 도면 바닥 높이와 만나는 점. 직선이 바닥과 거의 나란하거나 카메라 뒤면 nil
+    private func floorPoint(at point: CGPoint) -> SIMD3<Float>? {
+        guard let ray = cameraContent?.ray(through: point, in: .local, to: .scene),
+              abs(ray.direction.y) > 0.0001 else { return nil }
+        let distance = (sceneRoot.position.y - ray.origin.y) / ray.direction.y
+        guard distance > 0 else { return nil }
+        return ray.origin + ray.direction * distance
     }
 }
 
@@ -506,18 +597,10 @@ extension FloorPlan3DView {
         switch selection {
         case .marker?, .wallFixture?:
             selectedStampEntity = selection.flatMap { FloorPlan3DBuilder.entity(for: $0, in: sceneRoot) }
-        case .doorWindow?, nil:
+        // 벽은 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
+        case .doorWindow?, .wall?, nil:
             selectedStampEntity = nil
         }
-    }
-
-    /// 도면 앞쪽(도면 아래쪽) 위에서 비스듬히 내려다보는 카메라. 도면이 클수록 멀리 둔다
-    private func makeCamera() -> PerspectiveCamera {
-        let space = PlanSpace(plan: planData)
-        let distance = Float(max(space.size.x, space.size.y, Layout.minimumViewSize)) * Layout.cameraDistanceRatio
-        let camera = PerspectiveCamera()
-        camera.look(at: .zero, from: normalize(Layout.cameraDirection) * distance, relativeTo: nil)
-        return camera
     }
 
     /// 위에서 비스듬히 비추는 빛. 벽 면마다 밝기가 달라 모양이 잘 보인다
@@ -538,9 +621,12 @@ extension FloorPlan3DView {
         /// 도면이 아주 작아도 이만큼(m)은 보이게
         static let minimumViewSize = 3.0
         static let lightPosition = SIMD3<Float>(3, 8, 5)
-        /// 기본 확대에 더하는 세기. 0이면 기본 그대로, 1이면 기본의 두 배(손가락을 2배 벌리면 4배 확대).
-        /// 숫자를 올리면 더 민감해진다
-        static let extraZoomPower: Float = 0.6
+        /// 확대 세기. 1이면 손가락을 벌린 만큼, 숫자를 올리면 더 민감해진다
+        static let zoomPower: Float = 1.6
+        /// 한 손가락으로 1pt 끌 때 카메라가 도는 각 (라디안)
+        static let orbitSpeed: Float = 0.006
+        /// 카메라가 기울 수 있는 범위 (라디안). 바닥 아래로 내려가거나 바로 위에서 뒤집히지 않게
+        static let pitchRange: ClosedRange<Float> = 0.15...1.45
         /// 도면 배율을 이 범위 안에서만 바꾼다 (너무 작아지거나 화면을 넘지 않게)
         static let zoomRange: ClosedRange<Float> = 0.4...4
         /// 라벨 바로 앞(m)은 가림 판정에서 뺀다. 라벨 자리에 닿은 것을 벽으로 잘못 보지 않게
@@ -550,6 +636,8 @@ extension FloorPlan3DView {
         static let labelUpdateInterval: TimeInterval = 1.0 / 60
         /// 스탬프 꼭대기와 회전 손잡이·편집 메뉴 가운데 사이 (pt)
         static let rotateHandleGap: CGFloat = 36
+        /// 스탬프 가장자리와 크기 손잡이 사이 (pt)
+        static let resizeHandleGap: CGFloat = 40
         /// 사람의 회전 손잡이를 머리에서 몸 바깥쪽으로 더 내놓는 거리 (m)
         static let handleBeyondHead: Float = 0.45
         /// 회전 손잡이를 끄는 거리를 재는 좌표 공간 이름 (3D 뷰 전체)
