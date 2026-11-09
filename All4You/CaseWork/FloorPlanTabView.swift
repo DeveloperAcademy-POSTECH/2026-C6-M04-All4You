@@ -396,8 +396,8 @@ private struct PhotoDropDelegate: DropDelegate {
     }
 }
 
-/// 도면 위 한 장소의 사진 핀. 그 장소의 대표 사진과 사진 수
-private struct PhotoPin {
+/// 도면 위 한 장소의 사진 핀. 그 장소의 대표 사진과 사진 수. 도면 탭과 내보내기가 함께 쓴다
+struct PhotoPin {
     let thumbnail: UIImage
     let count: Int
     /// 끄는 동안 놓일 자리를 미리 보여 주는 핀이면 true. 주황으로 그린다
@@ -406,7 +406,7 @@ private struct PhotoPin {
 
 /// 팀 공용 Plan2DView 위에 겹쳐 그리는 사진 핀. 같은 screen으로 자리를 맞춰서 확대·이동하면 핀도 따라 움직인다.
 /// "안방 · 13" 캡슐이 도면의 이름 라벨 자리에 그대로 놓이고, 대표 사진은 그 위에 붙는다
-private struct PhotoPinLayer: View {
+struct PhotoPinLayer: View {
     let planData: PlanData
     let screen: PlanScreen
     /// 장소(Room.id)별 사진 핀. 핀이 없는 장소는 그리지 않는다 (이름은 Plan2DView가 그린다)
@@ -443,7 +443,7 @@ private struct PhotoPinLayer: View {
 }
 
 /// 대표 사진 아래 "안방 · 13" 캡슐. 누르면 그 장소를 고른다. 2D 핀과 3D 핀이 함께 쓴다
-private struct PhotoPinView: View {
+struct PhotoPinView: View {
     let roomName: String
     let pin: PhotoPin
     /// 고른 핀은 검은 캡슐
