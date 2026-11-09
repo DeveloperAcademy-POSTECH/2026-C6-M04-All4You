@@ -17,6 +17,8 @@ struct Plan2DView: View {
     var selectedWallIds: Set<String> = []
     /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
     var roomLabelActions: RoomLabelActions? = nil
+    /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
+    var hiddenLabelRoomIds: Set<String> = []
 
     /// 콘센트 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
     static let stampSize = 0.4
@@ -170,7 +172,7 @@ extension Plan2DView {
     private var roomLabels: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.rooms) { room in
-                if room.id != editingRoomId {
+                if room.id != editingRoomId && !hiddenLabelRoomIds.contains(room.id) {
                     roomLabel(room)
                         .overlay { selectionBorder(isSelected: room.id == selectedRoomId) }
                         .position(screen.point(SIMD2(room.labelX, room.labelY)))

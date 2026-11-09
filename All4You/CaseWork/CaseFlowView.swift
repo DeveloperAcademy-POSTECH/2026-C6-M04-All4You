@@ -18,6 +18,9 @@ struct CaseFlowView: View {
     /// 2D·3D 수정 화면이 함께 보고 고치는 도면
     // TEMP: 도면을 만들고 저장하는 흐름(SwiftData)이 연결되기 전이라 더미 도면을 여기서 들고 있음 — 앱을 끄면 고친 것이 사라짐
     @State private var planData = DummyFloorPlan.planData
+    /// 메인에서 찍거나 불러온 사진. 메인을 닫았다 열어도 남도록 여기서 들고 있다
+    // TEMP: 사진 저장 흐름(SwiftData)이 연결되기 전이라 메모리에만 있음 — 앱을 끄면 사진이 사라짐
+    @State private var photoStore = PhotoStore()
     /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
     @State private var history = PlanHistory()
 
@@ -32,7 +35,7 @@ struct CaseFlowView: View {
             history.record(from: old, to: new)
         }
         .fullScreenCover(isPresented: $isCaseMainShown) {
-            CaseMainView(onBack: closeCaseMain, onEdit: showEdit2D, planData: planData)
+            CaseMainView(planData: planData, photoStore: photoStore, onBack: closeCaseMain, onEdit: showEdit2D)
         }
     }
 }

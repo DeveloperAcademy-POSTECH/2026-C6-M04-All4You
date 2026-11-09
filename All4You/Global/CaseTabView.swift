@@ -15,6 +15,8 @@ struct CaseSidebarRow {
 enum CaseTabSelection: Hashable {
     case floorPlan2D
     case floorPlan3D
+    /// 앨범 탭의 "전체". 사이드바에는 줄이 없고 앨범 아래 장소 막대에만 있다
+    case albumOverview
     // TODO: 장소 데이터가 생기면 이름 대신 Room.id로 구분
     case album(String)
     case memo(String)
@@ -28,6 +30,8 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     @Binding var selection: CaseTabSelection
     let albumRows: [CaseSidebarRow]
     let memoRows: [CaseSidebarRow]
+    /// 앨범 탭 위 빨간 숫자 (위치 미지정 사진 수). 0이면 보이지 않는다
+    var albumBadge = 0
     // 사이드바에서 삭제를 확인한 줄. 그 장소의 사진·메모를 비우는 일은 화면이 한다
     let onClearRow: (CaseTabSelection) -> Void
     @ViewBuilder let floorPlan: FloorPlan
@@ -83,6 +87,7 @@ extension CaseTabView {
             } label: {
                 Text(CaseTabCopy.album)
             }
+            .badge(albumBadge)
             Tab(value: CaseTabBarItem.memo) {
                 NavigationStack { memo }
             } label: {
@@ -116,19 +121,18 @@ extension CaseTabView {
     private func tabBarItem(of selection: CaseTabSelection) -> CaseTabBarItem {
         switch selection {
         case .floorPlan2D, .floorPlan3D: .floorPlan
-        case .album: .album
+        case .albumOverview, .album: .album
         case .memo: .memo
         }
     }
 
-    /// 아직 고른 적 없는 탭으로 갈 때 고를 줄: 도면은 2D, 앨범·메모는 첫 줄
+    /// 아직 고른 적 없는 탭으로 갈 때 고를 줄: 도면은 2D, 앨범은 전체, 메모는 첫 줄
     private func firstSelection(of item: CaseTabBarItem) -> CaseTabSelection {
         switch item {
         case .sidebar, .floorPlan:
             return .floorPlan2D
         case .album:
-            guard let firstRow = albumRows.first else { return selection }
-            return .album(firstRow.name)
+            return .albumOverview
         case .memo:
             guard let firstRow = memoRows.first else { return selection }
             return .memo(firstRow.name)
