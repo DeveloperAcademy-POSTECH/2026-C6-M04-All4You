@@ -28,7 +28,7 @@ struct CaseListContent: View {
     @State private var deletingCase: FireCase?
     let onRegister: () -> Void
     /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
-    let onOpen: (FireCase) -> Void
+    let onOpen: (FireCase, CaseStartTab) -> Void
     
     private var cases: [FireCase] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -85,7 +85,7 @@ struct CaseListContent: View {
                                 // 목록과 미리보기 사이를 손가락/포인터로 드래그하여 너비 변경
                                 resizeDivider(availableWidth: geometry.size.width, currentWidth: listWidth)
                                 
-                                CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
+                                CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
                         }
@@ -352,7 +352,7 @@ extension CaseListContent {
             searchText: "",
             selectedCaseID: $selectedCaseID,
             onRegister: {},
-            onOpen: { _ in }
+            onOpen: { _, _ in }
         )
     }
     .modelContainer(for: FireCase.self, inMemory: true)

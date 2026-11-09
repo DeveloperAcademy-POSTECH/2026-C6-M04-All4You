@@ -130,7 +130,7 @@ struct CaseListView: View {
         // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
         .fullScreenCover(item: $openedCase) { opened in
             if opened.fireCase.floorPlan != nil {
-                CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, onClose: { openedCase = nil })
+                CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, startTab: opened.startTab, onClose: { openedCase = nil })
             } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
@@ -147,9 +147,9 @@ struct CaseListView: View {
     }
     
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
-    private func open(_ fireCase: FireCase) {
+    private func open(_ fireCase: FireCase, at startTab: CaseStartTab = .floorPlan) {
         fireCase.lastViewedAt = .now
-        openedCase = OpenedCase(fireCase: fireCase, startsAtMain: fireCase.floorPlan != nil)
+        openedCase = OpenedCase(fireCase: fireCase, startsAtMain: fireCase.floorPlan != nil, startTab: startTab)
     }
 }
 
@@ -159,6 +159,8 @@ private struct OpenedCase: Identifiable {
     let fireCase: FireCase
     /// 평면도가 이미 있었으면 메인부터, 열고 나서 막 만들었으면 2D 수정부터 보여 준다
     let startsAtMain: Bool
+    /// 메인에서 처음 보여 줄 탭 (미리보기의 앨범·메모 버튼으로 열면 그 탭)
+    let startTab: CaseStartTab
 
     var id: UUID { fireCase.id }
 }
@@ -339,7 +341,7 @@ extension CaseListView {
                 searchText: searchText,
                 selectedCaseID: $selectedCaseID,
                 onRegister: presentRegistration,
-                onOpen: open
+                onOpen: { open($0, at: $1) }
             )
             .toolbar {
                 if isSidebarHidden {

@@ -36,13 +36,31 @@ struct CaseMainView: View {
     /// 상단 바에서 고른 조사 차수. 처음에는 가장 최근 차수
     @State private var sessionNumber: Int
     
-    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
+    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, startTab: CaseStartTab = .floorPlan, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
         self.fireCase = fireCase
         self.planData = planData
         self.photoStore = photoStore
         self.onBack = onBack
         self.onEdit = onEdit
         _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
+        _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
+    }
+
+    /// 처음 고를 줄. 앨범은 전체, 메모는 메모가 있는 첫 장소(없으면 첫 장소)
+    private static func firstSelection(of startTab: CaseStartTab, planData: PlanData, fireCase: FireCase) -> CaseTabSelection {
+        switch startTab {
+        case .floorPlan:
+            return .floorPlan2D
+        case .album:
+            return .albumOverview
+        case .memo:
+            let firstMemoRoom = fireCase.memos
+                .sorted { $0.createdAt < $1.createdAt }
+                .compactMap { memo in planData.rooms.first { $0.id == memo.targetKey }?.name }
+                .first
+            guard let name = firstMemoRoom ?? planData.rooms.first?.name else { return .floorPlan2D }
+            return .memo(name)
+        }
     }
     
     var body: some View {
@@ -425,4 +443,11 @@ extension CaseMainView {
         onEdit: {}
     )
     .modelContainer(for: FireCase.self, inMemory: true)
+}
+
+/// 사건 메인을 열 때 처음 보여 줄 탭
+enum CaseStartTab {
+    case floorPlan
+    case album
+    case memo
 }

@@ -28,8 +28,14 @@ struct CaseFlowView: View {
     @State private var photoStore: PhotoStore
     /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
     @State private var history = PlanHistory()
+    /// 도면 저장에 실패했는지. 참이면 알림을 띄운다
+    @State private var isSaveFailed = false
 
-    init(fireCase: FireCase, startsAtMain: Bool, onClose: @escaping () -> Void) {
+    /// 메인에서 처음 보여 줄 탭
+    private let startTab: CaseStartTab
+
+    init(fireCase: FireCase, startsAtMain: Bool, startTab: CaseStartTab = .floorPlan, onClose: @escaping () -> Void) {
+        self.startTab = startTab
         self.fireCase = fireCase
         self.onClose = onClose
         // 저장된 도면을 열면 메인부터, 막 변환한 도면이면 2D 수정부터 보여 준다
@@ -42,7 +48,7 @@ struct CaseFlowView: View {
     var body: some View {
         Group {
             if isCaseMainShown {
-                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, onBack: onClose, onEdit: showEdit2D)
+                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, startTab: startTab, onBack: onClose, onEdit: showEdit2D)
             } else {
                 NavigationStack(path: $path) {
                     edit2DScreen
@@ -55,6 +61,11 @@ struct CaseFlowView: View {
         .onChange(of: planData) { old, new in
             history.record(from: old, to: new)
             storeFloorPlan(new)
+        }
+        .alert(Copy.saveFailedTitle, isPresented: $isSaveFailed) {
+            Button(Copy.confirm, role: .cancel) {}
+        } message: {
+            Text(Copy.saveFailedMessage)
         }
     }
 }
@@ -87,8 +98,7 @@ extension CaseFlowView {
         do {
             try fireCase.floorPlan?.storePlanData(plan)
         } catch {
-            // TODO: 저장 실패 알림 — 문구가 정해지면 추가
-            print("도면 저장 실패: \(error)")
+            isSaveFailed = true
         }
     }
 }
@@ -127,6 +137,16 @@ extension CaseFlowView {
     private func showEdit2D() {
         isCaseMainShown = false
         path.append(.edit2D)
+    }
+}
+
+// 문구
+extension CaseFlowView {
+    private enum Copy {
+        // TEMP: Figma에 도면 저장 실패 화면이 없어 임의로 작성 — 디자인 확인 필요
+        static let saveFailedTitle = "도면을 저장하지 못했어요"
+        static let saveFailedMessage = "방금 고친 내용이 저장되지 않았을 수 있어요. 다시 고쳐 보거나 앱을 다시 열어 주세요."
+        static let confirm = "확인"
     }
 }
 
