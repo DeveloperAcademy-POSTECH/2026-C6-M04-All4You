@@ -17,6 +17,10 @@ struct Plan2DView: View {
     var selectedWallIds: Set<String> = []
     /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
     var roomLabelActions: RoomLabelActions? = nil
+    /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 가구 (Furniture.id). 이 가구의 이름 캡슐은 그리지 않는다
+    var editingFurnitureId: String? = nil
+    /// 가구 이름 캡슐을 누를 때 알릴 곳 (Furniture.id). nil이면 캡슐은 보기만 하고 누르기는 아래 도면으로 지나간다
+    var onTapFurnitureLabel: ((String) -> Void)? = nil
     /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
     var hiddenLabelRoomIds: Set<String> = []
 
@@ -160,15 +164,19 @@ extension Plan2DView {
         )
     }
 
-    /// 가구 가운데의 이름 캡슐. 가구를 돌려도 글자는 바로 선다
+    /// 가구 가운데의 이름 캡슐. 가구를 돌려도 글자는 바로 선다. 고른 가구의 캡슐은 공간 이름처럼 주황 테두리
     private var furnitureLabels: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.furniture ?? []) { furniture in
-                FurnitureLabelView(label: furniture.label)
-                    .position(screen.point(furniture.center))
+                if furniture.id != editingFurnitureId {
+                    FurnitureLabelView(label: furniture.label)
+                        .overlay { selectionBorder(isSelected: selection == .furniture(furniture.id)) }
+                        .onTapGesture { onTapFurnitureLabel?(furniture.id) }
+                        .allowsHitTesting(onTapFurnitureLabel != nil)
+                        .position(screen.point(furniture.center))
+                }
             }
         }
-        .allowsHitTesting(false)
     }
 }
 

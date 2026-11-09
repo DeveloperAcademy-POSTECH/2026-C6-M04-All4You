@@ -27,6 +27,13 @@ extension PlanData {
         }
     }
 
+    /// 가구 이름을 바꾼다. 앞뒤 빈칸을 빼고 비어 있으면 바꾸지 않는다
+    mutating func renameFurniture(id: String, to label: String) {
+        let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        updateFurniture(id: id) { $0.label = trimmed }
+    }
+
     mutating func removeFurniture(id: String) {
         furniture?.removeAll { $0.id == id }
     }

@@ -41,6 +41,11 @@ struct FloorPlanEdit2DView: View {
     /// 고치는 중인 이름. 끝낼 때 도면에 한 번 넣는다
     @State private var roomNameDraft = ""
     @FocusState private var isRoomNameFocused: Bool
+    /// 가구라벨 도구로 이름을 고치는 중인 가구 (Furniture.id)
+    @State private var editingFurnitureId: String?
+    /// 고치는 중인 가구 이름. 끝낼 때 도면에 한 번 넣는다
+    @State private var furnitureLabelDraft = ""
+    @FocusState private var isFurnitureLabelFocused: Bool
     /// 공간 이름 캡슐을 끄는 중이면, 끌기를 시작할 때 캡슐이 있던 도면 점
     @State private var labelDragStart: SIMD2<Double>?
     /// 도면을 그리는 영역의 크기. 키보드에 가리지 않게 도면을 올릴 때 쓴다
@@ -97,7 +102,9 @@ extension FloorPlanEdit2DView {
                 editingRoomId: editingRoomId,
                 selectedRoomId: selectedRoomId,
                 selectedWallIds: wallSelection?.wallIds ?? [],
-                roomLabelActions: RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag)
+                roomLabelActions: RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag),
+                editingFurnitureId: editingFurnitureId,
+                onTapFurnitureLabel: tapFurnitureLabel
             )
                 .contentShape(.rect)
                 .gesture(tapGesture)
@@ -112,6 +119,9 @@ extension FloorPlanEdit2DView {
                 }
                 .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
+                    furnitureLabelField(screen: screen)
                 }
                 .coordinateSpace(.named(Layout.planSpace))
                 .onChange(of: selection) {
@@ -172,6 +182,8 @@ extension FloorPlanEdit2DView {
         UndoRedoCapsule(history: $history, planData: $planData) {
             editingRoomId = nil
             isRoomNameFocused = false
+            editingFurnitureId = nil
+            isFurnitureLabelFocused = false
             selection = nil
             selectedRoomId = nil
             menuTarget = nil
@@ -191,6 +203,10 @@ extension FloorPlanEdit2DView {
                     finishRoomEditing()
                     return
                 }
+                if editingFurnitureId != nil {
+                    finishFurnitureEditing()
+                    return
+                }
                 handleTap(screen.tap(at: value.location, in: planData))
             }
     }
@@ -198,16 +214,17 @@ extension FloorPlanEdit2DView {
     /// 이미 놓인 스탬프를 누르면 도구와 상관없이 그것을 고른다.
     /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 그 아래 가구를 고르거나 고른 것을 푼다.
     /// 그래서 도구를 고른 채 가구 위를 누르면 가구를 고르지 않고 그 자리에 스탬프를 놓는다 (침대 위 발화지점 등).
-    /// 공간라벨 도구로 방 안을 누르면 그 방 이름을 그 자리로 옮기고 바로 고친다.
+    /// 공간라벨 도구로 방 안을 누르면 그 방 이름을 그 자리로 옮기고 바로 고친다. 가구라벨 도구로 가구를 누르면 고르고, 고른 가구를 한 번 더 누르면 이름을 고친다.
     /// 도구는 놓은 뒤에도 켜져 있고, 방금 놓은 스탬프를 고른 상태로 둔다 (3D 수정 화면과 같다).
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
-        if drawingTool == .hand {
+        // 위 도구(스탬프·라벨)를 골랐으면 아래 펜·지우개·획 선택과 상관없이 위 도구로 처리한다
+        if selectedTool == nil, drawingTool == .hand {
             handleHandTap(tap)
             return
         }
-        if drawingTool == .eraser, case .wall(let id, _, _) = tap {
+        if selectedTool == nil, drawingTool == .eraser, case .wall(let id, _, _) = tap {
             planData.eraseWall(id: id)
             selection = nil
             return
@@ -223,6 +240,9 @@ extension FloorPlanEdit2DView {
             guard let room = planData.room(containing: point) else { return }
             planData.moveRoomLabel(id: room.id, to: point)
             startRoomEditing(room.id)
+        case (.furniture?, .floor(let point)):
+            guard let furniture = planData.furniture(at: point) else { return }
+            selectOrEditFurniture(furniture.id)
         case (let tool?, _):
             selection = planData.place(tool, at: tap) ?? selection
         }
@@ -273,15 +293,27 @@ extension FloorPlanEdit2DView {
         roomNameDraft = room.name
         editingRoomId = roomId
         isRoomNameFocused = true
-        if let screen {
-            let labelY = screen.point(SIMD2(room.labelX, room.labelY)).y
-            let visibleBottom = canvasSize.height * Layout.keyboardFreeShare
-            if labelY > visibleBottom {
-                screenBeforeEditing = screen
-                withAnimation {
-                    self.screen = screen.moved(by: CGSize(width: 0, height: visibleBottom - labelY))
-                }
+        liftAboveKeyboard(SIMD2(room.labelX, room.labelY))
+    }
+
+    /// 입력칸 자리(도면 점)가 키보드에 가릴 자리면 도면을 위로 올린다. 고치기를 끝내면 restoreAfterKeyboard로 되돌린다
+    private func liftAboveKeyboard(_ point: SIMD2<Double>) {
+        guard let screen else { return }
+        let labelY = screen.point(point).y
+        let visibleBottom = canvasSize.height * Layout.keyboardFreeShare
+        if labelY > visibleBottom {
+            screenBeforeEditing = screen
+            withAnimation {
+                self.screen = screen.moved(by: CGSize(width: 0, height: visibleBottom - labelY))
             }
+        }
+    }
+
+    /// 이름 고치기 때문에 올린 도면을 제자리로
+    private func restoreAfterKeyboard() {
+        if let screenBeforeEditing {
+            withAnimation { screen = screenBeforeEditing }
+            self.screenBeforeEditing = nil
         }
     }
 
@@ -292,10 +324,7 @@ extension FloorPlanEdit2DView {
         }
         editingRoomId = nil
         isRoomNameFocused = false
-        if let screenBeforeEditing {
-            withAnimation { screen = screenBeforeEditing }
-            self.screenBeforeEditing = nil
-        }
+        restoreAfterKeyboard()
     }
 
     /// 고른 캡슐을 끄는 동안은 미리 보기 도면에서만 옮긴다. 그 방 밖으로는 나가지 않는다. 고르지 않은 캡슐은 끌리지 않는다
@@ -313,6 +342,73 @@ extension FloorPlanEdit2DView {
     private func endRoomLabelDrag() {
         commitPreview()
         labelDragStart = nil
+    }
+}
+
+// 가구 이름 고치기
+extension FloorPlanEdit2DView {
+    /// 가구 이름 캡슐 자리에 입력칸을 띄운다. 흰 캡슐·검은 테두리 모양 그대로, 커서는 주황
+    @ViewBuilder
+    private func furnitureLabelField(screen: PlanScreen) -> some View {
+        if let editingFurnitureId, let furniture = planData.furniture?.first(where: { $0.id == editingFurnitureId }) {
+            TextField(furniture.label, text: $furnitureLabelDraft)
+                .font(AppTypography.label)
+                .foregroundStyle(.black)
+                .tint(.brand500)
+                .multilineTextAlignment(.center)
+                .fixedSize()
+                .padding(.horizontal, Layout.furnitureLabelHorizontalPadding)
+                .padding(.vertical, Layout.furnitureLabelVerticalPadding)
+                .background(.white, in: .capsule)
+                .overlay { Capsule().stroke(.black, lineWidth: 1) }
+                .focused($isFurnitureLabelFocused)
+                .submitLabel(.done)
+                .onSubmit(finishFurnitureEditing)
+                .position(screen.point(furniture.center))
+        }
+    }
+
+    /// 가구 이름 캡슐을 누르면 펜·지우개·획 선택이나 위 도구와 상관없이 공간 이름처럼 다룬다: 한 번은 고르고(주황), 고른 것을 한 번 더 누르면 고친다
+    private func tapFurnitureLabel(_ furnitureId: String) {
+        if editingRoomId != nil {
+            finishRoomEditing()
+            return
+        }
+        if editingFurnitureId != nil {
+            finishFurnitureEditing()
+            return
+        }
+        selectOrEditFurniture(furnitureId)
+    }
+
+    /// 고르지 않은 가구면 고르고, 이미 고른 가구면 이름 고치기를 시작한다
+    private func selectOrEditFurniture(_ furnitureId: String) {
+        selectedRoomId = nil
+        if selection == .furniture(furnitureId) {
+            startFurnitureEditing(furnitureId)
+        } else {
+            selection = .furniture(furnitureId)
+        }
+    }
+
+    private func startFurnitureEditing(_ furnitureId: String) {
+        guard let furniture = planData.furniture?.first(where: { $0.id == furnitureId }) else { return }
+        selection = nil
+        selectedRoomId = nil
+        furnitureLabelDraft = furniture.label
+        editingFurnitureId = furnitureId
+        isFurnitureLabelFocused = true
+        liftAboveKeyboard(furniture.center)
+    }
+
+    /// 고친 이름을 도면에 넣고 키보드를 내린다. 비워 두면 원래 이름이 남는다
+    private func finishFurnitureEditing() {
+        if let editingFurnitureId {
+            planData.renameFurniture(id: editingFurnitureId, to: furnitureLabelDraft)
+        }
+        editingFurnitureId = nil
+        isFurnitureLabelFocused = false
+        restoreAfterKeyboard()
     }
 }
 
@@ -706,6 +802,9 @@ extension FloorPlanEdit2DView {
         /// 이름 입력칸의 안쪽 여백. RoomLabelView 캡슐과 같게 맞춘다
         static let labelHorizontalPadding: CGFloat = 14
         static let labelVerticalPadding: CGFloat = 6
+        /// 가구 이름 입력칸의 안쪽 여백. FurnitureLabelView 캡슐과 같게 맞춘다
+        static let furnitureLabelHorizontalPadding: CGFloat = 10
+        static let furnitureLabelVerticalPadding: CGFloat = 4
         /// 키보드가 올라와도 가리지 않는 위쪽 몫. 이름 캡슐이 이보다 아래면 도면을 올린다
         static let keyboardFreeShare = 0.4
         /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
