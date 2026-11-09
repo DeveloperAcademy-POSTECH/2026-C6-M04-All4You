@@ -62,11 +62,12 @@ extension PlanData {
                 outerCount += 1
             }
         }
-        rooms.removeAll { mergedRoomIds.contains($0.id) }
-        guard outerCount >= 1, loopsOfRoom.count == rooms.count else { return false }
+        // 실패하면 도면을 바꾸지 않아야 하므로, 합쳐져 빠질 방은 끝에서 한 번에 뺀다
+        let keptRooms = rooms.filter { !mergedRoomIds.contains($0.id) }
+        guard outerCount >= 1, loopsOfRoom.count == keptRooms.count else { return false }
         var boundaries: [String: [RoomEdge]] = [:]
         var newRooms: [Room] = []
-        for room in rooms {
+        for room in keptRooms {
             guard var loops = loopsOfRoom[room.id] else { return false }
             if loops.count > 1 {
                 guard splitsRooms else { return false }
@@ -83,15 +84,16 @@ extension PlanData {
                 boundaries[room.id] = loops[0]
             }
         }
-        for index in rooms.indices {
-            guard var boundary = boundaries[rooms[index].id] else { return false }
+        var retraced = keptRooms
+        for index in retraced.indices {
+            guard var boundary = boundaries[retraced[index].id] else { return false }
             // 시작 벽이 그대로 있으면 시작을 맞춰 둔다
-            if let first = rooms[index].boundary.first, let at = boundary.firstIndex(of: first) {
+            if let first = retraced[index].boundary.first, let at = boundary.firstIndex(of: first) {
                 boundary = Array(boundary[at...] + boundary[..<at])
             }
-            rooms[index].boundary = boundary
+            retraced[index].boundary = boundary
         }
-        rooms += newRooms
+        rooms = retraced + newRooms
         return true
     }
 
@@ -133,9 +135,11 @@ extension PlanData {
         if room(containing: center)?.id == id {
             rooms[index].labelX = center.x
             rooms[index].labelY = center.y
-        } else if let cell = Self.largestCellCenter(points, inside: id, of: self) {
-            rooms[index].labelX = cell.x
-            rooms[index].labelY = cell.y
+        } else {
+            // 가장 넓은 칸도 못 찾으면(세모 방 등) 무게중심에라도 둔다. 이름 자리가 비어 화면 밖에 그려지지 않게
+            let spot = Self.largestCellCenter(points, inside: id, of: self) ?? center
+            rooms[index].labelX = spot.x
+            rooms[index].labelY = spot.y
         }
     }
 
