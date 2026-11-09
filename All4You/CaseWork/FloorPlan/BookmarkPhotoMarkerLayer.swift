@@ -23,12 +23,22 @@ struct BookmarkPhotoMarker: Identifiable {
 extension BookmarkPhotoMarker {
     /// 북마크 사진 중 촬영 위치가 있는 것을 찍은 시각 순서로 번호를 매긴다
     static func markers(for photos: [LoadedPhoto], in plan: PlanData) -> [BookmarkPhotoMarker] {
-        photos
+        numbered(photos
             .filter(\.isBookmarked)
             .sorted { $0.takenAt < $1.takenAt }
-            .compactMap { photo in photo.placement(in: plan).map { (photo.id, $0) } }
-            .enumerated()
-            .map { BookmarkPhotoMarker(id: $0.element.0, number: $0.offset + 1, placement: $0.element.1) }
+            .compactMap { photo in photo.placement(in: plan).map { (photo.id, $0) } })
+    }
+
+    /// 저장된 사진 기록으로 같은 번호를 매긴다 (사건 목록 미리보기처럼 PhotoStore 없이 그릴 때)
+    static func markers(for records: [EvidencePhoto], in plan: PlanData) -> [BookmarkPhotoMarker] {
+        numbered(records
+            .filter(\.isBookmarked)
+            .sorted { $0.takenAt < $1.takenAt }
+            .compactMap { record in record.placement(in: plan).map { (record.id, $0) } })
+    }
+
+    private static func numbered(_ items: [(UUID, PhotoPlacement)]) -> [BookmarkPhotoMarker] {
+        items.enumerated().map { BookmarkPhotoMarker(id: $0.element.0, number: $0.offset + 1, placement: $0.element.1) }
     }
 }
 
@@ -40,8 +50,14 @@ struct BookmarkPhotoMarkerLayer: View {
     let showsDirection: Bool
     /// 고른 핀. 고른 핀만 진하게, 나머지는 흐리게 그린다
     var selectedID: UUID? = nil
+    /// 도면 탭은 큰 "#1" 핀, 사건 목록 미리보기는 작은 "1" 핀 (누를 수 없음)
+    var style: Style = .regular
     /// 핀을 누르면 그 사진 id를 알린다
-    let onTap: (UUID) -> Void
+    var onTap: (UUID) -> Void = { _ in }
+
+    enum Style {
+        case regular, compact
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -61,18 +77,23 @@ struct BookmarkPhotoMarkerLayer: View {
         Button {
             onTap(marker.id)
         } label: {
-            Text("#\(marker.number)")
-                .font(AppTypography.headlineEmphasized)
+            Text(style == .compact ? "\(marker.number)" : "#\(marker.number)")
+                .font(style == .compact ? AppTypography.subheadlineEmphasized : AppTypography.headlineEmphasized)
                 .monospacedDigit()
                 .foregroundStyle(.white)
-                .frame(width: Layout.markerSize, height: Layout.markerSize)
+                .frame(width: markerSize, height: markerSize)
                 .background(.brand500, in: .circle)
                 .shadow(color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius, y: 1)
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
+        .allowsHitTesting(style == .regular)
         .accessibilityLabel(Copy.markerLabel(marker.number))
         .accessibilityAddTraits(marker.id == selectedID ? .isSelected : [])
+    }
+
+    private var markerSize: CGFloat {
+        style == .compact ? Layout.compactMarkerSize : Layout.markerSize
     }
 
     private func isDimmed(_ marker: BookmarkPhotoMarker) -> Bool {
@@ -111,6 +132,8 @@ struct BookmarkPhotoMarkerLayer: View {
 
     private enum Layout {
         static let markerSize: CGFloat = 40
+        /// 사건 목록 미리보기의 작은 핀 지름
+        static let compactMarkerSize: CGFloat = 32
         static let shadowOpacity = 0.25
         static let shadowRadius: CGFloat = 3
         /// 부채꼴 길이 (도면 m)

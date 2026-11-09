@@ -6,6 +6,7 @@
 //
 
 // 사건 목록에서 사건을 고르면 오른쪽에 뜨는 미리보기. 도면과 앨범,메모 개수를 보여 준다
+// 북마크한 사진 중 촬영 위치가 있는 것은 도면 위 그 자리에 번호 핀으로 보여 준다
 
 import SwiftUI
 
@@ -59,14 +60,17 @@ extension CasePreviewView {
            !planData.vertices.isEmpty {
 
             GeometryReader { geometry in
-                Plan2DView(
-                    planData: planData,
-                    screen: PlanScreen(
-                        plan: planData,
-                        in: geometry.size,
-                        fill: 0.70
+                // 도면과 북마크 핀이 같은 화면 자리를 쓰도록 screen을 하나 만들어 함께 넘긴다
+                let screen = PlanScreen(plan: planData, in: geometry.size, fill: 0.70)
+                ZStack(alignment: .topLeading) {
+                    Plan2DView(planData: planData, screen: screen)
+                    BookmarkPhotoMarkerLayer(
+                        markers: BookmarkPhotoMarker.markers(for: latestSessionPhotos, in: planData),
+                        screen: screen,
+                        showsDirection: false,
+                        style: .compact
                     )
-                )
+                }
                 .frame(
                     width: geometry.size.width,
                     height: geometry.size.height
@@ -78,6 +82,16 @@ extension CasePreviewView {
             Text(Copy.floorPlanPlaceholder)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// 사건을 열면 처음 보이는 차수(가장 최근 차수)의 사진. 차수 없이 들어온 사진은 모든 차수에 보이므로 함께 넣는다.
+    /// 사건 화면의 북마크 번호와 같은 번호가 되게 PhotoStore와 같은 기준으로 고른다
+    private var latestSessionPhotos: [EvidencePhoto] {
+        let latest = fireCase.sessions.map(\.sessionNumber).max()
+        return fireCase.photos.filter { photo in
+            guard let latest, let number = photo.session?.sessionNumber else { return true }
+            return number == latest
         }
     }
 
