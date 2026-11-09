@@ -21,10 +21,13 @@ struct CaseListContent: View {
     let title: String
     let searchText: String
     @Binding var selectedCaseID: FireCase.ID?
+    /// 사건 목록과 미리보기 사이의 사용자 지정 폭
+    @State private var preferredListWidth: CGFloat = 380
+    @State private var dragStartListWidth: CGFloat?
     let onRegister: () -> Void
     /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
     let onOpen: (FireCase) -> Void
-
+    
     private var cases: [FireCase] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         // 주소뿐 아니라 사건명·상세 주소로도 찾는다
@@ -69,12 +72,23 @@ struct CaseListContent: View {
                     description: Text("다른 목록을 선택하거나 새로운 사건을 등록해 주세요")
                 )
             } else {
-                HStack(spacing: 0) {
-                    caseList
-                        .frame(maxWidth: selectedCase == nil ? .infinity : Layout.listWidthWithPreview)
+                Group {
                     if let selectedCase {
-                        CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        GeometryReader { geometry in
+                            let listWidth = boundedListWidth(availableWidth: geometry.size.width)
+                            HStack(spacing: 0) {
+                                caseList
+                                    .frame(width: listWidth)
+                                
+                                // 목록과 미리보기 사이를 손가락/포인터로 드래그하여 너비 변경
+                                resizeDivider(availableWidth: geometry.size.width, currentWidth: listWidth)
+                                
+                                CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        }
+                    } else {
+                        caseList
                     }
                 }
                 .animation(.default, value: selectedCaseID)
@@ -121,10 +135,39 @@ extension CaseListContent {
         .ignoresSafeArea(.container, edges: .top)
     }
     
+    /// 사용 가능한 공간 안에서 미리보기의 최소 폭을 확보한다.
+    private func boundedListWidth(availableWidth: CGFloat) -> CGFloat {
+        let maximum = max(Layout.minimumListWidth, availableWidth - Layout.dividerWidth - Layout.minimumPreviewWidth)
+        return min(max(preferredListWidth, Layout.minimumListWidth), maximum)
+    }
+    
+    private func resizeDivider(availableWidth: CGFloat, currentWidth: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: Layout.dividerWidth)
+            .overlay {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(width: 1)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        if dragStartListWidth == nil { dragStartListWidth = currentWidth }
+                        let candidate = (dragStartListWidth ?? currentWidth) + value.translation.width
+                        let maxWidth = max(Layout.minimumListWidth, availableWidth - Layout.dividerWidth - Layout.minimumPreviewWidth)
+                        preferredListWidth = min(max(candidate, Layout.minimumListWidth), maxWidth)
+                    }
+                    .onEnded { _ in dragStartListWidth = nil }
+            )
+            .accessibilityLabel("사건 목록 너비 조절")
+    }
+    
     @ViewBuilder
     private var caseList: some View {
-        List(selection: $selectedCaseID) {
-            // 최근 열람은 달별로 나누지 않는다
+        // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
+        List {
             if selection == .filter(.recent) {
                 ForEach(cases) { caseRow($0) }
             } else {
@@ -143,14 +186,28 @@ extension CaseListContent {
     }
     
     private func caseRow(_ fireCase: FireCase) -> some View {
-        HStack {
-            Text(fireCase.title)
-            Spacer()
-            Text(Self.dateFormatter.string(from: fireCase.occurredAt))
-                .font(AppTypography.subheadline)
-                .foregroundStyle(.secondary)
+        Button {
+            selectedCaseID = fireCase.id
+        } label: {
+            HStack {
+                Text(fireCase.title)
+                Spacer()
+                Text(Self.dateFormatter.string(from: fireCase.occurredAt))
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
         }
-        .tag(fireCase.id)
+        .buttonStyle(.plain)
+        .listRowBackground(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(
+                    selectedCaseID == fireCase.id
+                    ? Color.gray200
+                    : Color.clear
+                )
+        )
         .contextMenu {
             moveMenu(fireCase)
         }
@@ -232,7 +289,9 @@ extension CaseListContent {
 // 크기
 extension CaseListContent {
     private enum Layout {
-        static let listWidthWithPreview: CGFloat = 380
+        static let minimumListWidth: CGFloat = 250
+        static let minimumPreviewWidth: CGFloat = 280
+        static let dividerWidth: CGFloat = 14
         static let registerButtonWidth: CGFloat = 330
         static let emptyIconSpacing: CGFloat = 16
         static let emptyDescriptionSpacing: CGFloat = 4

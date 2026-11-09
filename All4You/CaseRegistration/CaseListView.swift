@@ -147,7 +147,7 @@ struct CaseListView: View {
     private func presentRegistration() {
         isPresentingRegistration = true
     }
-
+    
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
     private func open(_ fireCase: FireCase) {
         fireCase.lastViewedAt = .now
@@ -196,7 +196,7 @@ extension CaseListView {
     /// 최근 열람·조사 중·조사 종결. 바꿀 수 없는 기본 목록이라 편집 중에는 흐리게 보이고 고를 수 없다
     private func defaultRow(_ filter: CaseFilter) -> some View {
         Label(filter.title, systemImage: filter.systemImage)
-            // 최근 열람은 개수를 보이지 않고, 편집 중에는 개수를 숨긴다
+        // 최근 열람은 개수를 보이지 않고, 편집 중에는 개수를 숨긴다
             .badge(filter == .recent || isEditing ? nil : Text("\(caseCount(of: filter))"))
             .opacity(isEditing && filter != .recent ? Layout.dimmedOpacity : 1)
             .selectionDisabled(isEditing)
@@ -287,9 +287,8 @@ extension CaseListView {
 extension CaseListView {
     
     private var isSidebarHidden: Bool {
-        columnVisibility == .detailOnly
+        columnVisibility != .all
     }
-    
     /// 오른쪽 사건 목록. 고른 목록의 사건을 보여 준다
     private var detail: some View {
         let current = selection ?? .filter(.recent)
