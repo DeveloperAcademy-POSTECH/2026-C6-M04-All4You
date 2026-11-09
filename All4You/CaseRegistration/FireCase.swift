@@ -25,6 +25,10 @@ final class FireCase {
     var photoCount: Int
     var memoCount: Int
 
+    /// 조사 차수. 사건을 지우면 함께 지운다
+    @Relationship(deleteRule: .cascade, inverse: \InvestigationSession.fireCase)
+    var sessions: [InvestigationSession] = []
+
     var status: Status {
         get { Status(rawValue: statusValue) ?? .inProgress }
         set { statusValue = newValue.rawValue }
