@@ -32,7 +32,7 @@ struct CaseFlowView: View {
             history.record(from: old, to: new)
         }
         .fullScreenCover(isPresented: $isCaseMainShown) {
-            CaseMainView(onBack: closeCaseMain, onEdit: showEdit2D)
+            CaseMainView(onBack: closeCaseMain, onEdit: showEdit2D, planData: planData)
         }
     }
 }
