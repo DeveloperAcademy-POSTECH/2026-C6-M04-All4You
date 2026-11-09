@@ -33,6 +33,7 @@ enum FloorPlan3DBuilder {
             root.addChild(makeMarker(marker, space: space, selection: selection))
         }
         root.addChild(makeRoomLabelAnchors(for: plan.rooms, space: space))
+        root.addChild(makeFurnitureLabelAnchors(for: plan.furniture ?? [], space: space))
         return root
     }
 }
@@ -337,6 +338,23 @@ extension FloorPlan3DBuilder {
         return entity
     }
 
+    /// 가구 이름 라벨 자리들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 라벨을 겹친다
+    static let furnitureLabelAnchorsName = "furnitureLabelAnchors"
+
+    /// 가구마다 이름 라벨이 놓일 3D 점(가구 윗면 가운데 조금 위). 보이는 모양은 없고 위치만 있다. 엔티티 이름 = Furniture.id
+    private static func makeFurnitureLabelAnchors(for furniture: [Furniture], space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = furnitureLabelAnchorsName
+        for item in furniture {
+            let anchor = Entity()
+            anchor.name = item.id
+            let top = item.elevation + max(FurnitureModel.minHeight, item.height)
+            anchor.position = space.world(item.center, height: top + FurnitureModel.labelGap)
+            group.addChild(anchor)
+        }
+        return group
+    }
+
     /// 가구 모양 그대로 height(m) 높이의 상자·원기둥
     private static func furnitureMesh(_ furniture: Furniture, height: Float) -> MeshResource {
         switch furniture.shape {
@@ -356,6 +374,8 @@ extension FloorPlan3DBuilder {
         /// 그림자 자리 두께. 바닥과 겹쳐 깜빡이지 않게 조금 두껍게
         static let shadowHeight: Float = 0.004
         static let cornerRadius: Float = 0.01
+        /// 이름 라벨을 가구 윗면에서 띄울 높이. 라벨이 가구 상자에 가려지지 않게
+        static let labelGap = 0.05
     }
 }
 
