@@ -29,11 +29,11 @@ struct CaseFlowView: View {
     /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
     @State private var history = PlanHistory()
 
-    init(fireCase: FireCase, onClose: @escaping () -> Void) {
+    init(fireCase: FireCase, startsAtMain: Bool, onClose: @escaping () -> Void) {
         self.fireCase = fireCase
         self.onClose = onClose
-        // 저장된 도면이 있으면 메인부터 보여 준다
-        _isCaseMainShown = State(initialValue: fireCase.floorPlan != nil)
+        // 저장된 도면을 열면 메인부터, 막 변환한 도면이면 2D 수정부터 보여 준다
+        _isCaseMainShown = State(initialValue: startsAtMain)
         // TEMP: 평면도를 만드는 앞 단계와 아직 이어지지 않아, 저장된 도면이 없으면 더미 도면으로 시작함 — 앞 단계가 연결되면 바뀜
         _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? DummyFloorPlan.planData)
     }
@@ -132,6 +132,6 @@ extension CaseFlowView {
 }
 
 #Preview {
-    CaseFlowView(fireCase: FireCase(address: "서울시 강남구 청암로 77", occurredAt: .now), onClose: {})
+    CaseFlowView(fireCase: FireCase(address: "서울시 강남구 청암로 77", occurredAt: .now), startsAtMain: false, onClose: {})
         .modelContainer(for: FireCase.self, inMemory: true)
 }

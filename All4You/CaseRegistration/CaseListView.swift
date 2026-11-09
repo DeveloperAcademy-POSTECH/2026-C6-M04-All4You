@@ -28,6 +28,8 @@ struct CaseListView: View {
     @State private var pendingFloorPlan: FireCase?
     /// 지금 열어 전체 화면으로 보여 주는 사건
     @State private var openedCase: FireCase?
+    /// 사건을 열 때 평면도가 이미 있었는지. 있었으면 메인부터, 열고 나서 막 만들었으면 2D 수정부터 보여 준다
+    @State private var openedWithFloorPlan = false
     
     // 사이드바 / 탭 바 편집 상태 저장
     @AppStorage("caseListTabCustomization")
@@ -119,7 +121,7 @@ struct CaseListView: View {
         // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
         .fullScreenCover(item: $openedCase) { fireCase in
             if fireCase.floorPlan != nil {
-                CaseFlowView(fireCase: fireCase, onClose: { openedCase = nil })
+                CaseFlowView(fireCase: fireCase, startsAtMain: openedWithFloorPlan, onClose: { openedCase = nil })
             } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
@@ -138,6 +140,7 @@ struct CaseListView: View {
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
     private func open(_ fireCase: FireCase) {
         fireCase.lastViewedAt = .now
+        openedWithFloorPlan = fireCase.floorPlan != nil
         openedCase = fireCase
     }
 }

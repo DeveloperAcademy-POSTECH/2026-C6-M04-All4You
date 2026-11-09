@@ -36,6 +36,8 @@ struct FloorPlanMethodSelectionView: View {
     @State private var showsImportCrop = false
     @State private var isFileImporterPresented = false
     @State private var isCameraPresented = false
+    /// 스캔이 끝나 변환 화면을 보여 주는 중인지
+    @State private var isConvertingScan = false
     
     private enum ImportMethod {
         case camera, album, file
@@ -108,7 +110,13 @@ struct FloorPlanMethodSelectionView: View {
             switch sourceType {
             case .roomPlan:
                 // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
-                RoomPlanScanView()
+                RoomPlanScanView(onUseResult: { _ in isConvertingScan = true })
+                    .navigationDestination(isPresented: $isConvertingScan) {
+                        // TEMP: 스캔 결과를 도면으로 바꾸는 코드가 아직 없어 더미 도면을 저장함 — RoomPlan 변환이 생기면 바꿈
+                        ConversionLoadingView(planData: DummyFloorPlan.planData) {
+                            try? fireCase.replaceFloorPlan(with: DummyFloorPlan.planData, sourceType: .roomPlan)
+                        }
+                    }
             case .iPadDrawing:
                 // TODO: 직접 그리기 화면 연결
                 Text("직접 그리기 화면 준비 중")
