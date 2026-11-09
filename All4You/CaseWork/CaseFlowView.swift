@@ -59,7 +59,7 @@ struct CaseFlowView: View {
 extension CaseFlowView {
     /// 처음 시작할 때와 메인의 "수정"으로 들어올 때 함께 쓰는 2D 수정 화면
     private var edit2DScreen: some View {
-        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading)
+        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading, roomPlanData: fireCase.floorPlan?.roomPlanData)
     }
 
     /// 화면 목록의 값에 맞는 화면을 만든다

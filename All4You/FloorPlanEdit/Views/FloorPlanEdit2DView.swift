@@ -12,6 +12,8 @@ struct FloorPlanEdit2DView: View {
     @Binding var history: PlanHistory
     let onBack: () -> Void
     let onDone: () -> Void
+    /// 공간 스캔 원본(JSON). 디버그 빌드에서 원본 내보내기 버튼으로 공유한다
+    var roomPlanData: Data? = nil
 
     @State private var selectedTool: EditTool?
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
@@ -73,6 +75,18 @@ struct FloorPlanEdit2DView: View {
         .overlay {
             DrawingToolBar(selectedTool: $drawingTool)
         }
+        #if DEBUG
+        // 원본으로 변환 규칙을 시뮬레이터에서 확인하기 위한 디버그 전용 버튼. 출시 빌드에는 없다
+        .overlay(alignment: .bottomTrailing) {
+            if let roomPlanData {
+                ShareLink(item: RoomPlanExport(data: roomPlanData), preview: SharePreview(Copy.exportRoomPlan)) {
+                    Label(Copy.exportRoomPlan, systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
+                .padding()
+            }
+        }
+        #endif
         .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
         .ignoresSafeArea(.keyboard)
@@ -646,6 +660,8 @@ extension FloorPlanEdit2DView {
 extension FloorPlanEdit2DView {
     private enum Copy {
         static let title = "도면 수정"
+        /// 디버그 전용 버튼 문구
+        static let exportRoomPlan = "원본 내보내기"
     }
 }
 

@@ -38,6 +38,8 @@ struct FloorPlanMethodSelectionView: View {
     @State private var isCameraPresented = false
     /// 스캔 결과를 바꾼 도면. 변환 화면에 흐리게 깔고, 화면이 끝나면 저장한다
     @State private var scannedPlan: PlanData?
+    /// 스캔 원본(JSON). 변환한 도면과 함께 저장한다
+    @State private var scannedOriginal: Data?
     
     private enum ImportMethod {
         case camera, album, file
@@ -111,11 +113,12 @@ struct FloorPlanMethodSelectionView: View {
             case .roomPlan:
                 // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
                 RoomPlanScanView(onUseResult: { _, structure, rooms in
+                    scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
                     scannedPlan = PlanData(structure: structure, rooms: rooms)
                 })
                     .navigationDestination(item: $scannedPlan) { plan in
                         ConversionLoadingView(planData: plan) {
-                            try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan)
+                            try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
                         }
                     }
             case .iPadDrawing:
