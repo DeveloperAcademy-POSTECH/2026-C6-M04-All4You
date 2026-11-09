@@ -58,6 +58,8 @@ struct PhotoLibrarySheet: View {
                         dayRow(section)
                     }
                 }
+                // 목록이 시트 가로 폭을 꽉 채우게 한다
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical)
                 .coordinateSpace(.named(Layout.gridSpace))
                 .gesture(
@@ -121,6 +123,7 @@ extension PhotoLibrarySheet {
                     tile(asset)
                 }
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, Layout.horizontalPadding)
     }
