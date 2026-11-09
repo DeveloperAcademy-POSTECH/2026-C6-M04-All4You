@@ -62,6 +62,10 @@ struct CaseMainView: View {
         } memo: {
             withCaseToolbars(FloorPlanMemoView(sections: memoSections))
         }
+        // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
+        .onChange(of: sessionNumber, initial: true) {
+            photoStore.sessionNumber = sessionNumber
+        }
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
             deniedPermission?.title ?? "",
@@ -280,7 +284,6 @@ extension CaseMainView {
             sessionNumber: sessionNumber,
             sessionNumbers: fireCase.sessionNumbers,
             onSelectSession: { number in
-                // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
                 sessionNumber = number
             },
             onAddSession: addSession,

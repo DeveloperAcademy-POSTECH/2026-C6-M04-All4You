@@ -22,6 +22,8 @@ struct LoadedPhoto: Identifiable {
     var isBookmarked: Bool
     /// 사진이 찍힌 장소 (Room.id). nil이면 위치 미지정
     var roomKey: String?
+    /// 찍거나 불러온 조사 차수. nil이면 차수 없이 들어온 사진이라 모든 차수에서 보인다
+    var sessionNumber: Int? = nil
     /// 저장된 사진 기록. 원본은 커서 미리 읽어 두지 않고 볼 때 여기서 읽는다
     fileprivate var record: EvidencePhoto?
     /// 저장하지 않는 사진(미리보기용 저장소)의 원본
@@ -49,26 +51,36 @@ extension LoadedPhoto {
     /// 저장된 사진 기록에서 화면용 사진을 만든다. 작은 사진을 읽지 못하면 nil
     fileprivate init?(record: EvidencePhoto) {
         guard let thumbnail = UIImage(data: record.thumbnailData) else { return nil }
-        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, record: record)
+        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, record: record)
     }
 }
 
 /// 한 사건의 사진 모음. 촬영·불러오기·앨범·도면이 함께 본다.
-/// 사건을 받으면 그 사건의 사진 모델을 읽고 쓰고, 사건 없이 만들면(미리보기) 메모리에만 둔다
-// TODO: 조사 차수(InvestigationSession)가 생기면 차수별로 나누기
+/// 사건을 받으면 그 사건의 사진 모델을 읽고 쓰고, 사건 없이 만들면(미리보기) 메모리에만 둔다.
+/// 화면에는 고른 조사 차수의 사진만 보이고, 새 사진은 고른 차수에 들어간다
 @MainActor
 @Observable
 final class PhotoStore {
-    /// 찍은 시각 순서대로 놓인다
-    private(set) var photos: [LoadedPhoto] = []
+    /// 이 사건의 모든 차수 사진. 찍은 시각 순서대로 놓인다
+    private var allPhotos: [LoadedPhoto] = []
     /// 사진을 저장할 사건. nil이면 저장하지 않는다
     private let fireCase: FireCase?
+    /// 지금 고른 조사 차수. 사건 메인 상단의 차수 메뉴가 바꾼다. nil이면 차수를 가리지 않는다
+    var sessionNumber: Int?
 
     init(fireCase: FireCase? = nil) {
         self.fireCase = fireCase
-        photos = (fireCase?.photos ?? [])
+        allPhotos = (fireCase?.photos ?? [])
             .sorted { $0.takenAt < $1.takenAt }
             .compactMap(LoadedPhoto.init(record:))
+    }
+
+    /// 고른 차수의 사진. 차수 없이 들어온 사진은 모든 차수에서 보인다
+    var photos: [LoadedPhoto] {
+        allPhotos.filter { photo in
+            guard let sessionNumber, let photoSession = photo.sessionNumber else { return true }
+            return photoSession == sessionNumber
+        }
     }
 
     /// 위치 미지정 사진
@@ -89,57 +101,59 @@ final class PhotoStore {
     // TODO: 촬영 위치로 장소를 자동 지정하는 단계가 생기면 roomKey를 함께 받기
     @discardableResult
     func add(image: UIImage, thumbnail: UIImage, takenAt: Date, source: PhotoSource) -> UUID {
-        var photo = LoadedPhoto(id: UUID(), thumbnail: thumbnail, takenAt: takenAt, isBookmarked: false, roomKey: nil)
+        var photo = LoadedPhoto(id: UUID(), thumbnail: thumbnail, takenAt: takenAt, isBookmarked: false, roomKey: nil, sessionNumber: sessionNumber)
         if let fireCase, let imageData = Self.jpegData(image), let thumbnailData = Self.jpegData(thumbnail) {
-            let record = EvidencePhoto(id: photo.id, source: source, takenAt: takenAt, imageData: imageData, thumbnailData: thumbnailData)
+            let session = fireCase.sessions.first { $0.sessionNumber == sessionNumber }
+            let record = EvidencePhoto(id: photo.id, source: source, takenAt: takenAt, imageData: imageData, thumbnailData: thumbnailData, session: session)
             fireCase.photos.append(record)
             photo.record = record
         } else {
             photo.memoryImage = image
         }
-        photos.append(photo)
+        allPhotos.append(photo)
         return photo.id
     }
 
     func delete(id: UUID) {
         guard let index = index(of: id) else { return }
-        removeRecord(of: photos[index])
-        photos.remove(at: index)
+        removeRecord(of: allPhotos[index])
+        allPhotos.remove(at: index)
     }
 
     /// 장소의 사진을 모두 지운다. roomKey가 nil이면 위치 미지정 사진
     func deleteAll(inRoom roomKey: String?) {
-        photos(inRoom: roomKey).forEach(removeRecord(of:))
-        photos.removeAll { $0.roomKey == roomKey }
+        let removed = Set(photos(inRoom: roomKey).map(\.id))
+        allPhotos.filter { removed.contains($0.id) }.forEach(removeRecord(of:))
+        allPhotos.removeAll { removed.contains($0.id) }
     }
 
     func toggleBookmark(id: UUID) {
         guard let index = index(of: id) else { return }
-        photos[index].isBookmarked.toggle()
-        photos[index].record?.isBookmarked = photos[index].isBookmarked
+        allPhotos[index].isBookmarked.toggle()
+        allPhotos[index].record?.isBookmarked = allPhotos[index].isBookmarked
     }
 
     /// 마크업을 그린 사진으로 바꾼다
     func replaceImage(id: UUID, with image: UIImage, thumbnail: UIImage) {
         guard let index = index(of: id) else { return }
-        photos[index].thumbnail = thumbnail
-        if let record = photos[index].record, let imageData = Self.jpegData(image), let thumbnailData = Self.jpegData(thumbnail) {
+        allPhotos[index].thumbnail = thumbnail
+        if let record = allPhotos[index].record, let imageData = Self.jpegData(image), let thumbnailData = Self.jpegData(thumbnail) {
             record.imageData = imageData
             record.thumbnailData = thumbnailData
         } else {
-            photos[index].memoryImage = image
+            allPhotos[index].memoryImage = image
         }
     }
 
     /// 사진을 장소에 놓는다
     func assign(id: UUID, toRoom roomKey: String) {
         guard let index = index(of: id) else { return }
-        photos[index].roomKey = roomKey
-        photos[index].record?.roomKey = roomKey
+        allPhotos[index].roomKey = roomKey
+        allPhotos[index].record?.roomKey = roomKey
     }
 
     private func index(of id: UUID) -> Int? {
-        photos.firstIndex { $0.id == id }
+        allPhotos.firstIndex { $0.id == id }
     }
 
     /// 사진 기록을 저장소에서 지운다 (이미지 파일도 함께 지워진다)

@@ -23,10 +23,7 @@ final class FireCase {
     // SwiftData에 문자열로 저장하고 UI에는 타입 안전한 enum 제공
     private var statusValue: String
     var lastViewedAt: Date
-    // TODO: 사진 및 메모 모델 연결 후 실제 데이터 개수로 대체
-    // 현재는 관계 데이터가 연결되지 않아 개수를 별도로 저장함.
-    // 추후 @Relationship을 통해 연결된 사진 및 메모의 count를 사용하도록 변경 예정.
-    var photoCount: Int
+    // TODO: 메모 모델 연결 후 실제 메모 개수로 대체 (사진 수는 photos.count를 쓴다)
     var memoCount: Int
     
     /// 조사 차수. 사건을 지우면 함께 지운다
@@ -57,7 +54,6 @@ final class FireCase {
         occurredAt: Date,
         status: Status = .inProgress,
         lastViewedAt: Date = .now,
-        photoCount: Int = 0,
         memoCount: Int = 0
     ) {
         self.id = id
@@ -67,7 +63,6 @@ final class FireCase {
         self.occurredAt = occurredAt
         self.statusValue = status.rawValue
         self.lastViewedAt = lastViewedAt
-        self.photoCount = photoCount
         self.memoCount = memoCount
     }
     

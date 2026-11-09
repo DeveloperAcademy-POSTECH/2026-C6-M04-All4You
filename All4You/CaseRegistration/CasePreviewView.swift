@@ -22,7 +22,7 @@ struct CasePreviewView: View {
             }
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: Layout.buttonSpacing) {
-                    countButton(Copy.album, count: "\(fireCase.photoCount)\(Copy.photoUnit)") {
+                    countButton(Copy.album, count: "\(fireCase.photos.count)\(Copy.photoUnit)") {
                         // TODO: 사건 작업 화면의 앨범 탭으로 이동
                     }
                     countButton(Copy.memo, count: "\(fireCase.memoCount)\(Copy.memoUnit)") {
