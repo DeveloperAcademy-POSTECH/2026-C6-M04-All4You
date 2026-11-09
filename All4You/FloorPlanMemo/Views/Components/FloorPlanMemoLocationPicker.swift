@@ -19,6 +19,12 @@ struct FloorPlanMemoLocationPicker: View {
         }
         .pickerStyle(.segmented)
         .controlSize(.large)
-        .frame(width: 370, height: 50)
+        .frame(width: 370)
+        .background {
+            Capsule()
+                .fill(Color(uiColor: .gray100).opacity(1))
+                .padding(.top, 1)
+        }
+        .frame(height: 50)
     }
 }

@@ -23,25 +23,56 @@ struct FloorPlanMemoSectionHeader: View {
 
 struct FloorPlanMemoRow: View {
     let memo: FloorPlanMemo
+    let isSelected: Bool
+    let showsDivider: Bool
+    let action: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(memo.title)
-                .font(AppTypography.headline)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            
-            HStack {
-                Text(memo.dateText)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(memo.title)
+                    .font(AppTypography.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                 
-                Spacer()
-                
-                Text(memo.timeText)
+                HStack {
+                    Text(memo.dateText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    
+                    Spacer()
+                    
+                    Text(memo.timeText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .font(AppTypography.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
             }
-            .font(AppTypography.subheadline)
-            .foregroundStyle(.secondary)
+            .padding(.horizontal, 32)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity, minHeight: 67, alignment: .leading)
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(.secondarySystemBackground))
+            }
+        }
+        
+        // 같은 섹션의 다음 메모가 있을 때만 텍스트 양끝에 맞춰 구분선 표시
+        .overlay(alignment: .bottom) {
+            if showsDivider {
+                Rectangle()
+                    .fill(Color(.separator).opacity(0.45))
+                    .frame(height: 1)
+                    .padding(.horizontal, 32)
+            }
+        }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
