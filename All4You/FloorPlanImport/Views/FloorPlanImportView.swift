@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct FloorPlanImportView: View {
-    var onImport: ((UIImage) -> Void)? = nil
+    /// 변환 결과를 평면도로 저장할 곳. 실패하면 알림 문구를 돌려준다
+    var onImport: ((FloorPlanConversion) -> String?)? = nil
     var address = "청암로 77"
     var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
@@ -17,9 +18,10 @@ struct FloorPlanImportView: View {
                     image: result,
                     address: address,
                     onBack: { self.result = nil },
-                    onSave: { image in
-                        onImport?(image)
-                        dismiss()
+                    onSave: { conversion in
+                        let error = onImport?(conversion)
+                        if error == nil { dismiss() }
+                        return error
                     }
                 )
             } else {

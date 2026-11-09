@@ -18,8 +18,6 @@ import UIKit
 struct FloorPlanMethodSelectionView: View {
     /// 평면도를 만들 사건. 주소는 상단 바 부제로 쓰고, 변환한 도면은 이 사건에 저장한다
     let fireCase: FireCase
-    // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
-    var onImport: ((UIImage) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -139,9 +137,8 @@ struct FloorPlanMethodSelectionView: View {
                     image: croppedImage,
                     address: fireCase.address,
                     onBack: { self.croppedImage = nil },
-                    onSave: { image in
-                        onImport?(image)
-                        showsImportCrop = false
+                    onSave: { conversion in
+                        saveConvertedFloorPlan(conversion, sourceType: .externalImport)
                     }
                 )
             } else if let importedImage {
@@ -187,7 +184,7 @@ struct FloorPlanMethodSelectionView: View {
         // 기존 도면 촬영 화면에서 촬영과 영역 조정을 이어서 처리한다.
         .fullScreenCover(isPresented: $isCameraPresented) {
             FloorPlanImportView(
-                onImport: onImport,
+                onImport: { saveConvertedFloorPlan($0, sourceType: .externalImport) },
                 address: fireCase.address,
                 onBack: { isCameraPresented = false }
             )
