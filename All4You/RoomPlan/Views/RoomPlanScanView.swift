@@ -14,9 +14,10 @@ struct RoomPlanScanView: View {
     @State private var scanID = UUID()
     @State private var skipChecklistOnRescan = false
     @State private var rescanBackdrop: UIImage?
-    let onUseResult: ((URL) -> Void)?
+    /// 스캔 결과: usdz 파일, 여러 구간을 합친 구조(구간이 2개 이상일 때만), 구간별 결과
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)?
 
-    init(onUseResult: ((URL) -> Void)? = nil) {
+    init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)? = nil) {
         self.onUseResult = onUseResult
     }
 
@@ -48,7 +49,7 @@ private struct RoomPlanScanSessionView: View {
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
-    let onUseResult: ((URL) -> Void)?
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)?
     let onCameraReady: () -> Void
     let onRescan: (UIImage?) -> Void
 
@@ -84,7 +85,7 @@ private struct RoomPlanScanSessionView: View {
                     statusMessage: scanService.mergeError,
                     onContinue: {
                         guard let url = scanService.finalModelURL else { return }
-                        onUseResult?(url)
+                        onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms)
                     },
                     onChooseOtherMethod: {
                         scanService.detach()

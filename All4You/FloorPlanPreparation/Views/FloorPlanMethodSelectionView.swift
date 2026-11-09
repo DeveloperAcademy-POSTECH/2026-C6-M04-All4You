@@ -6,22 +6,30 @@
 //
 
 import PDFKit
+import PencilKit
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
 // 평면도 생성 방식 선택 화면
-// 이전 화면에서 주소, 생성 시각은 전달받음
+// 이전 화면에서 사건을 전달받음
 // 계속 버튼을 누르면 선택한 방식에 따라 이 View에서 다음 화면으로 이동함
 struct FloorPlanMethodSelectionView: View {
-    let address: String
-    let createdAt: Date
+    /// 평면도를 만들 사건. 주소는 상단 바 부제로 쓰고, 변환한 도면은 이 사건에 저장한다
+    let fireCase: FireCase
     // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
     var onImport: ((UIImage) -> Void)? = nil
-    
+
+    @Environment(\.dismiss) private var dismiss
+
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
+    @State private var drawingCanvas = PKCanvasView()
+    @State private var isConvertingDrawing = false
+    @State private var convertedDrawing: FloorPlanConversion?
+    @State private var drawingError: String?
     @State private var isImportMenuPresented = false
     @State private var importMethod: ImportMethod?
     @State private var isCheckingPhotoPermission = false
@@ -33,6 +41,10 @@ struct FloorPlanMethodSelectionView: View {
     @State private var showsImportCrop = false
     @State private var isFileImporterPresented = false
     @State private var isCameraPresented = false
+    /// 스캔 결과를 바꾼 도면. 변환 화면에 흐리게 깔고, 화면이 끝나면 저장한다
+    @State private var scannedPlan: PlanData?
+    /// 스캔 원본(JSON). 변환한 도면과 함께 저장한다
+    @State private var scannedOriginal: Data?
     
     private enum ImportMethod {
         case camera, album, file
@@ -70,7 +82,8 @@ struct FloorPlanMethodSelectionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationBarTitleDisplayMode(.inline)
         .backOnlyToolbar(title: "목록으로", customLayout: true) {
-            print("뒤로가기")
+            // 사건 목록이 전체 화면으로 띄운 화면이라 닫으면 목록으로 돌아간다
+            dismiss()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             continueButton
@@ -104,10 +117,17 @@ struct FloorPlanMethodSelectionView: View {
             switch sourceType {
             case .roomPlan:
                 // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
-                RoomPlanScanView()
+                RoomPlanScanView(onUseResult: { _, structure, rooms in
+                    scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
+                    scannedPlan = PlanData(structure: structure, rooms: rooms)
+                })
+                    .navigationDestination(item: $scannedPlan) { plan in
+                        ConversionLoadingView(planData: plan) {
+                            try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
+                        }
+                    }
             case .iPadDrawing:
-                // TODO: 직접 그리기 화면 연결
-                Text("직접 그리기 화면 준비 중")
+                drawingFlow
             case .externalImport:
                 EmptyView()
             }
@@ -115,29 +135,19 @@ struct FloorPlanMethodSelectionView: View {
         // 앨범과 파일이 같은 영역 조정 및 결과 화면을 사용한다.
         .navigationDestination(isPresented: $showsImportCrop) {
             if let croppedImage {
-                Image(uiImage: croppedImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .navigationTitle("스캔 결과 확인")
-                    .navigationSubtitle(address)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .bothSidesToolbar(
-                        leadingTitle: "뒤로 가기",
-                        trailingTitle: "저장",
-                        customLayout: true,
-                        barTitle: "스캔 결과 확인",
-                        barSubtitle: address,
-                        onBack: { self.croppedImage = nil },
-                        onDone: {
-                            onImport?(croppedImage)
-                            showsImportCrop = false
-                        }
-                    )
+                FloorPlanExternalImportResultView(
+                    image: croppedImage,
+                    address: fireCase.address,
+                    onBack: { self.croppedImage = nil },
+                    onSave: { image in
+                        onImport?(image)
+                        showsImportCrop = false
+                    }
+                )
             } else if let importedImage {
                 FloorPlanImportCropView(
                     source: importedImage,
-                    address: address,
+                    address: fireCase.address,
                     onRetake: { showsImportCrop = false },
                     onConfirm: { croppedImage = $0 }
                 )
@@ -178,7 +188,7 @@ struct FloorPlanMethodSelectionView: View {
         .fullScreenCover(isPresented: $isCameraPresented) {
             FloorPlanImportView(
                 onImport: onImport,
-                address: address,
+                address: fireCase.address,
                 onBack: { isCameraPresented = false }
             )
         }
@@ -207,6 +217,84 @@ struct FloorPlanMethodSelectionView: View {
         }
     }
     
+    private var drawingFlow: some View {
+        Group {
+            if let convertedDrawing {
+                FloorPlanConversionResultView(
+                    plan: convertedDrawing,
+                    address: fireCase.address,
+                    onBack: { self.convertedDrawing = nil },
+                    onSave: { image in
+                        onImport?(image)
+                        self.convertedDrawing = nil
+                        destination = nil
+                    }
+                )
+            } else {
+                FloorPlanDrawingView(
+                    onRetake: {
+                        isConvertingDrawing = false
+                        destination = nil
+                    },
+                    onConfirm: { isConvertingDrawing = true },
+                    canvasView: $drawingCanvas
+                )
+                .allowsHitTesting(!isConvertingDrawing)
+                .overlay {
+                    if isConvertingDrawing {
+                        ProgressView("도면 변환 중")
+                            .padding()
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+        }
+        .task(id: isConvertingDrawing) {
+            guard isConvertingDrawing else { return }
+            await convertDrawing()
+        }
+        .alert("도면 처리 실패", isPresented: Binding(
+            get: { drawingError != nil },
+            set: { if !$0 { drawingError = nil } }
+        )) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(drawingError ?? "")
+        }
+    }
+
+    // 스케치를 흰 배경 이미지로 만들어 기존 변환 API에 보낸다.
+    private func convertDrawing() async {
+        defer { isConvertingDrawing = false }
+        let drawing = drawingCanvas.drawing
+        let bounds = drawing.bounds
+        guard !bounds.isEmpty, !bounds.isInfinite else {
+            drawingError = "먼저 도면을 그려 주세요."
+            return
+        }
+
+        let paddedBounds = bounds.insetBy(dx: -12, dy: -12)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = min(2, 2400 / max(paddedBounds.width, paddedBounds.height))
+        let sketch = drawing.image(from: paddedBounds, scale: format.scale)
+        let image = UIGraphicsImageRenderer(size: paddedBounds.size, format: format).image { context in
+            let frame = CGRect(origin: .zero, size: paddedBounds.size)
+            UIColor.white.setFill()
+            context.fill(frame)
+            sketch.draw(in: frame)
+        }
+
+        do {
+            let plan = try await FloorPlanConversion.request(image)
+            try Task.checkCancellation()
+            convertedDrawing = plan
+        } catch {
+            guard !Task.isCancelled else { return }
+            drawingError = error.localizedDescription
+        }
+    }
+
     // 외부 가져오기는 세부 방식까지 골라야 계속할 수 있다.
     private var canContinue: Bool {
         guard let selectedSourceType, !isCheckingPhotoPermission else { return false }
@@ -292,8 +380,8 @@ struct FloorPlanMethodSelectionView: View {
 #Preview("평면도 준비") {
     NavigationStack {
         FloorPlanMethodSelectionView(
-            address: "압구정동 462-2",
-            createdAt: .now
+            fireCase: FireCase(address: "압구정동 462-2", occurredAt: .now)
         )
     }
+    .modelContainer(for: FireCase.self, inMemory: true)
 }

@@ -22,7 +22,9 @@ struct CaseListContent: View {
     let searchText: String
     @Binding var selectedCaseID: FireCase.ID?
     let onRegister: () -> Void
-    
+    /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
+    let onOpen: (FireCase) -> Void
+
     private var cases: [FireCase] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         // 주소뿐 아니라 사건명·상세 주소로도 찾는다
@@ -71,7 +73,7 @@ struct CaseListContent: View {
                     caseList
                         .frame(maxWidth: selectedCase == nil ? .infinity : Layout.listWidthWithPreview)
                     if let selectedCase {
-                        CasePreviewView(fireCase: selectedCase)
+                        CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
@@ -110,7 +112,6 @@ extension CaseListContent {
             .controlSize(.large)
             // 유리 버튼 여백까지 포함한 전체 폭
             .frame(width: Layout.registerButtonWidth)
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 검정)
             .tint(.black)
             // Figma 기준 설명 글과 버튼 사이 간격
             .padding(.top, Layout.emptyButtonSpacing)
@@ -259,7 +260,8 @@ extension CaseListContent {
             title: CaseFilter.recent.title,
             searchText: "",
             selectedCaseID: $selectedCaseID,
-            onRegister: {}
+            onRegister: {},
+            onOpen: { _ in }
         )
     }
     .modelContainer(for: FireCase.self, inMemory: true)

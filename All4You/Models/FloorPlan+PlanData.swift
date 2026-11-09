@@ -4,8 +4,8 @@ import Foundation
 
 extension FloorPlan {
     /// 도면 값으로 평면도를 만든다
-    convenience init(sourceType: FloorPlanSourceType, plan: PlanData, fireCase: FireCase? = nil) throws {
-        self.init(sourceType: sourceType, planData: try JSONEncoder().encode(plan), fireCase: fireCase)
+    convenience init(sourceType: FloorPlanSourceType, plan: PlanData, roomPlanData: Data? = nil, fireCase: FireCase? = nil) throws {
+        self.init(sourceType: sourceType, planData: try JSONEncoder().encode(plan), roomPlanData: roomPlanData, fireCase: fireCase)
     }
 
     /// 저장된 JSON을 도면 값으로 읽는다. 형식이 맞지 않으면 nil

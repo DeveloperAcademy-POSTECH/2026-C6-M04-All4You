@@ -32,5 +32,6 @@ struct All4YouApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: FireCase.self)
     }
 }

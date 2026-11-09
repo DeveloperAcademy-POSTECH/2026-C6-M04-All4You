@@ -13,50 +13,22 @@ extension PlanData {
     /// 이름 자리가 든 고리가 원래 방을 잇고, 나머지 고리는 새 방이 된다.
     /// mergesRooms가 true면 벽을 지워 여러 방이 한 고리가 된 것을 허락한다. 목록에서 앞선 방이 남고 나머지 방은 빠진다
     mutating func retraceRooms(splitsRooms: Bool = false, mergesRooms: Bool = false) -> Bool {
-        let pos = vertexPoints
-        // 한쪽 끝이 어디에도 이어지지 않은 벽(따로 세운 벽 등)은 방을 나누지 않으므로 빼고 돈다
-        let looped = loopedWalls()
-        struct Side { let wallId: String; let forward: Bool; let from: String; let to: String; let angle: Double }
-        var sides: [Side] = []
-        for wall in walls where looped.contains(wall.id) {
-            guard let a = pos[wall.startVertex], let b = pos[wall.endVertex] else { return false }
-            sides.append(Side(wallId: wall.id, forward: true, from: wall.startVertex, to: wall.endVertex, angle: atan2(b.y - a.y, b.x - a.x)))
-            sides.append(Side(wallId: wall.id, forward: false, from: wall.endVertex, to: wall.startVertex, angle: atan2(a.y - b.y, a.x - b.x)))
-        }
-        // 꼭짓점별로 나가는 면을 각도순으로 (y가 아래로 커지므로 각도가 커지는 쪽이 화면 시계 방향)
-        var outgoing: [String: [Int]] = [:]
-        for index in sides.indices { outgoing[sides[index].from, default: []].append(index) }
-        for key in outgoing.keys { outgoing[key]!.sort { sides[$0].angle < sides[$1].angle } }
-        // 면 i의 반대쪽 면은 i ^ 1 (같은 벽의 두 면을 나란히 넣었으므로)
-        func next(_ index: Int) -> Int {
-            let list = outgoing[sides[index].to]!
-            let twinAt = list.firstIndex(of: index ^ 1)!
-            return list[(twinAt - 1 + list.count) % list.count]
-        }
+        guard let loops = faceLoops() else { return false }
 
         var roomOfSide: [String: String] = [:]
         for room in rooms { for edge in room.boundary { roomOfSide["\(edge.wallId)/\(edge.forward)"] = room.id } }
 
-        var visited = Set<Int>()
         var loopsOfRoom: [String: [[RoomEdge]]] = [:]
         var mergedRoomIds = Set<String>()
         var outerCount = 0
-        for start in sides.indices where !visited.contains(start) {
-            var loop: [Int] = []
-            var current = start
-            repeat {
-                visited.insert(current)
-                loop.append(current)
-                current = next(current)
-            } while current != start
-            let area = Self.signedArea(loop.map { pos[sides[$0].from]! })
-            let names = Set(loop.compactMap { roomOfSide["\(sides[$0].wallId)/\(sides[$0].forward)"] })
+        for (loop, area) in loops {
+            let names = Set(loop.compactMap { roomOfSide["\($0.wallId)/\($0.forward)"] })
             if area > WallMoveRules.eps {
                 // 방이 아닌 닫힌 고리(이름이 없는 칸)는 그대로 둔다
                 guard names.count <= 1 || mergesRooms else { return false }
                 guard let name = rooms.first(where: { names.contains($0.id) })?.id else { continue }
                 mergedRoomIds.formUnion(names.subtracting([name]))
-                loopsOfRoom[name, default: []].append(loop.map { RoomEdge(wallId: sides[$0].wallId, forward: sides[$0].forward) })
+                loopsOfRoom[name, default: []].append(loop)
             } else {
                 guard names.isEmpty else { return false }
                 outerCount += 1
@@ -95,6 +67,47 @@ extension PlanData {
         }
         rooms = retraced + newRooms
         return true
+    }
+
+    /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 방은 넓이 +, 건물 바깥은 넓이 −. 꼭짓점을 못 찾는 벽이 있으면 nil
+    func faceLoops() -> [(edges: [RoomEdge], area: Double)]? {
+        let pos = vertexPoints
+        // 한쪽 끝이 어디에도 이어지지 않은 벽(따로 세운 벽 등)은 방을 나누지 않으므로 빼고 돈다
+        let looped = loopedWalls()
+        struct Side { let wallId: String; let forward: Bool; let from: String; let to: String; let angle: Double }
+        var sides: [Side] = []
+        for wall in walls where looped.contains(wall.id) {
+            guard let a = pos[wall.startVertex], let b = pos[wall.endVertex] else { return nil }
+            sides.append(Side(wallId: wall.id, forward: true, from: wall.startVertex, to: wall.endVertex, angle: atan2(b.y - a.y, b.x - a.x)))
+            sides.append(Side(wallId: wall.id, forward: false, from: wall.endVertex, to: wall.startVertex, angle: atan2(a.y - b.y, a.x - b.x)))
+        }
+        // 꼭짓점별로 나가는 면을 각도순으로 (y가 아래로 커지므로 각도가 커지는 쪽이 화면 시계 방향)
+        var outgoing: [String: [Int]] = [:]
+        for index in sides.indices { outgoing[sides[index].from, default: []].append(index) }
+        for key in outgoing.keys { outgoing[key]!.sort { sides[$0].angle < sides[$1].angle } }
+        // 면 i의 반대쪽 면은 i ^ 1 (같은 벽의 두 면을 나란히 넣었으므로)
+        func next(_ index: Int) -> Int {
+            let list = outgoing[sides[index].to]!
+            let twinAt = list.firstIndex(of: index ^ 1)!
+            return list[(twinAt - 1 + list.count) % list.count]
+        }
+
+        var visited = Set<Int>()
+        var loops: [(edges: [RoomEdge], area: Double)] = []
+        for start in sides.indices where !visited.contains(start) {
+            var loop: [Int] = []
+            var current = start
+            repeat {
+                visited.insert(current)
+                loop.append(current)
+                current = next(current)
+            } while current != start
+            loops.append((
+                edges: loop.map { RoomEdge(wallId: sides[$0].wallId, forward: sides[$0].forward) },
+                area: Self.signedArea(loop.map { pos[sides[$0].from]! })
+            ))
+        }
+        return loops
     }
 
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들

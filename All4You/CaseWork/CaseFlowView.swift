@@ -16,9 +16,11 @@ enum CaseRoute: Hashable {
 struct CaseFlowView: View {
     /// 지금 작업 중인 사건. 도면은 이 사건의 평면도에 저장한다
     let fireCase: FireCase
+    /// 사건 화면을 닫고 목록으로 돌아간다
+    let onClose: () -> Void
 
     @State private var path: [CaseRoute] = []
-    @State private var isCaseMainShown = false
+    @State private var isCaseMainShown: Bool
     /// 2D·3D 수정 화면이 함께 보고 고치는 도면. 바뀔 때마다 사건의 평면도에 저장한다
     @State private var planData: PlanData
     /// 메인에서 찍거나 불러온 사진. 메인을 닫았다 열어도 남도록 여기서 들고 있다
@@ -27,10 +29,13 @@ struct CaseFlowView: View {
     /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
     @State private var history = PlanHistory()
 
-    init(fireCase: FireCase) {
+    init(fireCase: FireCase, startsAtMain: Bool, onClose: @escaping () -> Void) {
         self.fireCase = fireCase
-        // TEMP: 평면도를 만드는 앞 단계와 아직 이어지지 않아, 저장된 도면이 없으면 더미 도면으로 시작함 — 앞 단계가 연결되면 바뀜
-        _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? DummyFloorPlan.planData)
+        self.onClose = onClose
+        // 저장된 도면을 열면 메인부터, 막 변환한 도면이면 2D 수정부터 보여 준다
+        _isCaseMainShown = State(initialValue: startsAtMain)
+        // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 저장된 JSON을 못 읽으면 빈 도면
+        _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? .empty)
     }
 
     var body: some View {
@@ -45,7 +50,7 @@ struct CaseFlowView: View {
             storeFloorPlan(new)
         }
         .fullScreenCover(isPresented: $isCaseMainShown) {
-            CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, onBack: closeCaseMain, onEdit: showEdit2D)
+            CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, onBack: onClose, onEdit: showEdit2D)
         }
     }
 }
@@ -73,15 +78,10 @@ extension CaseFlowView {
 
 // 저장
 extension CaseFlowView {
-    /// 고친 도면을 사건의 평면도에 덮어쓴다. 평면도가 아직 없으면 새로 만들어 사건에 붙인다
+    /// 고친 도면을 사건의 평면도에 덮어쓴다
     private func storeFloorPlan(_ plan: PlanData) {
         do {
-            if let floorPlan = fireCase.floorPlan {
-                try floorPlan.storePlanData(plan)
-            } else {
-                // TEMP: 평면도를 만드는 앞 단계와 아직 이어지지 않아 생성 방식을 직접 그리기로 둠 — 앞 단계가 연결되면 고른 방식으로 바뀜
-                fireCase.floorPlan = try FloorPlan(sourceType: .iPadDrawing, plan: plan)
-            }
+            try fireCase.floorPlan?.storePlanData(plan)
         } catch {
             // TODO: 저장 실패 알림 — 문구가 정해지면 추가
             print("도면 저장 실패: \(error)")
@@ -91,10 +91,12 @@ extension CaseFlowView {
 
 // 화면 이동
 extension CaseFlowView {
-    /// 한 화면 뒤로 돌아간다
+    /// 한 화면 뒤로 돌아간다. 맨 처음 2D 수정에서는 목록으로 돌아간다
     private func goBack() {
-        // TODO: 앞 단계(평면도 생성) 화면이 생기면 시작 화면의 뒤로가기를 그쪽으로 연결
-        if path.isEmpty { return }
+        if path.isEmpty {
+            onClose()
+            return
+        }
         path.removeLast()
     }
 
@@ -117,11 +119,6 @@ extension CaseFlowView {
         isCaseMainShown = true
     }
 
-    /// 메인을 닫는다. 메인 밑에 있던 3D 수정으로 돌아간다
-    private func closeCaseMain() {
-        isCaseMainShown = false
-    }
-
     /// 메인을 닫고 2D 수정을 더미에 쌓는다
     private func showEdit2D() {
         isCaseMainShown = false
@@ -130,6 +127,6 @@ extension CaseFlowView {
 }
 
 #Preview {
-    CaseFlowView(fireCase: FireCase(address: "서울시 강남구 청암로 77", occurredAt: .now))
+    CaseFlowView(fireCase: FireCase(address: "서울시 강남구 청암로 77", occurredAt: .now), startsAtMain: false, onClose: {})
         .modelContainer(for: FireCase.self, inMemory: true)
 }
