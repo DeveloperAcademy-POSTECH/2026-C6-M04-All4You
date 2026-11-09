@@ -122,8 +122,7 @@ struct CaseListView: View {
             if let pendingFloorPlan {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
-                        address: pendingFloorPlan.address,
-                        createdAt: pendingFloorPlan.occurredAt
+                        fireCase: pendingFloorPlan
                     )
                 }
             }

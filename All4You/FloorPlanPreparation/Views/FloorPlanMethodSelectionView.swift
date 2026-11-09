@@ -6,16 +6,17 @@
 //
 
 import PDFKit
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
 // 평면도 생성 방식 선택 화면
-// 이전 화면에서 주소, 생성 시각은 전달받음
+// 이전 화면에서 사건을 전달받음
 // 계속 버튼을 누르면 선택한 방식에 따라 이 View에서 다음 화면으로 이동함
 struct FloorPlanMethodSelectionView: View {
-    let address: String
-    let createdAt: Date
+    /// 평면도를 만들 사건. 주소는 상단 바 부제로 쓰고, 변환한 도면은 이 사건에 저장한다
+    let fireCase: FireCase
     // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
     var onImport: ((UIImage) -> Void)? = nil
     
@@ -120,14 +121,14 @@ struct FloorPlanMethodSelectionView: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .navigationTitle("스캔 결과 확인")
-                    .navigationSubtitle(address)
+                    .navigationSubtitle(fireCase.address)
                     .navigationBarTitleDisplayMode(.inline)
                     .bothSidesToolbar(
                         leadingTitle: "뒤로 가기",
                         trailingTitle: "저장",
                         customLayout: true,
                         barTitle: "스캔 결과 확인",
-                        barSubtitle: address,
+                        barSubtitle: fireCase.address,
                         onBack: { self.croppedImage = nil },
                         onDone: {
                             onImport?(croppedImage)
@@ -137,7 +138,7 @@ struct FloorPlanMethodSelectionView: View {
             } else if let importedImage {
                 FloorPlanImportCropView(
                     source: importedImage,
-                    address: address,
+                    address: fireCase.address,
                     onRetake: { showsImportCrop = false },
                     onConfirm: { croppedImage = $0 }
                 )
@@ -178,7 +179,7 @@ struct FloorPlanMethodSelectionView: View {
         .fullScreenCover(isPresented: $isCameraPresented) {
             FloorPlanImportView(
                 onImport: onImport,
-                address: address,
+                address: fireCase.address,
                 onBack: { isCameraPresented = false }
             )
         }
@@ -292,8 +293,8 @@ struct FloorPlanMethodSelectionView: View {
 #Preview("평면도 준비") {
     NavigationStack {
         FloorPlanMethodSelectionView(
-            address: "압구정동 462-2",
-            createdAt: .now
+            fireCase: FireCase(address: "압구정동 462-2", occurredAt: .now)
         )
     }
+    .modelContainer(for: FireCase.self, inMemory: true)
 }
