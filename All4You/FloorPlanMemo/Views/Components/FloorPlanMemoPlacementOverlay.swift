@@ -15,6 +15,9 @@ struct FloorPlanMemoPlacementOverlay: View {
     @Binding var draft: FloorPlanMemoDraft?
     let onSave: (FloorPlanMemoDraft) -> Void
     let onCancel: () -> Void
+    /// 도면이 실제로 놓인 화면 자리. 주면 저장된 메모 핀을 이 자리에 맞춰 그려서, 도면을 확대·이동하거나 옆에 사진 모음이 열려 도면이 좁아져도 핀이 따라간다.
+    /// nil이면 이 오버레이 크기에 도면을 맞춘 자리로 그린다 (메모 위치를 고를 때)
+    var screen: PlanScreen? = nil
     
     @FocusState private var isTextFieldFocused: Bool
     @State private var selectedMemoID: FloorPlanMemo.ID?
@@ -224,6 +227,9 @@ private extension FloorPlanMemoPlacementOverlay {
     }
     
     func screenPoint(for anchor: FloorPlanMemoAnchor, in size: CGSize) -> CGPoint {
+        if let screen = self.screen {
+            return screen.point(anchor.point)
+        }
         let screen = PlanScreen(plan: planData, in: drawingSize(in: size), fill: Layout.planFill)
         let point = screen.point(anchor.point)
         return CGPoint(x: point.x, y: point.y + Layout.floorPlanVerticalInset)

@@ -127,13 +127,16 @@ extension CaseMainView {
             dimension: dimension,
             planData: planData,
             photoStore: photoStore,
-            isPlacingPhotos: $isPlacingPhotos
+            isPlacingPhotos: $isPlacingPhotos,
+            // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
+            memos: isAddingMemo ? [] : memoSections.allMemos
         )
         .id(floorPlanPresentationID)
         .overlay {
+            // 메모 위치를 고르는 동안만 저장된 메모 핀을 함께 그린다. 평소에는 도면 탭이 도면 자리(2D)·3D 자리에 핀을 띄운다
             FloorPlanMemoPlacementOverlay(
                 planData: planData,
-                memos: memoSections.allMemos,
+                memos: isAddingMemo ? memoSections.allMemos : [],
                 isPresented: $isAddingMemo,
                 draft: $memoDraft,
                 onSave: addMemo,
