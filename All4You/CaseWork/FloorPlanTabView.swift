@@ -8,9 +8,7 @@ struct FloorPlanTabView: View {
     @Binding var dimension: Dimension
 
     /// 도면을 평면으로 볼지 입체로 볼지
-    enum Dimension {
-        case twoD, threeD
-    }
+    typealias Dimension = PlanDimension
 
     var body: some View {
         floorPlanArea
@@ -19,7 +17,8 @@ struct FloorPlanTabView: View {
                     .padding()
             }
             .overlay(alignment: .bottom) {
-                dimensionPicker
+                DimensionPicker(selection: $dimension)
+                    .padding()
             }
     }
 }
@@ -33,33 +32,12 @@ extension FloorPlanTabView {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.quaternary)
     }
-
-    private var dimensionPicker: some View {
-        Picker(Copy.dimension, selection: $dimension) {
-            Text(Copy.twoD).tag(Dimension.twoD)
-            Text(Copy.threeD).tag(Dimension.threeD)
-        }
-        .pickerStyle(.segmented)
-        .controlSize(.extraLarge)
-        .frame(width: Layout.dimensionPickerWidth)
-        .padding()
-    }
-}
-
-// 크기
-extension FloorPlanTabView {
-    private enum Layout {
-        static let dimensionPickerWidth: CGFloat = 370
-    }
 }
 
 // 문구
 extension FloorPlanTabView {
     private enum Copy {
         static let placeholder = "도면 자리"
-        static let dimension = "도면 보기 방식"
-        static let twoD = "2D"
-        static let threeD = "3D"
     }
 }
 
