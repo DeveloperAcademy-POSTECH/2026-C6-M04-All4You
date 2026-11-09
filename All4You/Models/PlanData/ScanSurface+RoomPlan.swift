@@ -45,3 +45,32 @@ extension ScanSurface {
         )
     }
 }
+
+extension ScanSection {
+    /// 구간 하나를 스캔한 결과의 방 종류들
+    static func sections(of room: CapturedRoom) -> [ScanSection] {
+        room.sections.map(ScanSection.init)
+    }
+
+    /// 여러 구간을 합친 결과의 방 종류들
+    static func sections(of structure: CapturedStructure) -> [ScanSection] {
+        structure.sections.map(ScanSection.init)
+    }
+
+    private init(_ section: CapturedRoom.Section) {
+        let center = section.center
+        self.init(name: Self.name(of: section.label), center: SIMD3(Double(center.x), Double(center.y), Double(center.z)))
+    }
+
+    /// RoomPlan 방 종류를 화면에 보일 이름으로
+    private static func name(of label: CapturedRoom.Section.Label) -> String? {
+        switch label {
+        case .bedroom: "침실"
+        case .bathroom: "욕실"
+        case .diningRoom: "식당"
+        case .kitchen: "주방"
+        case .livingRoom: "거실"
+        default: nil
+        }
+    }
+}

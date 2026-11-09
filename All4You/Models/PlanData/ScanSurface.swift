@@ -22,3 +22,11 @@ struct ScanSurface {
     /// 문·창문·개구부가 붙은 벽의 id
     let parentId: UUID?
 }
+
+/// 스캔이 알아본 방 종류와 그 방의 가운데 점. 방 경계는 주지 않는다
+struct ScanSection {
+    /// 방 이름으로 쓸 종류 (침실, 거실 …). 알아보지 못한 방은 nil
+    let name: String?
+    /// 가운데 점 (x, y, z)
+    let center: SIMD3<Double>
+}

@@ -3,14 +3,14 @@
 // 1) 바닥 높이  2) 벽 양 끝점  3) 가장 긴 벽이 가로가 되게 돌리고, 조금 비뚤어진 벽은 가로·세로로 바로잡기
 // 4) 스캔한 면은 방 안쪽 면이라 벽을 바깥으로 두께/2 밀고, 모서리는 이웃 벽 선과의 교점으로 잇기
 // 5) 도면 왼쪽 위에 여백을 두고 옮기기  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
-// 방은 아직 만들지 않는다. 가구는 PlanData에 칸이 없어 버린다
+// 8) 방 나누기 (PlanData+ScanRooms). 가구는 PlanData에 칸이 없어 버린다
 
 import Foundation
 import simd
 
 extension PlanData {
-    /// 스캔한 면들을 도면으로 바꾼다. 벽이 없으면 빈 도면
-    init(scanSurfaces surfaces: [ScanSurface]) {
+    /// 스캔한 면과 방 종류로 도면을 만든다. 벽이 없으면 빈 도면
+    init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = []) {
         self.init(version: 1, vertices: [], walls: [], doorWindows: [], wallFixtures: [], rooms: [], markers: [])
         let wallSurfaces = surfaces.filter { $0.kind == .wall && $0.width >= ScanRule.minWallLength }
         guard !wallSurfaces.isEmpty else { return }
@@ -87,6 +87,9 @@ extension PlanData {
                 height: max(ScanRule.minOpeningHeight, min(surface.height + (kind == .window ? 0 : bottom), wall.height - sill))
             ))
         }
+
+        // 8) 떠 있는 벽 끝을 잇고 방을 찾는다
+        addScanRooms(sections: sections.map { (name: $0.name, point: planPoint($0.center)) })
     }
 
     /// 점에서 벽 선분까지 거리. 벽을 찾지 못하면 무한대
