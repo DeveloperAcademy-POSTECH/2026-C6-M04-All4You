@@ -1,4 +1,4 @@
-// 도면을 위에서 본 2D 그림. 벽·문·창문은 선으로, 스탬프는 아이콘으로, 공간 이름은 캡슐로 그린다
+// 도면을 위에서 본 2D 그림. 벽·문·창문은 선으로, 가구는 윗면 모양으로, 스탬프는 아이콘으로, 공간·가구 이름은 캡슐로 그린다
 // 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐만 roomLabelActions로 누르기·끌기를 알린다)
 
 import SwiftUI
@@ -34,12 +34,19 @@ struct Plan2DView: View {
 
     var body: some View {
         Canvas { context, _ in
+            // 가구를 먼저 그려 벽에 붙은 가구 가장자리가 벽 아래로 들어가게 한다
+            for furniture in planData.furniture ?? [] {
+                drawFurniture(furniture, in: &context)
+            }
             for wall in planData.walls where !wall.isVirtual {
                 guard let line = planData.line(of: wall) else { continue }
                 drawWall(wall, line: line, in: &context)
             }
         }
-        // 공간 이름을 먼저 깔아, 겹치면 스탬프가 위에 보이게 한다
+        // 가구 이름 → 공간 이름 → 스탬프 순으로 깔아, 겹치면 뒤의 것이 위에 보이게 한다
+        .overlay(alignment: .topLeading) {
+            furnitureLabels
+        }
         .overlay(alignment: .topLeading) {
             roomLabels
         }
@@ -124,6 +131,39 @@ extension Plan2DView {
             return
         }
         context.stroke(path, with: .color(isSelected ? .brand500 : .gray600), style: style)
+    }
+}
+
+// 가구
+extension Plan2DView {
+    /// 가구 윗면을 옅은 회색으로 채우고 테두리를 긋는다. 바닥에서 띄운 가구(벽 수납장 등)는 테두리를 점선으로
+    private func drawFurniture(_ furniture: Furniture, in context: inout GraphicsContext) {
+        let path: Path
+        switch furniture.shape {
+        case .rectangle:
+            path = Path { shape in
+                shape.addLines(furniture.corners.map(screen.point))
+                shape.closeSubpath()
+            }
+        case .circle:
+            let center = screen.point(furniture.center)
+            let radius = screen.length(furniture.width / 2)
+            path = Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+        }
+        let isFloating = furniture.elevation > Layout.floatingElevation
+        context.fill(path, with: .color(.gray100))
+        context.stroke(path, with: .color(.gray500), style: StrokeStyle(lineWidth: Layout.furnitureLineWidth, dash: isFloating ? Layout.floatingDash : []))
+    }
+
+    /// 가구 가운데의 이름 캡슐. 가구를 돌려도 글자는 바로 선다
+    private var furnitureLabels: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(planData.furniture ?? []) { furniture in
+                FurnitureLabelView(label: furniture.label)
+                    .position(screen.point(furniture.center))
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -213,6 +253,12 @@ extension Plan2DView {
         static let selectionLineWidth: CGFloat = 1.5
         /// 공간 이름 캡슐을 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
         static let labelDragDistance: CGFloat = 4
+        /// 가구 테두리 두께 (pt)
+        static let furnitureLineWidth: CGFloat = 1
+        /// 바닥에서 이보다(m) 높이 띄운 가구는 테두리를 점선으로
+        static let floatingElevation = 0.01
+        /// 띄운 가구 테두리 점선 (pt): 선 5, 빈칸 3
+        static let floatingDash: [CGFloat] = [5, 3]
     }
 }
 

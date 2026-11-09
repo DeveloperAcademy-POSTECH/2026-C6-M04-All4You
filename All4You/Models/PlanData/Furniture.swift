@@ -1,5 +1,7 @@
 // 바닥에 놓인 가구 planData.furniture. 공간 스캔의 물체와 서버 도면의 가구 상자가 여기로 바뀐다
 
+import Foundation
+
 /// 중심·크기·회전으로 저장하는 가구 하나. 2D에서는 윗면 모양, 3D에서는 상자로 그린다
 struct Furniture: Codable, Hashable, Identifiable {
     let id: String
@@ -28,6 +30,15 @@ enum FurnitureShape: String, Codable {
     case rectangle
     /// 원형 (width = depth = 지름)
     case circle
+}
+
+extension Furniture {
+    /// 사각형의 네 모서리 (도면 좌표). 회전한 가로 방향은 (cos, sin), 세로 방향은 그것을 시계 방향으로 90° 돌린 쪽
+    var corners: [SIMD2<Double>] {
+        let across = SIMD2(cos(rotation), sin(rotation)) * (width / 2)
+        let along = SIMD2(-sin(rotation), cos(rotation)) * (depth / 2)
+        return [center - across - along, center + across - along, center + across + along, center - across + along]
+    }
 }
 
 extension Furniture {
