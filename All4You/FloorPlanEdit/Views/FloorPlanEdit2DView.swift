@@ -67,9 +67,7 @@ struct FloorPlanEdit2DView: View {
         .overlay {
             DrawingToolBar(selectedTool: $drawingTool)
         }
-        .navigationTitle(Copy.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .bothSidesToolbar(onBack: onBack, onDone: onDone)
+        .bothSidesToolbar(customLayout: true, barTitle: Copy.title, onBack: onBack, onDone: onDone)
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
         .ignoresSafeArea(.keyboard)
     }

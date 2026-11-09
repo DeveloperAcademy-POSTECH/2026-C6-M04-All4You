@@ -21,9 +21,7 @@ struct FloorPlanEdit3DView: View {
             .overlay(alignment: .topLeading) {
                 toolBar
             }
-            .navigationTitle(Copy.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .bothSidesToolbar(onBack: onBack, onDone: onDone)
+            .bothSidesToolbar(customLayout: true, barTitle: Copy.title, onBack: onBack, onDone: onDone)
     }
 }
 
