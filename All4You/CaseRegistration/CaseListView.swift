@@ -248,10 +248,24 @@ extension CaseListView {
             folderNameInput = folder.name
             renamingFolder = folder
         }
-        Button(Copy.deleteFolder, systemImage: "trash", role: .destructive) {
+        
+        Button(role: .destructive) {
             deletingFolder = folder
+        } label: {
+            Label {
+                Text(Copy.deleteFolder)
+            } icon: {
+                // Menu는 아이콘을 template으로 그려 tint(.black)를 따라가므로 원본 색 이미지로 넘긴다
+                Image(uiImage: Self.destructiveTrashImage)
+            }
         }
     }
+    
+    /// 메뉴 안에서도 빨간색이 유지되는 쓰레기통 아이콘
+    private static let destructiveTrashImage: UIImage = {
+        let image = UIImage(systemName: "trash") ?? UIImage()
+        return image.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
+    }()
     
     /// 왼쪽: 편집(편집 중에는 완료 체크), 오른쪽: 새 목록 만들기·사이드바 접기
     @ToolbarContentBuilder
