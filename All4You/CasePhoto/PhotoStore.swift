@@ -37,10 +37,11 @@ struct LoadedPhoto: Identifiable {
 
 extension LoadedPhoto {
     /// 목록용 작은 사진의 긴 변 길이 (px)
-    private static let thumbnailLength: CGFloat = 480
+    private nonisolated static let thumbnailLength: CGFloat = 480
 
-    /// 원본에서 목록용 작은 사진을 만든다. 시간이 걸려서 메인 스레드 밖에서 부른다
-    static func makeThumbnail(from image: UIImage) -> UIImage {
+    /// 원본에서 목록용 작은 사진을 만든다. 시간이 걸려서 메인 스레드 밖에서 부른다.
+    /// 그래서 메인 전용이 아니라고(nonisolated) 표시한다
+    nonisolated static func makeThumbnail(from image: UIImage) -> UIImage {
         let longest = max(image.size.width, image.size.height)
         guard longest > thumbnailLength else { return image }
         let ratio = thumbnailLength / longest
