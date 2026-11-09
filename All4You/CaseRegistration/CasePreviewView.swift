@@ -11,10 +11,15 @@ import SwiftUI
 
 struct CasePreviewView: View {
     let fireCase: FireCase
+    /// "사건 열기"를 누르면 사건을 연다
+    let onOpen: () -> Void
 
     var body: some View {
         floorPlan
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) {
+                header
+            }
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: Layout.buttonSpacing) {
                     countButton(Copy.album, count: "\(fireCase.photoCount)\(Copy.photoUnit)") {
@@ -31,6 +36,22 @@ struct CasePreviewView: View {
 
 // 서브 뷰
 extension CasePreviewView {
+    /// 사건명과 사건 열기 버튼
+    private var header: some View {
+        HStack {
+            Text(fireCase.title)
+                // TEMP: Figma는 Large Title(34pt 굵게)인데 AppTypography에 없어 애플 기본 글꼴을 씀
+                .font(.largeTitle.bold())
+            Spacer()
+            Button(Copy.open, action: onOpen)
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+                // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 검정)
+                .tint(.black)
+        }
+        .padding()
+    }
+
     // TEMP: 도면 데이터가 생기기 전 자리 — 저장 방식이 정해지면 사진 개수 핀이 찍힌 2D 도면으로 바꿔야 함
     private var floorPlan: some View {
         Text(Copy.floorPlanPlaceholder)
@@ -77,5 +98,6 @@ extension CasePreviewView {
         static let photoUnit = "장"
         static let memoUnit = "개"
         static let floorPlanPlaceholder = "도면 자리"
+        static let open = "사건 열기"
     }
 }

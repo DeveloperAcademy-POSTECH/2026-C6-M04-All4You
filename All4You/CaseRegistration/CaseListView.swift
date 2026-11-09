@@ -24,8 +24,12 @@ struct CaseListView: View {
     @State private var searchText = ""
     @State private var isPresentingRegistration = false
     
-    @State private var isPresentingFloorPlan = false
+    /// 방금 등록해 등록 시트가 닫히면 열 사건
     @State private var pendingFloorPlan: FireCase?
+    /// 지금 열어 전체 화면으로 보여 주는 사건
+    @State private var openedCase: FireCase?
+    /// 사건을 열 때 평면도가 이미 있었는지. 있었으면 메인부터, 열고 나서 막 만들었으면 2D 수정부터 보여 준다
+    @State private var openedWithFloorPlan = false
     
     // 사이드바 / 탭 바 편집 상태 저장
     @AppStorage("caseListTabCustomization")
@@ -76,12 +80,15 @@ struct CaseListView: View {
             isPresented: $isPresentingRegistration,
             onDismiss: {
                 // 사건 등록 시트가 닫힌 후 전체 화면 표시
-                if pendingFloorPlan != nil {
-                    isPresentingFloorPlan = true
+                if let pendingFloorPlan {
+                    open(pendingFloorPlan)
+                    self.pendingFloorPlan = nil
                 }
             }
         ) {
             CaseRegistrationView { newCase in
+                // 새 사건은 1차 조사부터 시작한다
+                newCase.addSession()
                 modelContext.insert(newCase)
                 
                 do {
@@ -111,17 +118,14 @@ struct CaseListView: View {
                 Text(saveErrorMessage)
             }
         }
-        .fullScreenCover(
-            isPresented: $isPresentingFloorPlan,
-            onDismiss: {
-                pendingFloorPlan = nil
-            }
-        ) {
-            if let pendingFloorPlan {
+        // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
+        .fullScreenCover(item: $openedCase) { fireCase in
+            if fireCase.floorPlan != nil {
+                CaseFlowView(fireCase: fireCase, startsAtMain: openedWithFloorPlan, onClose: { openedCase = nil })
+            } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
-                        address: pendingFloorPlan.address,
-                        createdAt: pendingFloorPlan.occurredAt
+                        fireCase: fireCase
                     )
                 }
             }
@@ -131,6 +135,13 @@ struct CaseListView: View {
     
     private func presentRegistration() {
         isPresentingRegistration = true
+    }
+
+    /// 사건을 연 시각을 남기고 사건 화면을 띄운다
+    private func open(_ fireCase: FireCase) {
+        fireCase.lastViewedAt = .now
+        openedWithFloorPlan = fireCase.floorPlan != nil
+        openedCase = fireCase
     }
 }
 
@@ -144,7 +155,8 @@ extension CaseListView {
                 filter: item,
                 searchText: searchText,
                 selectedCaseID: $selectedCaseID,
-                onRegister: presentRegistration
+                onRegister: presentRegistration,
+                onOpen: open
             )
             .toolbar {
                 detailToolbar

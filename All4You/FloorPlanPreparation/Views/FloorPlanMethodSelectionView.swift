@@ -6,19 +6,22 @@
 //
 
 import PDFKit
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
 // 평면도 생성 방식 선택 화면
-// 이전 화면에서 주소, 생성 시각은 전달받음
+// 이전 화면에서 사건을 전달받음
 // 계속 버튼을 누르면 선택한 방식에 따라 이 View에서 다음 화면으로 이동함
 struct FloorPlanMethodSelectionView: View {
-    let address: String
-    let createdAt: Date
+    /// 평면도를 만들 사건. 주소는 상단 바 부제로 쓰고, 변환한 도면은 이 사건에 저장한다
+    let fireCase: FireCase
     // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
     var onImport: ((UIImage) -> Void)? = nil
-    
+
+    @Environment(\.dismiss) private var dismiss
+
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
@@ -33,6 +36,10 @@ struct FloorPlanMethodSelectionView: View {
     @State private var showsImportCrop = false
     @State private var isFileImporterPresented = false
     @State private var isCameraPresented = false
+    /// 스캔 결과를 바꾼 도면. 변환 화면에 흐리게 깔고, 화면이 끝나면 저장한다
+    @State private var scannedPlan: PlanData?
+    /// 스캔 원본(JSON). 변환한 도면과 함께 저장한다
+    @State private var scannedOriginal: Data?
     
     private enum ImportMethod {
         case camera, album, file
@@ -70,7 +77,8 @@ struct FloorPlanMethodSelectionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationBarTitleDisplayMode(.inline)
         .backOnlyToolbar(title: "목록으로", customLayout: true) {
-            print("뒤로가기")
+            // 사건 목록이 전체 화면으로 띄운 화면이라 닫으면 목록으로 돌아간다
+            dismiss()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             continueButton
@@ -104,7 +112,15 @@ struct FloorPlanMethodSelectionView: View {
             switch sourceType {
             case .roomPlan:
                 // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
-                RoomPlanScanView()
+                RoomPlanScanView(onUseResult: { _, structure, rooms in
+                    scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
+                    scannedPlan = PlanData(structure: structure, rooms: rooms)
+                })
+                    .navigationDestination(item: $scannedPlan) { plan in
+                        ConversionLoadingView(planData: plan) {
+                            try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
+                        }
+                    }
             case .iPadDrawing:
                 // TODO: 직접 그리기 화면 연결
                 Text("직접 그리기 화면 준비 중")
@@ -120,14 +136,14 @@ struct FloorPlanMethodSelectionView: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .navigationTitle("스캔 결과 확인")
-                    .navigationSubtitle(address)
+                    .navigationSubtitle(fireCase.address)
                     .navigationBarTitleDisplayMode(.inline)
                     .bothSidesToolbar(
                         leadingTitle: "뒤로 가기",
                         trailingTitle: "저장",
                         customLayout: true,
                         barTitle: "스캔 결과 확인",
-                        barSubtitle: address,
+                        barSubtitle: fireCase.address,
                         onBack: { self.croppedImage = nil },
                         onDone: {
                             onImport?(croppedImage)
@@ -137,7 +153,7 @@ struct FloorPlanMethodSelectionView: View {
             } else if let importedImage {
                 FloorPlanImportCropView(
                     source: importedImage,
-                    address: address,
+                    address: fireCase.address,
                     onRetake: { showsImportCrop = false },
                     onConfirm: { croppedImage = $0 }
                 )
@@ -178,7 +194,7 @@ struct FloorPlanMethodSelectionView: View {
         .fullScreenCover(isPresented: $isCameraPresented) {
             FloorPlanImportView(
                 onImport: onImport,
-                address: address,
+                address: fireCase.address,
                 onBack: { isCameraPresented = false }
             )
         }
@@ -292,8 +308,8 @@ struct FloorPlanMethodSelectionView: View {
 #Preview("평면도 준비") {
     NavigationStack {
         FloorPlanMethodSelectionView(
-            address: "압구정동 462-2",
-            createdAt: .now
+            fireCase: FireCase(address: "압구정동 462-2", occurredAt: .now)
         )
     }
+    .modelContainer(for: FireCase.self, inMemory: true)
 }

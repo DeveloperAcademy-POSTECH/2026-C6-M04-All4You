@@ -56,7 +56,6 @@ struct CaseMainView: View {
         } memo: {
             withCaseToolbars(FloorPlanMemoView())
         }
-        .onAppear(perform: addFirstSessionIfNeeded)
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
             deniedPermission?.title ?? "",
@@ -197,7 +196,7 @@ extension CaseMainView {
             .caseTitleToolbar(
                 title: fireCase.title,
                 sessionNumber: sessionNumber,
-                sessionNumbers: sessionNumbers,
+                sessionNumbers: fireCase.sessionNumbers,
                 onSelectSession: { number in
                     // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
                     sessionNumber = number
@@ -208,23 +207,9 @@ extension CaseMainView {
             .backOnlyToolbar(onBack: onBack)
     }
     
-    /// 사건의 조사 차수를 1차부터 차례로
-    private var sessionNumbers: [Int] {
-        fireCase.sessions.map(\.sessionNumber).sorted()
-    }
-
     /// 가장 큰 차수 다음 번호로 새 차수를 만들고 그 차수를 고른다
     private func addSession() {
-        let nextNumber = (sessionNumbers.last ?? 0) + 1
-        fireCase.sessions.append(InvestigationSession(sessionNumber: nextNumber))
-        sessionNumber = nextNumber
-    }
-
-    /// 차수가 하나도 없는 사건이면 1차를 만든다
-    // TEMP: 사건 등록 때 1차를 만들지 않아서 여기서 만듦 — 등록 화면에서 1차를 만들게 되면 지움
-    private func addFirstSessionIfNeeded() {
-        guard fireCase.sessions.isEmpty else { return }
-        addSession()
+        sessionNumber = fireCase.addSession()
     }
 
     /// 사이드바에서 삭제를 확인한 장소의 사진·메모를 비운다. 장소 줄은 남고 개수만 0이 된다
@@ -264,7 +249,7 @@ extension CaseMainView {
         }
     }
 
-    /// 허용이면 true. 방금 알림에서 거절했으면 메인에 그대로 두고(Figma 40:35726),
+    /// 허용이면 true. 방금 알림에서 거절했으면 메인에 그대로 두고(Figma 권한 거부 화면),
     /// 전에 이미 거절했으면 다시 물을 수 없으므로 설정 이동 알림을 띄운다
     private func checkAllowed(_ result: PermissionService.Result, deniedPermission permission: DeniedPermission) -> Bool {
         switch result {
