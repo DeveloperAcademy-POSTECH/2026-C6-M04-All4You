@@ -98,7 +98,6 @@ extension CaseListContent {
             .controlSize(.large)
             // 유리 버튼 여백까지 포함한 전체 폭
             .frame(width: Layout.registerButtonWidth)
-            // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 검정)
             .tint(.black)
             // Figma 기준 설명 글과 버튼 사이 간격
             .padding(.top, Layout.emptyButtonSpacing)
