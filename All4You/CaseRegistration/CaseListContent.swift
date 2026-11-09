@@ -17,7 +17,9 @@ struct CaseListContent: View {
     let searchText: String
     @Binding var selectedCaseID: FireCase.ID?
     let onRegister: () -> Void
-    
+    /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
+    let onOpen: (FireCase) -> Void
+
     private var cases: [FireCase] {
         let keyword = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let searched = keyword.isEmpty
@@ -57,7 +59,7 @@ struct CaseListContent: View {
                     caseList
                         .frame(maxWidth: selectedCase == nil ? .infinity : Layout.listWidthWithPreview)
                     if let selectedCase {
-                        CasePreviewView(fireCase: selectedCase)
+                        CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase) })
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                 }
@@ -207,7 +209,8 @@ extension CaseListContent {
             filter: .recent,
             searchText: "",
             selectedCaseID: $selectedCaseID,
-            onRegister: {}
+            onRegister: {},
+            onOpen: { _ in }
         )
     }
     .modelContainer(for: FireCase.self, inMemory: true)

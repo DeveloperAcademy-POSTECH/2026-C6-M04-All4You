@@ -19,7 +19,9 @@ struct FloorPlanMethodSelectionView: View {
     let fireCase: FireCase
     // 저장 체크를 누르면 보정된 이미지를 호출부에 전달한다.
     var onImport: ((UIImage) -> Void)? = nil
-    
+
+    @Environment(\.dismiss) private var dismiss
+
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
@@ -71,7 +73,8 @@ struct FloorPlanMethodSelectionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationBarTitleDisplayMode(.inline)
         .backOnlyToolbar(title: "목록으로", customLayout: true) {
-            print("뒤로가기")
+            // 사건 목록이 전체 화면으로 띄운 화면이라 닫으면 목록으로 돌아간다
+            dismiss()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             continueButton

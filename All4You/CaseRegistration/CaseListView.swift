@@ -24,8 +24,10 @@ struct CaseListView: View {
     @State private var searchText = ""
     @State private var isPresentingRegistration = false
     
-    @State private var isPresentingFloorPlan = false
+    /// 방금 등록해 등록 시트가 닫히면 열 사건
     @State private var pendingFloorPlan: FireCase?
+    /// 지금 열어 전체 화면으로 보여 주는 사건
+    @State private var openedCase: FireCase?
     
     // 사이드바 / 탭 바 편집 상태 저장
     @AppStorage("caseListTabCustomization")
@@ -76,8 +78,9 @@ struct CaseListView: View {
             isPresented: $isPresentingRegistration,
             onDismiss: {
                 // 사건 등록 시트가 닫힌 후 전체 화면 표시
-                if pendingFloorPlan != nil {
-                    isPresentingFloorPlan = true
+                if let pendingFloorPlan {
+                    open(pendingFloorPlan)
+                    self.pendingFloorPlan = nil
                 }
             }
         ) {
@@ -113,16 +116,14 @@ struct CaseListView: View {
                 Text(saveErrorMessage)
             }
         }
-        .fullScreenCover(
-            isPresented: $isPresentingFloorPlan,
-            onDismiss: {
-                pendingFloorPlan = nil
-            }
-        ) {
-            if let pendingFloorPlan {
+        // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
+        .fullScreenCover(item: $openedCase) { fireCase in
+            if fireCase.floorPlan != nil {
+                CaseFlowView(fireCase: fireCase, onClose: { openedCase = nil })
+            } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
-                        fireCase: pendingFloorPlan
+                        fireCase: fireCase
                     )
                 }
             }
@@ -132,6 +133,12 @@ struct CaseListView: View {
     
     private func presentRegistration() {
         isPresentingRegistration = true
+    }
+
+    /// 사건을 연 시각을 남기고 사건 화면을 띄운다
+    private func open(_ fireCase: FireCase) {
+        fireCase.lastViewedAt = .now
+        openedCase = fireCase
     }
 }
 
@@ -145,7 +152,8 @@ extension CaseListView {
                 filter: item,
                 searchText: searchText,
                 selectedCaseID: $selectedCaseID,
-                onRegister: presentRegistration
+                onRegister: presentRegistration,
+                onOpen: open
             )
             .toolbar {
                 detailToolbar
