@@ -9,6 +9,26 @@ extension PlanData {
         furniture?.last { $0.contains(point) }
     }
 
+    /// 바닥 위 point(도면 좌표, m)에 새 가구를 놓고 새 id를 돌려준다. 벽과 겹치는 자리면 놓지 않고 nil
+    /// TEMP: 새 가구의 크기·높이·이름은 디자인 확인 전이라 임시 값 (0.8×0.8m 사각형, 높이 0.75m, "가구")
+    mutating func addFurniture(at point: SIMD2<Double>) -> String? {
+        let new = Furniture(
+            id: UUID().uuidString,
+            label: FurnitureRule.newLabel,
+            category: nil,
+            shape: .rectangle,
+            center: point,
+            width: FurnitureRule.newSize,
+            depth: FurnitureRule.newSize,
+            rotation: 0,
+            height: FurnitureRule.newHeight,
+            elevation: 0
+        )
+        guard wallOverlap(of: new) == 0 else { return nil }
+        furniture = (furniture ?? []) + [new]
+        return new.id
+    }
+
     /// 가구 가운데를 도면 점 point로 옮긴다
     mutating func moveFurniture(id: String, to point: SIMD2<Double>) {
         updateFurniture(id: id) { $0.center = point }
@@ -66,4 +86,8 @@ extension PlanData {
 private enum FurnitureRule {
     /// 벽과 겹침을 셀 때 벽 가운데 선 위 점 간격
     static let overlapSampleStep = 0.02
+    /// 새로 놓는 가구의 가로·세로와 높이
+    static let newSize = 0.8
+    static let newHeight = 0.75
+    static let newLabel = "가구"
 }
