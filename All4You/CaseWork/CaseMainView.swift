@@ -345,7 +345,6 @@ extension CaseMainView {
     }
     
     /// "사진 촬영하기": 카메라, 그다음 위치 권한을 확인한다. 위치는 촬영 위치를 남기는 데 필요해서 거절하면 촬영하지 않는다
-    // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func takePhoto() {
         Task {
             guard checkAllowed(await PermissionService.requestCameraPermission(), deniedPermission: .camera) else { return }
@@ -355,7 +354,6 @@ extension CaseMainView {
     }
     
     /// "사진 불러오기": 사진 보관함 권한을 확인한다
-    // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func importPhoto() {
         Task {
             guard checkAllowed(await PermissionService.requestPhotoLibraryPermission(), deniedPermission: .photoLibrary) else { return }
