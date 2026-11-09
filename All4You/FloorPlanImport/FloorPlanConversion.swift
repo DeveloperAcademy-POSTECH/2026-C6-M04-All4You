@@ -8,9 +8,11 @@ struct FloorPlanConversion {
     let isSegmentationPreview: Bool
 
     static func request(_ image: UIImage) async throws -> Self {
+        // 실기기에서도 접근할 수 있는 운영 서버를 기본값으로 사용한다.
         let defaultBaseURL = "https://ganni-c6.asherlab.dev"
         let configuredBaseURL = Bundle.main.object(forInfoDictionaryKey: "FloorPlanAPIURL") as? String
         #if DEBUG
+        // 로컬 테스트에서는 Xcode 환경 변수로 서버를 바꿀 수 있다.
         let baseURL = ProcessInfo.processInfo.environment["FLOORPLAN_API_URL"]
             ?? configuredBaseURL ?? defaultBaseURL
         #else

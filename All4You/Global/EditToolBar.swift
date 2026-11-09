@@ -14,20 +14,11 @@ struct EditToolBar: View {
         EditTool.allCases.filter { !hiddenTools.contains($0) }
     }
 
-    /// 접어도 남는 가장 왼쪽 도구
-    private var pinnedTool: EditTool? {
-        visibleTools.first
-    }
-
-    /// 접으면 가려지는 나머지 도구
-    private var foldingTools: [EditTool] {
-        Array(visibleTools.dropFirst())
-    }
-
     var body: some View {
         HStack(spacing: 0) {
-            if let pinnedTool {
-                toolButton(for: pinnedTool)
+            // 접으면 도구가 모두 가려지고 '스탬프' 버튼 하나만 남는다
+            if isCollapsed {
+                stampButton
             }
             foldingToolButtons
             collapseButton
@@ -53,11 +44,10 @@ extension EditToolBar {
     /// 접을 때 버튼이 따로 흐려지지 않고, 화살표 버튼이 지나가는 자리에서 함께 가려지게 한다
     private var foldingToolButtons: some View {
         HStack(spacing: Layout.barSpacing) {
-            ForEach(foldingTools, id: \.self) { tool in
+            ForEach(visibleTools, id: \.self) { tool in
                 toolButton(for: tool)
             }
         }
-        .padding(.leading, Layout.barSpacing)
         // 폭을 0으로 줄이고 넘친 부분을 잘라 낸다. 서랍을 닫듯 오른쪽부터 가려진다
         .frame(width: isCollapsed ? 0 : nil, alignment: .leading)
         .clipped()
@@ -79,11 +69,26 @@ extension EditToolBar {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    /// 접힌 막대에 남는 버튼. 누르면 막대를 다시 편다
+    private var stampButton: some View {
+        Button {
+            toggleCollapsed()
+        } label: {
+            buttonLabel(title: Copy.stamp, iconName: "seal", isSelected: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Copy.expand)
+    }
+
     private func toolLabel(for tool: EditTool, isSelected: Bool) -> some View {
+        buttonLabel(title: tool.title, iconName: tool.iconName, isSelected: isSelected)
+    }
+
+    private func buttonLabel(title: String, iconName: String, isSelected: Bool) -> some View {
         VStack(spacing: Layout.labelSpacing) {
-            Image(systemName: tool.iconName)
+            Image(systemName: iconName)
                 .font(AppTypography.title3)
-            Text(tool.title)
+            Text(title)
                 .font(AppTypography.label)
         }
         .foregroundStyle(isSelected ? .white : .black)
@@ -126,6 +131,7 @@ extension EditToolBar {
 // 문구
 extension EditToolBar {
     private enum Copy {
+        static let stamp = "스탬프"
         static let collapse = "도구 막대 접기"
         static let expand = "도구 막대 펼치기"
     }
@@ -136,6 +142,6 @@ extension EditToolBar {
 
     VStack(alignment: .leading) {
         EditToolBar(selectedTool: $selectedTool)
-        EditToolBar(selectedTool: $selectedTool, hiddenTools: [.roomName, .furniture])
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: [.roomName, .furniture, .door])
     }
 }

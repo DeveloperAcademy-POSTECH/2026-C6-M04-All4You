@@ -31,6 +31,13 @@ struct WallLine {
     func point(along distance: Double) -> SIMD2<Double> {
         start + direction * distance
     }
+
+    /// 점 p에서 이 선분까지 가장 짧은 거리 (m)
+    func distance(to p: SIMD2<Double>) -> Double {
+        let along = min(max(((p - start) * direction).sum(), 0), length)
+        let delta = p - point(along: along)
+        return (delta * delta).sum().squareRoot()
+    }
 }
 
 // 도면에서 id로 찾기

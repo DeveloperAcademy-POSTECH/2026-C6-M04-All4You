@@ -3,8 +3,8 @@
 // 시스템 권한 알림에 보이는 설명 문구는 project.pbxproj(빌드 설정의 Info.plist 항목)에 있다.
 // Info.plist에는 주석을 달 수 없어 여기에 모아 적는다
 // - NSCameraUsageDescription: "공간 스캔과 도면 촬영을 위해 카메라를 사용합니다." (팀원이 넣은 문구)
-// - NSPhotoLibraryUsageDescription: "사진을 가져오기 위해 사진 앱에 접근합니다" (Figma 40:9417)
-// - NSLocationWhenInUseUsageDescription: "사진의 위치정보를 확인하기 위해 사용합니다" (Figma 40:9529)
+// - NSPhotoLibraryUsageDescription: "사진을 가져오기 위해 사진 앱에 접근합니다" (Figma 사진 권한 화면)
+// - NSLocationWhenInUseUsageDescription: "사진의 위치정보를 확인하기 위해 사용합니다" (Figma 위치 권한 화면)
 // TEMP: 사진 보관함·위치 문구는 Figma 문구를 그대로 옮김 — 팀 확정 필요
 
 import AVFoundation

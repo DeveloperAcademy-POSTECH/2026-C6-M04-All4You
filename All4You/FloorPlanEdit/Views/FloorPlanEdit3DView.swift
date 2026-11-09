@@ -6,6 +6,8 @@ import SwiftUI
 struct FloorPlanEdit3DView: View {
     /// 2D·3D 수정 화면과 메인이 함께 보는 도면
     @Binding var planData: PlanData
+    /// 2D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
+    @Binding var history: PlanHistory
     let onBack: () -> Void
     let onDone: () -> Void
 
@@ -21,9 +23,7 @@ struct FloorPlanEdit3DView: View {
             .overlay(alignment: .topLeading) {
                 toolBar
             }
-            .navigationTitle(Copy.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .bothSidesToolbar(onBack: onBack, onDone: onDone)
+            .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
     }
 }
 
@@ -32,6 +32,13 @@ extension FloorPlanEdit3DView {
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool, hiddenTools: hiddenTools)
             .padding()
+    }
+
+    /// 되돌리면 고른 것이 사라졌을 수 있어 고르기를 푼다
+    private var undoRedo: some View {
+        UndoRedoCapsule(history: $history, planData: $planData) {
+            selection = nil
+        }
     }
 }
 
@@ -47,50 +54,16 @@ extension FloorPlanEdit3DView {
             selection = element
         case (nil, _):
             selection = nil
-        case (.ignitionPoint?, .floor(let point)?):
-            selection = .marker(planData.addMarker(.ignitionPoint, at: point))
-        case (.person?, .floor(let point)?):
-            selection = .marker(planData.addMarker(.person, at: point))
-        case (.outlet?, .wall(let wallId, let point, let height)?):
-            guard let id = planData.addWallFixture(.outlet, wallId: wallId, at: point, height: height) else { return }
-            selection = .wallFixture(id)
-        case (.window?, .wall(let wallId, let point, _)?):
-            guard let id = planData.addWindow(wallId: wallId, at: point) else { return }
-            selection = .doorWindow(id)
-        default:
+        case (let tool?, let tap?):
+            selection = planData.place(tool, at: tap) ?? selection
+        case (_?, nil):
             break
         }
     }
 
     /// 옮기거나 돌리거나 복제·삭제한 스탬프를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
     private func handleEdit(_ edit: PlanEdit) {
-        switch edit {
-        case .duplicate(.marker(let id)):
-            selection = planData.duplicateMarker(id: id).map(PlanSelection.marker) ?? selection
-        case .duplicate(.wallFixture(let id)):
-            selection = planData.duplicateWallFixture(id: id).map(PlanSelection.wallFixture) ?? selection
-        case .delete(.marker(let id)):
-            planData.removeMarker(id: id)
-            selection = nil
-        case .delete(.wallFixture(let id)):
-            planData.removeWallFixture(id: id)
-            selection = nil
-        case .delete(.doorWindow(let id)):
-            planData.removeDoorWindow(id: id)
-            selection = nil
-        case .duplicate(.doorWindow):
-            break
-        case .resizeWindow(let id, let edge, let along, let height):
-            planData.resizeWindow(id: id, edge: edge, along: along, height: height)
-        case .move(.marker(let id), let point, _):
-            planData.moveMarker(id: id, to: point)
-        case .move(.wallFixture(let id), let point, let height):
-            planData.moveWallFixture(id: id, to: point, height: height)
-        case .move(.doorWindow, _, _):
-            break
-        case .rotate(let markerId, let yaw):
-            planData.rotateMarker(id: markerId, yaw: yaw)
-        }
+        selection = planData.apply(edit, selection: selection)
     }
 }
 
@@ -103,7 +76,8 @@ extension FloorPlanEdit3DView {
 
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
+    @Previewable @State var history = PlanHistory()
     NavigationStack {
-        FloorPlanEdit3DView(planData: $planData, onBack: {}, onDone: {})
+        FloorPlanEdit3DView(planData: $planData, history: $history, onBack: {}, onDone: {})
     }
 }

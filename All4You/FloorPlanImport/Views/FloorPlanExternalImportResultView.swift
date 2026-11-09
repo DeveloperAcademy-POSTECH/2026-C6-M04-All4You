@@ -1,5 +1,6 @@
 import SwiftUI
 
+// 촬영, 앨범, 파일의 영역 조정 결과를 같은 방식으로 변환하고 저장한다.
 struct FloorPlanExternalImportResultView: View {
     let image: UIImage
     let address: String

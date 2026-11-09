@@ -10,6 +10,7 @@ extension View {
         customLayout: Bool = false,
         barTitle: String = "",
         barSubtitle: String = "",
+        trailingAccessory: AnyView? = nil,
         onBack: @escaping () -> Void,
         onDone: @escaping () -> Void
     ) -> some View {
@@ -20,6 +21,7 @@ extension View {
                 leadingTitle: leadingTitle,
                 trailingTitle: trailingTitle,
                 isDoneDisabled: isDoneDisabled,
+                trailingAccessory: trailingAccessory,
                 onBack: onBack,
                 onDone: onDone
             )
@@ -104,6 +106,7 @@ extension View {
         leadingTitle: String = "뒤로",
         trailingTitle: String = "완료",
         isDoneDisabled: Bool = false,
+        trailingAccessory: AnyView? = nil,
         onBack: (() -> Void)? = nil,
         onDone: (() -> Void)? = nil
     ) -> some View {
@@ -139,6 +142,11 @@ extension View {
                 
                     
                     Spacer()
+
+                    // 완료 버튼 왼쪽에 화면이 끼우는 버튼 (예: 되돌리기·다시 하기)
+                    if let trailingAccessory {
+                        trailingAccessory
+                    }
 
                     if let onDone {
                         Button(action: onDone) {
