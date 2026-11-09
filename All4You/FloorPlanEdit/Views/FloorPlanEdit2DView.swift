@@ -7,6 +7,8 @@ import SwiftUI
 struct FloorPlanEdit2DView: View {
     /// 2D·3D가 함께 보고 고치는 도면
     @Binding var planData: PlanData
+    /// 3D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
+    @Binding var history: PlanHistory
     let onBack: () -> Void
     let onDone: () -> Void
 
@@ -67,7 +69,7 @@ struct FloorPlanEdit2DView: View {
         .overlay {
             DrawingToolBar(selectedTool: $drawingTool)
         }
-        .bothSidesToolbar(customLayout: true, barTitle: Copy.title, onBack: onBack, onDone: onDone)
+        .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
         .ignoresSafeArea(.keyboard)
     }
@@ -155,6 +157,18 @@ extension FloorPlanEdit2DView {
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool)
             .padding()
+    }
+
+    /// 되돌리면 고른 것이 사라졌을 수 있어 고르기·메뉴·미리 보기를 비운다. 고치던 이름은 넣지 않고 닫는다
+    private var undoRedo: some View {
+        UndoRedoCapsule(history: $history, planData: $planData) {
+            editingRoomId = nil
+            isRoomNameFocused = false
+            selection = nil
+            selectedRoomId = nil
+            menuTarget = nil
+            dragPreview = nil
+        }
     }
 }
 
@@ -565,8 +579,9 @@ extension FloorPlanEdit2DView {
 
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
+    @Previewable @State var history = PlanHistory()
 
     NavigationStack {
-        FloorPlanEdit2DView(planData: $planData, onBack: {}, onDone: {})
+        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: {}, onDone: {})
     }
 }
