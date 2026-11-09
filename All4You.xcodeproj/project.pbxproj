@@ -206,7 +206,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "FloorPlanDebug-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = FireLine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "공간 스캔과 도면 촬영을 위해 카메라를 사용합니다.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "같은 네트워크의 개발 서버에서 스캔한 도면을 변환합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "현장 주소를 자동으로 입력하기 위해 현재 위치를 사용합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 가져오기 위해 사진 앱에 접근합니다";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -219,6 +221,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -323,7 +326,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "";
 				INFOPLIST_KEY_CFBundleDisplayName = FireLine;
+				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "공간 스캔과 도면 촬영을 위해 카메라를 사용합니다.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "같은 네트워크의 개발 서버에서 스캔한 도면을 변환합니다.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "현장 주소를 자동으로 입력하기 위해 현재 위치를 사용합니다.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "사진을 가져오기 위해 사진 앱에 접근합니다";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -336,6 +341,7 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UIUserInterfaceStyle = Light;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
