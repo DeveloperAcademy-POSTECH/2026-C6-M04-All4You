@@ -3,14 +3,14 @@
 // 1) 바닥 높이  2) 벽 양 끝점  3) 가장 긴 벽이 가로가 되게 돌리고, 조금 비뚤어진 벽은 가로·세로로 바로잡기
 // 4) 스캔한 면은 방 안쪽 면이라 벽을 바깥으로 두께/2 밀고, 모서리는 이웃 벽 선과의 교점으로 잇기
 // 5) 도면 왼쪽 위에 여백을 두고 옮기기  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
-// 8) 방 나누기 (PlanData+ScanRooms). 가구는 PlanData에 칸이 없어 버린다
+// 8) 방 나누기 (PlanData+ScanRooms)  9) 물체를 사각형 가구로
 
 import Foundation
 import simd
 
 extension PlanData {
-    /// 스캔한 면과 방 종류로 도면을 만든다. 벽이 없으면 빈 도면
-    init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = []) {
+    /// 스캔한 면·방 종류·물체로 도면을 만든다. 벽이 없으면 빈 도면
+    init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = [], objects: [ScanObject] = []) {
         self = .empty
         let wallSurfaces = surfaces.filter { $0.kind == .wall && $0.width >= ScanRule.minWallLength }
         guard !wallSurfaces.isEmpty else { return }
@@ -90,6 +90,23 @@ extension PlanData {
 
         // 8) 떠 있는 벽 끝을 잇고 방을 찾는다
         addScanRooms(sections: sections.map { (name: $0.name, point: planPoint($0.center)) })
+
+        // 9) 물체 → 사각형 가구. 벽처럼 조금 비뚤어진 가구는 가로·세로로 바로잡는다
+        furniture = objects.enumerated().map { index, object in
+            let axis = rotation.apply(object.widthAxis)
+            return Furniture(
+                id: "u\(index + 1)",
+                label: Furniture.label(forCategory: object.category),
+                category: object.category,
+                shape: .rectangle,
+                center: planPoint(object.center),
+                width: max(ScanRule.minFurnitureSize, object.width),
+                depth: max(ScanRule.minFurnitureSize, object.depth),
+                rotation: ScanImport.squaredAngle(atan2(axis.y, axis.x)),
+                height: max(ScanRule.minFurnitureSize, object.height),
+                elevation: max(0, object.center.y - object.height / 2 - floorY)
+            )
+        }
     }
 
     /// 점에서 벽 선분까지 거리. 벽을 찾지 못하면 무한대
@@ -134,12 +151,16 @@ private enum ScanImport {
 
     /// 가로·세로에서 조금 비뚤어진 벽은 가운데를 축으로 돌려 가로·세로로 맞춘다
     static func squared(_ segment: Segment) -> Segment {
-        let angle = segment.angle
-        let target = (angle / (.pi / 2)).rounded() * (.pi / 2)
-        guard abs(angle - target) <= ScanRule.squareLimit else { return segment }
+        let target = squaredAngle(segment.angle)
         let center = (segment.a + segment.b) / 2
         let half = SIMD2(cos(target), sin(target)) * (segment.length / 2)
         return Segment(a: center - half, b: center + half)
+    }
+
+    /// 가로·세로에서 조금 비뚤어진 각(라디안)은 가장 가까운 직각으로. 많이 비뚤어졌으면 그대로
+    static func squaredAngle(_ angle: Double) -> Double {
+        let target = (angle / (.pi / 2)).rounded() * (.pi / 2)
+        return abs(angle - target) <= ScanRule.squareLimit ? target : angle
     }
 
     /// 스캔한 면은 방 안쪽 면이다. 벽 선을 방 바깥쪽으로 두께/2 밀어 벽의 안쪽 면이 스캔한 면과 겹치게 한다.
@@ -276,4 +297,6 @@ private enum ScanRule {
     static let axisSnapTolerance = 0.05
     /// 속한 벽이 없는 문·창문은 이 거리 안의 가장 가까운 벽에 붙인다
     static let openingSearchDistance = 0.5
+    /// 가구의 가로·세로·높이가 이보다 작으면 이 값으로 (너무 작아 고를 수 없는 가구를 막음)
+    static let minFurnitureSize = 0.05
 }

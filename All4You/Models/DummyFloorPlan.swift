@@ -19,7 +19,8 @@ enum DummyFloorPlan {
         doorWindows: doorWindows,
         wallFixtures: wallFixtures,
         rooms: rooms,
-        markers: markers
+        markers: markers,
+        furniture: furniture
     )
 }
 
@@ -96,5 +97,13 @@ extension DummyFloorPlan {
     private static let markers = [
         PlanMarker(id: "m1", kind: .person, position: [3.0, 5.8], height: 0.5, yaw: 180, lying: true),
         PlanMarker(id: "m2", kind: .ignitionPoint, position: [6.2, 2.1], height: 0.3, yaw: 0, lying: nil)
+    ]
+
+    /// 사각형·원형, 돌린 가구, 바닥에서 띄운 가구(벽 수납장)를 하나씩
+    private static let furniture = [
+        Furniture(id: "u1", label: "소파", category: "sofa", shape: .rectangle, center: [2.0, 3.6], width: 2.0, depth: 0.9, rotation: 0, height: 0.8, elevation: 0),
+        Furniture(id: "u2", label: "냉장고", category: "refrigerator", shape: .rectangle, center: [5.9, 1.0], width: 0.8, depth: 0.7, rotation: .pi / 2, height: 1.8, elevation: 0),
+        Furniture(id: "u3", label: "식탁", category: nil, shape: .circle, center: [4.2, 2.8], width: 1.0, depth: 1.0, rotation: 0, height: 0.75, elevation: 0),
+        Furniture(id: "u4", label: "수납장", category: "storage", shape: .rectangle, center: [1.4, 7.2], width: 1.2, depth: 0.4, rotation: 0, height: 0.6, elevation: 1.4)
     ]
 }

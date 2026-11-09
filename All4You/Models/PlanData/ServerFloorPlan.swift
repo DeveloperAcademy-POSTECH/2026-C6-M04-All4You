@@ -10,6 +10,8 @@ struct ServerFloorPlan: Decodable {
     let walls: [Wall]
     let openings: [Opening]
     let rooms: [Room]
+    /// 가구. 서버가 찾지 못하면 칸이 없을 수 있다
+    let furniture: [Furniture]?
     /// 실제 길이와의 비율. 서버가 모르면 비어 있다
     let calibration: Calibration?
 
@@ -45,6 +47,13 @@ struct ServerFloorPlan: Decodable {
     struct RoomEdge: Decodable {
         let wallId: String
         let forward: Bool
+    }
+
+    /// 가구 하나. 위치와 크기는 돌리지 않은 상자 [왼쪽, 위, 오른쪽, 아래]
+    struct Furniture: Decodable {
+        let id: String
+        let label: String?
+        let bbox: [Double]
     }
 
     struct Calibration: Decodable {
