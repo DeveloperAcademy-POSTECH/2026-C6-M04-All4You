@@ -7,6 +7,8 @@ import UIKit
 /// 두 손가락이 움직일 때마다 두 손가락 가운데의 지금 점과 직전 점을 알려 준다 (붙인 뷰 기준 좌표)
 struct TwoFingerPanGesture: UIGestureRecognizerRepresentable {
     let onChanged: (_ location: CGPoint, _ previous: CGPoint) -> Void
+    /// 두 손가락을 뗐을 때
+    var onEnded: () -> Void = {}
 
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
         Coordinator()
@@ -26,10 +28,18 @@ struct TwoFingerPanGesture: UIGestureRecognizerRepresentable {
         case .began:
             context.coordinator.lastLocation = location
         case .changed:
+            // 한 손가락이 먼저 떨어지면 가운데 점이 남은 손가락 자리로 뛰므로, 두 손가락이 아닐 때는 옮기지 않고 기준점을 버린다
+            guard recognizer.numberOfTouches == 2 else {
+                context.coordinator.lastLocation = nil
+                return
+            }
             if let last = context.coordinator.lastLocation {
                 onChanged(location, last)
             }
             context.coordinator.lastLocation = location
+        case .ended, .cancelled, .failed:
+            context.coordinator.lastLocation = nil
+            onEnded()
         default:
             context.coordinator.lastLocation = nil
         }

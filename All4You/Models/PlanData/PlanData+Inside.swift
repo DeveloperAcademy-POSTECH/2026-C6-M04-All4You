@@ -37,7 +37,7 @@ extension PlanData {
     }
 
     /// 다각형 안에 점이 있는지. 점에서 오른쪽으로 그은 선이 변을 홀수 번 지나면 안이다
-    private static func polygon(_ points: [SIMD2<Double>], contains p: SIMD2<Double>) -> Bool {
+    static func polygon(_ points: [SIMD2<Double>], contains p: SIMD2<Double>) -> Bool {
         guard points.count >= 3 else { return false }
         var isInside = false
         var previous = points[points.count - 1]

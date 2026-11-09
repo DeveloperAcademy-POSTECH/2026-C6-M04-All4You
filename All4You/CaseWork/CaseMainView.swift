@@ -7,6 +7,8 @@ struct CaseMainView: View {
     // 뒤로가기, 편집하기(펜 아이콘)
     let onBack: () -> Void
     let onEdit: () -> Void
+    /// 도면 탭에 보여 줄 도면
+    let planData: PlanData
     
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
@@ -21,7 +23,7 @@ struct CaseMainView: View {
     
     var body: some View {
         CaseTabView(selection: $selection, albumRows: albumRows, memoRows: memoRows, onClearRow: clearRow) {
-            withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: dimension))
+            withCaseToolbars(FloorPlanTabView(photoFilter: $photoFilter, dimension: dimension, planData: planData))
         } album: {
             withCaseToolbars(emptyTab(Copy.albumPlaceholder))
         } memo: {
@@ -220,5 +222,5 @@ extension CaseMainView {
 }
 
 #Preview {
-    CaseMainView(onBack: {}, onEdit: {})
+    CaseMainView(onBack: {}, onEdit: {}, planData: DummyFloorPlan.planData)
 }
