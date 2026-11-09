@@ -33,6 +33,10 @@ final class FireCase {
     @Relationship(deleteRule: .cascade, inverse: \InvestigationSession.fireCase)
     var sessions: [InvestigationSession] = []
     
+    /// 현장 사진. 사건을 지우면 함께 지운다
+    @Relationship(deleteRule: .cascade, inverse: \EvidencePhoto.fireCase)
+    var photos: [EvidencePhoto] = []
+
     /// 평면도 (사건 하나에 하나, 아직 없을 수 있음). 사건을 지우면 함께 지운다
     @Relationship(deleteRule: .cascade, inverse: \FloorPlan.fireCase)
     var floorPlan: FloorPlan?
