@@ -1,9 +1,12 @@
 // 사건 작업 메인 화면. 상단 바와 도면·앨범·메모 탭으로 구성된다
 
+import SwiftData
 import SwiftUI
 
 /// 도면·앨범·메모를 오가며 사건을 작업하는 화면
 struct CaseMainView: View {
+    /// 작업 중인 사건. 상단 바의 사건명·조사 차수를 여기서 읽는다
+    let fireCase: FireCase
     /// 도면 탭에 그릴 도면. 장소(Room)는 앨범·사진 위치에도 쓴다
     let planData: PlanData
     /// 이 사건의 사진. 메인을 닫았다 다시 열어도 사진이 남도록 바깥(CaseFlowView)이 들고 있다
@@ -27,6 +30,17 @@ struct CaseMainView: View {
     // 사진 불러오기 시트를 화면 크기에 맞추려고 잰 이 화면의 크기
     @State private var screenSize: CGSize = .zero
     @State private var isExportSheetPresented = false
+    /// 상단 바에서 고른 조사 차수. 처음에는 가장 최근 차수
+    @State private var sessionNumber: Int
+
+    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
+        self.fireCase = fireCase
+        self.planData = planData
+        self.photoStore = photoStore
+        self.onBack = onBack
+        self.onEdit = onEdit
+        _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
+    }
 
     var body: some View {
         CaseTabView(
@@ -42,6 +56,7 @@ struct CaseMainView: View {
         } memo: {
             withCaseToolbars(emptyTab(Copy.memoPlaceholder))
         }
+        .onAppear(perform: addFirstSessionIfNeeded)
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
             deniedPermission?.title ?? "",
@@ -180,18 +195,36 @@ extension CaseMainView {
                 }
             )
             .caseTitleToolbar(
-                title: Copy.title,
-                sessionNumber: Copy.sessionNumber,
-                sessionNumbers: Copy.sessionNumbers,
-                onSelectSession: { _ in
-                    // TODO: 고른 조사 차수로 바꾸기
+                title: fireCase.title,
+                sessionNumber: sessionNumber,
+                sessionNumbers: sessionNumbers,
+                onSelectSession: { number in
+                    // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
+                    sessionNumber = number
                 },
-                onAddSession: {
-                    // TODO: 새 조사 차수 만들기
-                }
+                onAddSession: addSession
             )
             // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
             .backOnlyToolbar(onBack: onBack)
+    }
+    
+    /// 사건의 조사 차수를 1차부터 차례로
+    private var sessionNumbers: [Int] {
+        fireCase.sessions.map(\.sessionNumber).sorted()
+    }
+
+    /// 가장 큰 차수 다음 번호로 새 차수를 만들고 그 차수를 고른다
+    private func addSession() {
+        let nextNumber = (sessionNumbers.last ?? 0) + 1
+        fireCase.sessions.append(InvestigationSession(sessionNumber: nextNumber))
+        sessionNumber = nextNumber
+    }
+
+    /// 차수가 하나도 없는 사건이면 1차를 만든다
+    // TEMP: 사건 등록 때 1차를 만들지 않아서 여기서 만듦 — 등록 화면에서 1차를 만들게 되면 지움
+    private func addFirstSessionIfNeeded() {
+        guard fireCase.sessions.isEmpty else { return }
+        addSession()
     }
 
     /// 사이드바에서 삭제를 확인한 장소의 사진·메모를 비운다. 장소 줄은 남고 개수만 0이 된다
@@ -266,12 +299,6 @@ extension CaseMainView {
 // 문구
 extension CaseMainView {
     private enum Copy {
-        // TEMP: 사건 데이터가 생기기 전 임시 값 — 데이터 저장 방식이 정해지면 사건·차수 값으로 바꿔야 함
-        // 이름은 ERD 필드를 따름: Investigation.title, InvestigationSession.sessionNumber
-        static let title = "청암로 77"
-        static let sessionNumber = 1
-        static let sessionNumbers = [1, 2]
-
         // TEMP: 메모 데이터가 생기기 전 임시 값 — 데이터가 생기면 장소별 개수로 바꿔야 함
         // name은 ERD Room.name. count는 ERD에 없는 계산값으로 memoCount라는 이름으로 쓸 예정 (임시 이름, PR에 명시)
         static let memoRows = [
@@ -320,5 +347,12 @@ extension CaseMainView {
 }
 
 #Preview {
-    CaseMainView(planData: DummyFloorPlan.planData, photoStore: PhotoStore(), onBack: {}, onEdit: {})
+    CaseMainView(
+        fireCase: FireCase(address: "서울시 강남구 청암로 77", occurredAt: .now),
+        planData: DummyFloorPlan.planData,
+        photoStore: PhotoStore(),
+        onBack: {},
+        onEdit: {}
+    )
+    .modelContainer(for: FireCase.self, inMemory: true)
 }
