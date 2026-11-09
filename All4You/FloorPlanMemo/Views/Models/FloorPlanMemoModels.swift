@@ -7,22 +7,75 @@
 
 import Foundation
 
-struct FloorPlanMemoSection: Identifiable {
-    let location: FloorPlanMemoLocation
-    let memos: [FloorPlanMemo]
+// 도면 위에 메모가 붙은 위치 (도면 좌표로 저장)
+struct FloorPlanMemoAnchor: Hashable {
+    let x: Double
+    let y: Double
     
-    var id: FloorPlanMemoLocation { location }
+    var point: SIMD2<Double> { SIMD2(x, y) }
+}
+
+// 도면에서 작성 중인 메모 (완료하기 전까지는 메모 목록에 들어가지 않음)
+struct FloorPlanMemoDraft: Equatable {
+    let anchor: FloorPlanMemoAnchor
+    let locationID: String?
+    let locationName: String
+    var content = ""
+}
+
+struct FloorPlanMemoSection: Identifiable {
+    /// Room.id. 방 밖에 남긴 메모는 `unassigned`를 사용
+    let id: String
+    let locationName: String
+    var memos: [FloorPlanMemo]
 }
 
 struct FloorPlanMemo: Identifiable {
-    let id: Int
+    let id: UUID
     let title: String
-    let dateText: String
-    let timeText: String
-    let detailTitle: String
+    let createdAt: Date
     let content: String
+    let locationID: String?
+    let locationName: String
+    let anchor: FloorPlanMemoAnchor
+    
+    init(
+        id: UUID = UUID(),
+        title: String,
+        createdAt: Date = .now,
+        content: String,
+        locationID: String?,
+        locationName: String,
+        anchor: FloorPlanMemoAnchor
+    ) {
+        self.id = id
+        self.title = title
+        self.createdAt = createdAt
+        self.content = content
+        self.locationID = locationID
+        self.locationName = locationName
+        self.anchor = anchor
+    }
+    
+    var detailTitle: String { title }
+    
+    var dateText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy.MM.dd"
+        return formatter.string(from: createdAt)
+    }
+    
+    var timeText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: createdAt)
+    }
 }
 
+// TODO: 기존 위치 피커 Preview와의 호환을 위한 값. 실제 메모 목록은 Room.id와 이름을 직접 사용해야함
 enum FloorPlanMemoLocation: String, CaseIterable, Identifiable {
     case all = "전체"
     case ignitionPoint = "발화지점"
@@ -34,71 +87,43 @@ enum FloorPlanMemoLocation: String, CaseIterable, Identifiable {
 }
 
 extension [FloorPlanMemoSection] {
+    // 메모를 같은 장소 섹션에 추가하고, 없으면 새 섹션을 만듦
+    mutating func append(_ memo: FloorPlanMemo) {
+        let sectionID = memo.locationID ?? FloorPlanMemoSectionID.unassigned
+        if let index = firstIndex(where: { $0.id == sectionID }) {
+            self[index].memos.append(memo)
+        } else {
+            append(
+                FloorPlanMemoSection(
+                    id: sectionID,
+                    locationName: memo.locationName,
+                    memos: [memo]
+                )
+            )
+        }
+    }
+    
+    var allMemos: [FloorPlanMemo] {
+        flatMap(\.memos)
+    }
+    
     static let sample: Self = [
         FloorPlanMemoSection(
-            location: .ignitionPoint,
+            id: "ignition-point",
+            locationName: "발화지점",
             memos: [
                 FloorPlanMemo(
-                    id: 1,
-                    title: "발화#1",
-                    dateText: "2026.10.24",
-                    timeText: "오후 12:30",
-                    detailTitle: "발화지점#1",
-                    content: "발화지점으로 추정된다. 하지만 아직은 조사를 더 해봐야 알 것 같다."
-                ),
-                FloorPlanMemo(
-                    id: 2,
-                    title: "발화#2",
-                    dateText: "2026.10.25",
-                    timeText: "오후 2:00",
-                    detailTitle: "발화지점#2",
-                    content: "발화지점 주변의 흔적을 추가로 확인했다. 정확한 원인은 추가 조사가 필요하다."
-                ),
-                FloorPlanMemo(
-                    id: 3,
-                    title: "발화#3",
-                    dateText: "2026.10.25",
-                    timeText: "오후 2:00",
-                    detailTitle: "발화지점#3",
-                    content: "현장에서 확인한 발화지점 관련 내용을 기록했다."
+                    title: "메모 #1",
+                    content: "발화지점으로 추정된다. 추가 조사가 필요하다.",
+                    locationID: "ignition-point",
+                    locationName: "발화지점",
+                    anchor: FloorPlanMemoAnchor(x: 0, y: 0)
                 )
-            ]
-        ),
-        FloorPlanMemoSection(
-            location: .mainBedroom,
-            memos: [
-                FloorPlanMemo.sample(id: 4, title: "사진#2", dateText: "2026.10.24", timeText: "오후 12:30"),
-                FloorPlanMemo.sample(id: 5, title: "사진#3", dateText: "2026.10.25", timeText: "오후 2:00"),
-                FloorPlanMemo.sample(id: 6, title: "사진#5", dateText: "2026.10.25", timeText: "오후 2:00")
-            ]
-        ),
-        FloorPlanMemoSection(
-            location: .livingRoom,
-            memos: [
-                FloorPlanMemo.sample(id: 7, title: "사진#12", dateText: "2026.10.24", timeText: "오후 12:30"),
-                FloorPlanMemo.sample(id: 8, title: "사진#15", dateText: "2026.10.25", timeText: "오후 2:00"),
-                FloorPlanMemo.sample(id: 9, title: "사진#17", dateText: "2026.10.25", timeText: "오후 2:00")
-            ]
-        ),
-        FloorPlanMemoSection(
-            location: .room1,
-            memos: [
-                FloorPlanMemo.sample(id: 10, title: "사진#12", dateText: "2026.10.24", timeText: "오후 12:30"),
-                FloorPlanMemo.sample(id: 11, title: "사진#15", dateText: "2026.10.25", timeText: "오후 2:00")
             ]
         )
     ]
 }
 
-private extension FloorPlanMemo {
-    static func sample(id: Int, title: String, dateText: String, timeText: String) -> Self {
-        FloorPlanMemo(
-            id: id,
-            title: title,
-            dateText: dateText,
-            timeText: timeText,
-            detailTitle: title,
-            content: "현장에서 확인한 내용을 기록한 메모이다."
-        )
-    }
+enum FloorPlanMemoSectionID {
+    static let unassigned = "unassigned"
 }
