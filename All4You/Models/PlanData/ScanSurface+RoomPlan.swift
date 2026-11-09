@@ -11,13 +11,13 @@ extension PlanData {
             self.init(
                 scanSurfaces: ScanSurface.surfaces(of: structure),
                 sections: ScanSection.sections(of: structure),
-                objects: structure.objects.map(ScanObject.init)
+                objects: structure.objects.map { ScanObject($0) }
             )
         } else if let largest = rooms.max(by: { $0.walls.totalWidth < $1.walls.totalWidth }) {
             self.init(
                 scanSurfaces: ScanSurface.surfaces(of: largest),
                 sections: ScanSection.sections(of: largest),
-                objects: largest.objects.map(ScanObject.init)
+                objects: largest.objects.map { ScanObject($0) }
             )
         } else {
             self = .empty
@@ -100,12 +100,12 @@ private func floorAxis(of transform: simd_float4x4) -> SIMD2<Double> {
 extension ScanSection {
     /// 구간 하나를 스캔한 결과의 방 종류들
     static func sections(of room: CapturedRoom) -> [ScanSection] {
-        room.sections.map(ScanSection.init)
+        room.sections.map { ScanSection($0) }
     }
 
     /// 여러 구간을 합친 결과의 방 종류들
     static func sections(of structure: CapturedStructure) -> [ScanSection] {
-        structure.sections.map(ScanSection.init)
+        structure.sections.map { ScanSection($0) }
     }
 
     private init(_ section: CapturedRoom.Section) {

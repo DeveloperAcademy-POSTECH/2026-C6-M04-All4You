@@ -665,7 +665,7 @@ extension FloorPlanEdit2DView {
         if let furniture = furniture(of: selection, in: plan) {
             return CGSize(width: screen.length(furniture.width / 2) + padding, height: screen.length(furniture.depth / 2) + padding)
         }
-        let iconSize = marker(of: selection, in: plan).map(Plan2DView.iconSize(of:)) ?? Plan2DView.stampSize
+        let iconSize = marker(of: selection, in: plan).map { Plan2DView.iconSize(of: $0) } ?? Plan2DView.stampSize
         let half = screen.length(iconSize) / 2 + padding
         return CGSize(width: half, height: half)
     }

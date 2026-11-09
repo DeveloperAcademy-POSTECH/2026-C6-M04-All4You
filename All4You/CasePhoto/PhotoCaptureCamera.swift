@@ -18,8 +18,10 @@ struct CapturedPhoto {
 }
 
 /// 후면 광각 카메라로 사진을 찍는다.
-/// 세션 설정·시작·중지는 시간이 걸려 화면이 멈추지 않도록 카메라 전용 큐에서 한다
-final class PhotoCaptureCamera: NSObject {
+/// 세션 설정·시작·중지는 시간이 걸려 화면이 멈추지 않도록 카메라 전용 큐에서 한다.
+/// 메인 전용이 아니다(nonisolated). 상태를 셋으로 나눠 지킨다: 세션·설정은 카메라 큐, 미리보기 각도는 메인(@MainActor 함수),
+/// 사진 답 기다리기는 잠금. 그래서 여러 스레드에서 써도 된다고(@unchecked Sendable) 직접 표시한다
+nonisolated final class PhotoCaptureCamera: NSObject, @unchecked Sendable {
     let session = AVCaptureSession()
     /// 이 기기에서 쓸 카메라. 시뮬레이터처럼 카메라가 없으면 nil
     let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
@@ -48,7 +50,7 @@ final class PhotoCaptureCamera: NSObject {
             session.startRunning()
             // 세션이 켜진 뒤에야 미리보기 연결이 생겨 각도를 다시 맞춘다
             Task { @MainActor [self] in
-                applyPreviewRotation()
+                self.applyPreviewRotation()
             }
         }
     }
