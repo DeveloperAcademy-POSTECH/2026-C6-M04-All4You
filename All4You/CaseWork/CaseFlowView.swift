@@ -12,7 +12,8 @@ enum CaseRoute: Hashable {
 }
 
 /// 2D 수정에서 시작해 화면 더미(path)를 쌓고 빼며 이동한다.
-/// 메인은 더미에 쌓지 않고 전체 화면으로 덮어 띄운다. 더미 안에 있으면 메인의 탭 막대가 상단 바 아래 줄로 내려가기 때문이다
+/// 메인은 더미에 쌓지 않고 더미 대신 바꿔 끼워 보여 준다. 더미 안에 있으면 메인의 탭 막대가 상단 바 아래 줄로 내려가기 때문이다.
+/// 전체 화면으로 덮어 띄우면 저장된 사건을 열 때 2D 수정이 먼저 보였다가 메인이 올라와서, 바꿔 끼우는 방식으로 메인이 바로 보이게 한다
 struct CaseFlowView: View {
     /// 지금 작업 중인 사건. 도면은 이 사건의 평면도에 저장한다
     let fireCase: FireCase
@@ -23,9 +24,8 @@ struct CaseFlowView: View {
     @State private var isCaseMainShown: Bool
     /// 2D·3D 수정 화면이 함께 보고 고치는 도면. 바뀔 때마다 사건의 평면도에 저장한다
     @State private var planData: PlanData
-    /// 메인에서 찍거나 불러온 사진. 메인을 닫았다 열어도 남도록 여기서 들고 있다
-    // TEMP: 사진 저장 흐름(SwiftData)이 연결되기 전이라 메모리에만 있음 — 앱을 끄면 사진이 사라짐
-    @State private var photoStore = PhotoStore()
+    /// 메인에서 찍거나 불러온 사진. 사건의 사진 모델에 저장하고, 메인을 닫았다 열어도 같은 것을 본다
+    @State private var photoStore: PhotoStore
     /// 2D·3D 수정 화면이 함께 쓰는 되돌리기·다시 하기 기록
     @State private var history = PlanHistory()
 
@@ -36,21 +36,25 @@ struct CaseFlowView: View {
         _isCaseMainShown = State(initialValue: startsAtMain)
         // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 저장된 JSON을 못 읽으면 빈 도면
         _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? .empty)
+        _photoStore = State(initialValue: PhotoStore(fireCase: fireCase))
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            edit2DScreen
-                .navigationDestination(for: CaseRoute.self) { route in
-                    destination(for: route)
+        Group {
+            if isCaseMainShown {
+                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, onBack: onClose, onEdit: showEdit2D)
+            } else {
+                NavigationStack(path: $path) {
+                    edit2DScreen
+                        .navigationDestination(for: CaseRoute.self) { route in
+                            destination(for: route)
+                        }
                 }
+            }
         }
         .onChange(of: planData) { old, new in
             history.record(from: old, to: new)
             storeFloorPlan(new)
-        }
-        .fullScreenCover(isPresented: $isCaseMainShown) {
-            CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, onBack: onClose, onEdit: showEdit2D)
         }
     }
 }

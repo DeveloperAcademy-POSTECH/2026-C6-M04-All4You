@@ -29,9 +29,7 @@ struct CaseListView: View {
     /// 방금 등록해 등록 시트가 닫히면 열 사건
     @State private var pendingFloorPlan: FireCase?
     /// 지금 열어 전체 화면으로 보여 주는 사건
-    @State private var openedCase: FireCase?
-    /// 사건을 열 때 평면도가 이미 있었는지. 있었으면 메인부터, 열고 나서 막 만들었으면 2D 수정부터 보여 준다
-    @State private var openedWithFloorPlan = false
+    @State private var openedCase: OpenedCase?
     
     /// 사이드바를 펼쳤는지(.all) 접었는지(.detailOnly)
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -130,13 +128,13 @@ struct CaseListView: View {
             }
         }
         // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
-        .fullScreenCover(item: $openedCase) { fireCase in
-            if fireCase.floorPlan != nil {
-                CaseFlowView(fireCase: fireCase, startsAtMain: openedWithFloorPlan, onClose: { openedCase = nil })
+        .fullScreenCover(item: $openedCase) { opened in
+            if opened.fireCase.floorPlan != nil {
+                CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, onClose: { openedCase = nil })
             } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
-                        fireCase: fireCase
+                        fireCase: opened.fireCase
                     )
                 }
             }
@@ -151,9 +149,18 @@ struct CaseListView: View {
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
     private func open(_ fireCase: FireCase) {
         fireCase.lastViewedAt = .now
-        openedWithFloorPlan = fireCase.floorPlan != nil
-        openedCase = fireCase
+        openedCase = OpenedCase(fireCase: fireCase, startsAtMain: fireCase.floorPlan != nil)
     }
+}
+
+/// 전체 화면으로 연 사건과, 열 때 평면도가 이미 있었는지.
+/// 따로 둔 @State로 넘기면 전체 화면이 열리는 순간의 옛 값을 읽어 메인 대신 2D 수정이 떠서, 여는 값에 함께 담는다
+private struct OpenedCase: Identifiable {
+    let fireCase: FireCase
+    /// 평면도가 이미 있었으면 메인부터, 열고 나서 막 만들었으면 2D 수정부터 보여 준다
+    let startsAtMain: Bool
+
+    var id: UUID { fireCase.id }
 }
 
 // MARK: - 사이드바

@@ -53,7 +53,8 @@ struct CaseMainView: View {
             albumRows: albumRows,
             memoRows: memoRows,
             albumBadge: photoStore.unassignedPhotos.count,
-            onClearRow: clearRow
+            onClearRow: clearRow,
+            leadingHeader: AnyView(titleHeader)
         ) {
             withCaseToolbars(floorPlanTab)
         } album: {
@@ -94,7 +95,7 @@ struct CaseMainView: View {
         .sheet(isPresented: $isImportingPhoto) {
             PhotoLibrarySheet { photos in
                 for photo in photos {
-                    photoStore.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: photo.takenAt)
+                    photoStore.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: photo.takenAt, source: .photoLibrary)
                 }
             }
             .presentationSizing(PhotoLibrarySheetSizing(containerSize: screenSize))
@@ -270,18 +271,21 @@ extension CaseMainView {
                     isExportSheetPresented = true
                 }
             )
-            .caseTitleToolbar(
-                title: fireCase.title,
-                sessionNumber: sessionNumber,
-                sessionNumbers: fireCase.sessionNumbers,
-                onSelectSession: { number in
-                    // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
-                    sessionNumber = number
-                },
-                onAddSession: addSession
-            )
-        // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
-            .backOnlyToolbar(onBack: onBack)
+    }
+
+    /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
+    private var titleHeader: some View {
+        CaseTitleHeader(
+            title: fireCase.title,
+            sessionNumber: sessionNumber,
+            sessionNumbers: fireCase.sessionNumbers,
+            onSelectSession: { number in
+                // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
+                sessionNumber = number
+            },
+            onAddSession: addSession,
+            onBack: onBack
+        )
     }
     
     /// 가장 큰 차수 다음 번호로 새 차수를 만들고 그 차수를 고른다

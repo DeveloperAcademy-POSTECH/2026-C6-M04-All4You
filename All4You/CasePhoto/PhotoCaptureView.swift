@@ -132,7 +132,7 @@ extension PhotoCaptureView {
         Task {
             defer { isCapturing = false }
             guard let photo = await camera.capturePhoto() else { return }
-            let id = store.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: .now)
+            let id = store.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: .now, source: .camera)
             withAnimation {
                 capturedIDs.append(id)
             }
