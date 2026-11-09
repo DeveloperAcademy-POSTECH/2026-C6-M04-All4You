@@ -1,5 +1,5 @@
 // 도면 탭 왼쪽 위의 필터 버튼과 펼침 패널. 도면 위에 사진을 어떻게 보여 줄지 고른다
-// 지금은 고른 값만 기억하고 도면 표시는 바뀌지 않는다
+// 북마크를 고르면 2D 도면에 북마크 사진의 촬영 위치 번호 핀(BookmarkPhotoMarkerLayer), 촬영 방향을 켜면 부채꼴이 보인다
 
 import SwiftUI
 
@@ -31,7 +31,6 @@ struct PhotoFilterMenu: View {
     @State private var isOpen = false
 
     var body: some View {
-        // TODO: 고른 값에 따라 도면 위 사진·촬영 방향 표시 바꾸기 (사진 매핑 단계)
         VStack(alignment: .leading, spacing: 0) {
             filterButton
             if isOpen {

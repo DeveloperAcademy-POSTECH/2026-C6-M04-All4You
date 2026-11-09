@@ -109,6 +109,15 @@ extension FloorPlanTabView {
                             selectedRoomID: selectedRoomID,
                             onTapRoom: selectRoom
                         )
+                        // 북마크 필터: 북마크 사진을 찍은 정확한 자리에 번호 핀 (촬영 방향을 켜면 부채꼴도)
+                        if showsBookmarkMarkers {
+                            BookmarkPhotoMarkerLayer(
+                                markers: bookmarkMarkers(in: planData),
+                                screen: screen,
+                                showsDirection: photoFilter.showsDirection,
+                                onTap: { id in openBookmarkViewer(initialID: id, in: planData) }
+                            )
+                        }
                         // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
                         FloorPlanMemoPlacementOverlay(
                             planData: planData,
@@ -287,17 +296,32 @@ extension FloorPlanTabView {
         return [hoveredRoomID: PhotoPin(thumbnail: photo.thumbnail, count: count, isPreview: true)]
     }
 
-    /// 장소마다 가장 최근 사진과 사진 수. 필터에서 사진 표시를 끄면 핀이 없고, 북마크를 고르면 북마크한 사진만 센다
-    // TODO: 필터의 "촬영 방향" 표시 — 촬영 위치·방향 데이터가 생기면
+    /// 장소마다 가장 최근 사진과 사진 수. 필터에서 사진 표시를 끄면 핀이 없고, 북마크를 고르면 북마크한 사진만 센다.
+    /// 북마크 사진 중 정확한 촬영 위치가 있는 것은 번호 핀으로 따로 보이므로 장소 핀에서는 뺀다
     private func photoPins(in planData: PlanData) -> [String: PhotoPin] {
         guard photoFilter.isPhotoVisible else { return [:] }
+        let markedIDs = showsBookmarkMarkers ? Set(bookmarkMarkers(in: planData).map(\.id)) : []
         var pins: [String: PhotoPin] = [:]
         for room in planData.rooms {
-            let photos = filteredPhotos(inRoom: room.id)
+            let photos = filteredPhotos(inRoom: room.id).filter { !markedIDs.contains($0.id) }
             guard let latest = photos.first else { continue }
             pins[room.id] = PhotoPin(thumbnail: latest.thumbnail, count: photos.count)
         }
         return pins
+    }
+
+    /// 북마크 번호 핀을 보여 줄지. 사진을 끌어다 놓는 동안은 숨긴다 (3D에는 아직 없음)
+    private var showsBookmarkMarkers: Bool {
+        photoFilter.isPhotoVisible && photoFilter.scope == .bookmarked && !isPlacingPhotos
+    }
+
+    private func bookmarkMarkers(in planData: PlanData) -> [BookmarkPhotoMarker] {
+        BookmarkPhotoMarker.markers(for: photoStore.photos, in: planData)
+    }
+
+    /// 번호 핀을 누르면 그 사진부터 북마크 사진을 번호 순서로 넘겨 본다
+    private func openBookmarkViewer(initialID: UUID, in planData: PlanData) {
+        viewerContext = PhotoViewerContext(photoIDs: bookmarkMarkers(in: planData).map(\.id), initialID: initialID)
     }
 
     /// 끌고 있던 사진을 놓은 장소로 옮긴다
