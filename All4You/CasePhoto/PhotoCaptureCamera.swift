@@ -138,7 +138,7 @@ extension PhotoCaptureCamera: AVCapturePhotoCaptureDelegate {
             return
         }
         // 이미 카메라 쪽 스레드라 여기서 작은 사진까지 만들어 화면이 멈추지 않게 한다
-        let thumbnail = EvidencePhoto.makeThumbnail(from: image)
+        let thumbnail = LoadedPhoto.makeThumbnail(from: image)
         continuation?.resume(returning: CapturedPhoto(image: image, thumbnail: thumbnail))
     }
 }

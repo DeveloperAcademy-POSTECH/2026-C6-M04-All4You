@@ -77,7 +77,7 @@ extension CaseAlbumView {
     }
 
     /// "안방 >" 제목과 그 장소 사진의 가로 줄. 사진이 없으면 빈 칸 하나를 둔다. onOpen이 nil이면 제목을 누를 수 없다
-    private func overviewSection(title: String, photos: [EvidencePhoto], badge: Int?, onOpen: (() -> Void)?) -> some View {
+    private func overviewSection(title: String, photos: [LoadedPhoto], badge: Int?, onOpen: (() -> Void)?) -> some View {
         VStack(alignment: .leading, spacing: Layout.headerSpacing) {
             Button {
                 onOpen?()
@@ -171,11 +171,11 @@ extension CaseAlbumView {
     }
 
     /// 장소 사진을 최근에 찍은 것부터
-    private func sortedPhotos(inRoom roomKey: String?) -> [EvidencePhoto] {
+    private func sortedPhotos(inRoom roomKey: String?) -> [LoadedPhoto] {
         photoStore.photos(inRoom: roomKey).sorted { $0.takenAt > $1.takenAt }
     }
 
-    private func openViewer(photos: [EvidencePhoto], initialID: UUID) {
+    private func openViewer(photos: [LoadedPhoto], initialID: UUID) {
         viewerContext = PhotoViewerContext(photoIDs: photos.map(\.id), initialID: initialID)
     }
 }
@@ -209,8 +209,8 @@ extension CaseAlbumView {
 /// 장소 하나의 사진 모음. 큰 제목, "북마크만 보기", 달별 사진 칸으로 구성된다
 private struct RoomAlbumView: View {
     let title: String
-    let photos: [EvidencePhoto]
-    let onOpenPhoto: (_ photos: [EvidencePhoto], _ initialID: UUID) -> Void
+    let photos: [LoadedPhoto]
+    let onOpenPhoto: (_ photos: [LoadedPhoto], _ initialID: UUID) -> Void
 
     @State private var isBookmarkOnly = false
 
@@ -219,7 +219,7 @@ private struct RoomAlbumView: View {
             VStack(alignment: .leading, spacing: Layout.titleSpacing) {
                 header
                 LazyVGrid(columns: Layout.columns, alignment: .leading, spacing: Layout.tileSpacing, pinnedViews: .sectionHeaders) {
-                    ForEach(PhotoDateSection<EvidencePhoto>.group(photos, by: .month, date: \.takenAt)) { section in
+                    ForEach(PhotoDateSection<LoadedPhoto>.group(photos, by: .month, date: \.takenAt)) { section in
                         Section {
                             ForEach(section.items) { photo in
                                 tile(photo)
@@ -241,7 +241,7 @@ private struct RoomAlbumView: View {
     }
 
     /// 북마크만 보기를 켜면 북마크하지 않은 사진은 흐려지고 누를 수 없다
-    private var visiblePhotos: [EvidencePhoto] {
+    private var visiblePhotos: [LoadedPhoto] {
         isBookmarkOnly ? photos.filter(\.isBookmarked) : photos
     }
 
@@ -282,7 +282,7 @@ private struct RoomAlbumView: View {
             .padding(.vertical, Layout.monthVerticalPadding)
     }
 
-    private func tile(_ photo: EvidencePhoto) -> some View {
+    private func tile(_ photo: LoadedPhoto) -> some View {
         let isDimmed = isBookmarkOnly && !photo.isBookmarked
         return AlbumPhotoTile(photo: photo) {
             onOpenPhoto(visiblePhotos, photo.id)
@@ -352,7 +352,7 @@ private struct EmptyAlbumTile: View {
 
 /// 둥근 정사각 사진 한 칸. 북마크한 사진은 오른쪽 위에 흰 책갈피가 보인다
 private struct AlbumPhotoTile: View {
-    let photo: EvidencePhoto
+    let photo: LoadedPhoto
     let action: () -> Void
 
     var body: some View {

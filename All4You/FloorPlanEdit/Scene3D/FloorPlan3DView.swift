@@ -14,6 +14,10 @@ struct FloorPlan3DView: View {
     let onTap: (PlanTap?) -> Void
     /// 고른 스탬프를 옮기거나 돌리거나 복제·삭제하면 알린다
     let onEdit: (PlanEdit) -> Void
+    /// 도면 위에 띄울 핀 (사진·메모 등). 공간 이름 라벨처럼 3D 자리를 화면 점으로 바꿔 겹치고, 벽에 가려지면 숨긴다
+    var pins: [Plan3DPin] = []
+    /// 핀 하나를 그리는 뷰 (Plan3DPin.id를 받음). nil이면 핀을 그리지 않는다
+    var pinView: ((String) -> AnyView)? = nil
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -33,6 +37,8 @@ struct FloorPlan3DView: View {
     @State private var labelPoints: [String: CGPoint] = [:]
     /// 가구 이름 라벨의 화면 위치 (키 = Furniture.id). 공간 이름 라벨과 함께 다시 계산한다
     @State private var furnitureLabelPoints: [String: CGPoint] = [:]
+    /// 핀의 화면 위치 (키 = Plan3DPin.id). 라벨과 함께 다시 계산한다
+    @State private var pinPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
     @State private var frameUpdates: EventSubscription?
     /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
@@ -85,6 +91,10 @@ struct FloorPlan3DView: View {
         .overlay(alignment: .topLeading) {
             roomLabels
         }
+        // 핀은 이름 라벨 위에 보이고 누를 수 있다
+        .overlay(alignment: .topLeading) {
+            pinLayer
+        }
         .overlay(alignment: .topLeading) {
             stampControls
         }
@@ -96,6 +106,9 @@ struct FloorPlan3DView: View {
             rebuildScene()
         }
         .onChange(of: windowPreview) {
+            rebuildScene()
+        }
+        .onChange(of: pins) {
             rebuildScene()
         }
         .onChange(of: selection) {
@@ -130,6 +143,36 @@ extension FloorPlan3DView {
         .allowsHitTesting(false)
     }
 
+    /// 도면 위 핀. 화면 밖·벽 뒤에 있으면 그리지 않는다
+    @ViewBuilder
+    private var pinLayer: some View {
+        if let pinView {
+            ForEach(pins) { pin in
+                if let point = pinPoints[pin.id] {
+                    pinView(pin.id)
+                        .position(point)
+                }
+            }
+        }
+    }
+
+    /// 핀 자리 엔티티들을 모아 두는 엔티티 이름
+    private static let pinAnchorsName = "pinAnchors"
+
+    /// 핀마다 3D 자리 엔티티를 만든다. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = Plan3DPin.id
+    private func makePinAnchors(for plan: PlanData) -> Entity {
+        let space = PlanSpace(plan: plan)
+        let group = Entity()
+        group.name = Self.pinAnchorsName
+        for pin in pins {
+            let anchor = Entity()
+            anchor.name = pin.id
+            anchor.position = space.world(pin.point, height: pin.height)
+            group.addChild(anchor)
+        }
+        return group
+    }
+
     /// 공간·가구 라벨 자리를 화면 점으로 다시 계산한다. 바뀐 것만 넣어 화면을 쓸데없이 다시 그리지 않는다
     private func updateLabelPoints(using content: RealityViewCameraContent) {
         let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content)
@@ -139,6 +182,10 @@ extension FloorPlan3DView {
         let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content)
         if furniture != furnitureLabelPoints {
             furnitureLabelPoints = furniture
+        }
+        let pinScreenPoints = screenPoints(ofAnchorsIn: Self.pinAnchorsName, content: content)
+        if pinScreenPoints != pinPoints {
+            pinPoints = pinScreenPoints
         }
     }
 
@@ -620,6 +667,7 @@ extension FloorPlan3DView {
         let plan = windowPreview ?? planData
         sceneRoot.children.removeAll()
         sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: plan, selection: selection))
+        sceneRoot.addChild(makePinAnchors(for: plan))
         selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
         case .marker?, .wallFixture?:
@@ -678,4 +726,13 @@ extension FloorPlan3DView {
 
 #Preview {
     FloorPlan3DView(planData: DummyFloorPlan.planData, selection: nil, onTap: { _ in }, onEdit: { _ in })
+}
+
+/// 3D 도면 위에 띄울 핀 하나의 자리
+struct Plan3DPin: Identifiable, Equatable {
+    let id: String
+    /// 도면 좌표 (m)
+    let point: SIMD2<Double>
+    /// 바닥에서 높이 (m)
+    let height: Double
 }

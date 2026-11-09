@@ -1,38 +1,52 @@
-// 사건 화면 상단 바 왼쪽의 사건명과 조사 차수 메뉴.
-// 뒤로가기·완료(Global/Toolbar.swift), 오른쪽 버튼 묶음(CaseActionToolbar)과 따로 붙여 화면마다 골라 쓴다
+// 사건 화면 왼쪽 위의 뒤로가기·사건명·조사 차수 메뉴. 오른쪽 버튼 묶음(CaseActionToolbar)과 따로 쓴다
 
 import SwiftUI
 
-extension View {
-    /// 상단 바 왼쪽에 사건명과 조사 차수 메뉴를 붙인다.
-    /// 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기를 함께 쓰면 backOnlyToolbar를 이것보다 뒤에 붙인다
-    func caseTitleToolbar(
-        title: String,
-        sessionNumber: Int,
-        sessionNumbers: [Int],
-        onSelectSession: @escaping (Int) -> Void,
-        onAddSession: @escaping () -> Void
-    ) -> some View {
-        toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Text(title)
-                    .font(.largeTitle.bold())
-                    // 상단 바가 이 칸을 좁게 잡아 제목이 "청…"으로 잘리므로 글자 길이만큼 자리를 차지하게 한다
-                    .fixedSize()
-            }
-            .sharedBackgroundVisibility(.hidden)
+/// 뒤로가기·사건명·조사 차수 메뉴를 시스템 상단 바 대신 화면 위에 직접 그린 줄.
+/// 사건 메인의 상단 바 왼쪽 칸(topBarLeading)은 사이드바를 접고 펼 때 통째로 사라지는 일이 있어, 메인은 이 줄을 탭 위에 겹쳐 쓴다.
+/// 뒤로가기는 2D·3D 수정 화면의 공용 상단 바(customTopBar)와 같은 유리 원 모양이다
+struct CaseTitleHeader: View {
+    let title: String
+    let sessionNumber: Int
+    let sessionNumbers: [Int]
+    let onSelectSession: (Int) -> Void
+    let onAddSession: () -> Void
+    let onBack: () -> Void
 
-            ToolbarItem(placement: .topBarLeading) {
-                SessionMenuButton(
-                    sessionNumber: sessionNumber,
-                    sessionNumbers: sessionNumbers,
-                    onSelectSession: onSelectSession,
-                    onAddSession: onAddSession
-                )
+    var body: some View {
+        HStack(spacing: HeaderLayout.spacing) {
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: HeaderLayout.backIconSize, weight: .semibold))
+                    .frame(width: HeaderLayout.backSize, height: HeaderLayout.backSize)
             }
-            // figma 디자인과 유사하게 하기 위해 기본 상단바 유리를 숨겼다
-            .sharedBackgroundVisibility(.hidden)
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel(HeaderCopy.back)
+            // 자리가 모자라면 사건명만 줄여 "청암로…"처럼 끝을 자른다. 뒤로가기·차수 메뉴는 줄이지 않는다
+            Text(title)
+                .font(.largeTitle.bold())
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
+            SessionMenuButton(
+                sessionNumber: sessionNumber,
+                sessionNumbers: sessionNumbers,
+                onSelectSession: onSelectSession,
+                onAddSession: onAddSession
+            )
         }
+    }
+
+    private enum HeaderLayout {
+        static let spacing: CGFloat = 12
+        /// 공용 상단 바(customTopBar)의 뒤로가기와 같은 크기
+        static let backSize: CGFloat = 44
+        static let backIconSize: CGFloat = 17
+    }
+
+    private enum HeaderCopy {
+        static let back = "뒤로"
     }
 }
 
@@ -160,14 +174,12 @@ extension SessionMenuButton {
 }
 
 #Preview {
-    NavigationStack {
-        Text("화면 내용")
-            .caseTitleToolbar(
-                title: "청암로 77",
-                sessionNumber: 1,
-                sessionNumbers: [1, 2],
-                onSelectSession: { _ in },
-                onAddSession: {}
-            )
-    }
+    CaseTitleHeader(
+        title: "청암로 77",
+        sessionNumber: 1,
+        sessionNumbers: [1, 2],
+        onSelectSession: { _ in },
+        onAddSession: {},
+        onBack: {}
+    )
 }

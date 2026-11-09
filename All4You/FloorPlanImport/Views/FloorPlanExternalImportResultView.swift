@@ -5,7 +5,8 @@ struct FloorPlanExternalImportResultView: View {
     let image: UIImage
     let address: String
     let onBack: () -> Void
-    let onSave: (UIImage) -> Void
+    /// 저장을 누르면 변환 결과(서버 도면 JSON 포함)를 넘긴다. 받는 쪽이 평면도로 저장하고, 실패하면 알림 문구를 돌려준다
+    let onSave: (FloorPlanConversion) -> String?
     @State private var convertedPlan: FloorPlanConversion?
     @State private var isConverting = false
     @State private var errorMessage: String?
@@ -53,7 +54,7 @@ struct FloorPlanExternalImportResultView: View {
                     if let convertedPlan {
                         do {
                             try convertedPlan.save()
-                            onSave(convertedPlan.preview)
+                            errorMessage = onSave(convertedPlan)
                         } catch {
                             errorMessage = "도면 파일을 저장하지 못했습니다. 다시 시도해 주세요."
                         }

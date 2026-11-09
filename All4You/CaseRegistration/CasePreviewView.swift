@@ -11,8 +11,8 @@ import SwiftUI
 
 struct CasePreviewView: View {
     let fireCase: FireCase
-    /// "사건 열기"를 누르면 사건을 연다
-    let onOpen: () -> Void
+    /// "사건 열기"를 누르면 도면 탭으로, 앨범·메모 버튼을 누르면 그 탭으로 사건을 연다
+    let onOpen: (CaseStartTab) -> Void
 
     var body: some View {
         floorPlan
@@ -22,11 +22,11 @@ struct CasePreviewView: View {
             }
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: Layout.buttonSpacing) {
-                    countButton(Copy.album, count: "\(fireCase.photoCount)\(Copy.photoUnit)") {
-                        // TODO: 사건 작업 화면의 앨범 탭으로 이동
+                    countButton(Copy.album, count: "\(fireCase.photos.count)\(Copy.photoUnit)") {
+                        onOpen(.album)
                     }
-                    countButton(Copy.memo, count: "\(fireCase.memoCount)\(Copy.memoUnit)") {
-                        // TODO: 사건 작업 화면의 메모 탭으로 이동
+                    countButton(Copy.memo, count: "\(fireCase.memos.count)\(Copy.memoUnit)") {
+                        onOpen(.memo)
                     }
                 }
                 .padding()
@@ -43,7 +43,7 @@ extension CasePreviewView {
                 // TEMP: Figma는 Large Title(34pt 굵게)인데 AppTypography에 없어 애플 기본 글꼴을 씀
                 .font(.largeTitle.bold())
             Spacer()
-            Button(Copy.open, action: onOpen)
+            Button(Copy.open) { onOpen(.floorPlan) }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
                 // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 검정)
@@ -92,8 +92,9 @@ extension CasePreviewView {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, Layout.buttonHorizontalPadding)
-            // 바깥 크기를 Figma 값으로 고정한다
-            .frame(width: Layout.buttonWidth, height: Layout.buttonHeight)
+            // 높이는 Figma 값으로 고정하고, 너비는 Figma 값까지 쓰되 미리보기가 좁으면 두 버튼이 나눠 줄어든다
+            .frame(maxWidth: Layout.buttonWidth)
+            .frame(height: Layout.buttonHeight)
             .foregroundStyle(Color.primary)
             .contentShape(.capsule)
         }

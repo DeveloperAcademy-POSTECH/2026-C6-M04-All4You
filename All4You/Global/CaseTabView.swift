@@ -34,6 +34,8 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     var albumBadge = 0
     // 사이드바에서 삭제를 확인한 줄. 그 장소의 사진·메모를 비우는 일은 화면이 한다
     let onClearRow: (CaseTabSelection) -> Void
+    /// 사이드바를 접었을 때 탭 왼쪽 위에 겹쳐 그릴 줄 (뒤로가기·사건명 등). 사이드바를 펴면 숨긴다
+    var leadingHeader: AnyView? = nil
     @ViewBuilder let floorPlan: FloorPlan
     @ViewBuilder let album: Album
     @ViewBuilder let memo: Memo
@@ -48,6 +50,17 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
                 sidebar
             }
             tabs
+                .overlay(alignment: .topLeading) {
+                    if !isSidebarShown, let leadingHeader {
+                        // 가운데 탭 막대를 덮지 않게, 탭 막대 왼쪽 끝까지만 쓴다
+                        GeometryReader { proxy in
+                            leadingHeader
+                                .frame(maxWidth: headerMaxWidth(in: proxy.size.width), alignment: .leading)
+                                .padding(.leading, CaseTabLayout.headerLeading)
+                                .padding(.top, CaseTabLayout.headerTop)
+                        }
+                    }
+                }
         }
     }
 }
@@ -103,6 +116,11 @@ extension CaseTabView {
 
 // 탭 막대
 extension CaseTabView {
+    /// 왼쪽 위 줄이 쓸 수 있는 너비. 가운데 놓인 탭 막대의 왼쪽 끝에서 여백만큼 앞까지
+    private func headerMaxWidth(in width: CGFloat) -> CGFloat {
+        max(0, (width - CaseTabLayout.tabBarWidth) / 2 - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
+    }
+
     /// 탭 막대에서 켜지는 탭은 고른 줄이 속한 구역이다.
     /// 사이드바 버튼을 누르면 탭은 그대로 두고 사이드바만 열고 닫는다
     private var tabBarSelection: Binding<CaseTabBarItem> {
@@ -152,6 +170,16 @@ private enum CaseTabBarItem {
 }
 
 // 문구. 사이드바(CaseSidebar)와 함께 쓴다. 제네릭 타입 안에는 static 값을 둘 수 없어 파일 안에 따로 둔다
+/// 탭 위에 겹치는 줄의 자리 (pt). 시스템 상단 바 버튼과 같은 줄에 오게 맞춘다
+private enum CaseTabLayout {
+    static let headerLeading: CGFloat = 16
+    static let headerTop: CGFloat = 4
+    /// 가운데 탭 막대(사이드바·도면·앨범·메모)의 대략 너비
+    static let tabBarWidth: CGFloat = 250
+    /// 왼쪽 위 줄과 탭 막대 사이 여백
+    static let headerGap: CGFloat = 16
+}
+
 enum CaseTabCopy {
     static let floorPlan = "도면"
     static let album = "앨범"

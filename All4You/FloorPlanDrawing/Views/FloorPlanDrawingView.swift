@@ -9,6 +9,8 @@ import SwiftUI
 import PencilKit
 
 struct FloorPlanDrawingView: View {
+    /// 상단 바 부제로 보여 줄 사건 주소
+    let address: String
     let onRetake: () -> Void
     let onConfirm: () -> Void
 
@@ -25,14 +27,14 @@ struct FloorPlanDrawingView: View {
                 .clipped()
         }
         .navigationTitle("도면 스케치")
-        .navigationSubtitle("청암로 77")  // TODO: 주소 불러온 걸로 바꾸기
+        .navigationSubtitle(address)
         .navigationBarTitleDisplayMode(.inline)
         .bothSidesToolbar(
             leadingTitle: "뒤로 가기",
             trailingTitle: "저장",
             customLayout: true,
             barTitle: "도면 스케치",
-            barSubtitle: "청암로 77",  // TODO: 주소 불러온 걸로 바꾸기
+            barSubtitle: address,
             onBack: onRetake,
             onDone: onConfirm
         )
@@ -111,6 +113,7 @@ struct FloorPlanDrawingPreview: View {
     var body: some View {
         NavigationStack {
             FloorPlanDrawingView(
+                address: "서울시 강남구 청암로 77",
                 onRetake: {},
                 onConfirm: {},
                 canvasView: $canvasView

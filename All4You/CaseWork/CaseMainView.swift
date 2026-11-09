@@ -19,8 +19,6 @@ struct CaseMainView: View {
     @State private var photoFilter = PhotoFilter()
     // 사이드바에서 고른 줄. 도면의 2D·3D도 여기서 정해진다
     @State private var selection = CaseTabSelection.floorPlan2D
-    // 이 사건에서 작성한 메모. 장소별 목록과 도면 핀이 같은 값을 본다
-    @State private var memoSections: [FloorPlanMemoSection] = []
     // 메모 추가 버튼을 누른 뒤 도면에서 위치를 고르고 있는지와 작성 중인 내용
     @State private var isAddingMemo = false
     @State private var memoDraft: FloorPlanMemoDraft?
@@ -38,13 +36,31 @@ struct CaseMainView: View {
     /// 상단 바에서 고른 조사 차수. 처음에는 가장 최근 차수
     @State private var sessionNumber: Int
     
-    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
+    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, startTab: CaseStartTab = .floorPlan, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
         self.fireCase = fireCase
         self.planData = planData
         self.photoStore = photoStore
         self.onBack = onBack
         self.onEdit = onEdit
         _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
+        _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
+    }
+
+    /// 처음 고를 줄. 앨범은 전체, 메모는 메모가 있는 첫 장소(없으면 첫 장소)
+    private static func firstSelection(of startTab: CaseStartTab, planData: PlanData, fireCase: FireCase) -> CaseTabSelection {
+        switch startTab {
+        case .floorPlan:
+            return .floorPlan2D
+        case .album:
+            return .albumOverview
+        case .memo:
+            let firstMemoRoom = fireCase.memos
+                .sorted { $0.createdAt < $1.createdAt }
+                .compactMap { memo in planData.rooms.first { $0.id == memo.targetKey }?.name }
+                .first
+            guard let name = firstMemoRoom ?? planData.rooms.first?.name else { return .floorPlan2D }
+            return .memo(name)
+        }
     }
     
     var body: some View {
@@ -53,13 +69,18 @@ struct CaseMainView: View {
             albumRows: albumRows,
             memoRows: memoRows,
             albumBadge: photoStore.unassignedPhotos.count,
-            onClearRow: clearRow
+            onClearRow: clearRow,
+            leadingHeader: AnyView(titleHeader)
         ) {
             withCaseToolbars(floorPlanTab)
         } album: {
             albumTab
         } memo: {
             withCaseToolbars(FloorPlanMemoView(sections: memoSections))
+        }
+        // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
+        .onChange(of: sessionNumber, initial: true) {
+            photoStore.sessionNumber = sessionNumber
         }
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
@@ -94,16 +115,13 @@ struct CaseMainView: View {
         .sheet(isPresented: $isImportingPhoto) {
             PhotoLibrarySheet { photos in
                 for photo in photos {
-                    photoStore.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: photo.takenAt)
+                    photoStore.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: photo.takenAt, source: .photoLibrary)
                 }
             }
             .presentationSizing(PhotoLibrarySheetSizing(containerSize: screenSize))
         }
         .sheet(isPresented: $isExportSheetPresented) {
-            FloorPlanExportView { configuration in
-                // TODO: configuration(사용자가 선택한 저장 옵션 및 도면 타입)을 이용해 실제 저장 로직 구현
-                print("저장됨: \(configuration)")
-            }
+            FloorPlanExportView(planData: planData, photos: photoStore.photos)
         }
     }
 }
@@ -124,13 +142,16 @@ extension CaseMainView {
             dimension: dimension,
             planData: planData,
             photoStore: photoStore,
-            isPlacingPhotos: $isPlacingPhotos
+            isPlacingPhotos: $isPlacingPhotos,
+            // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
+            memos: isAddingMemo ? [] : memoSections.allMemos
         )
         .id(floorPlanPresentationID)
         .overlay {
+            // 메모 위치를 고르는 동안만 저장된 메모 핀을 함께 그린다. 평소에는 도면 탭이 도면 자리(2D)·3D 자리에 핀을 띄운다
             FloorPlanMemoPlacementOverlay(
                 planData: planData,
-                memos: memoSections.allMemos,
+                memos: isAddingMemo ? memoSections.allMemos : [],
                 isPresented: $isAddingMemo,
                 draft: $memoDraft,
                 onSave: addMemo,
@@ -234,25 +255,36 @@ extension CaseMainView {
         }
     }
     
-    // 작성을 완료한 메모를 장소별 목록에 추가하고 현재 도면을 유지한다.
+    // 작성을 완료한 메모를 사건에 저장하고 현재 도면을 유지한다.
     private func addMemo(_ draft: FloorPlanMemoDraft) {
-        let number = memoSections.allMemos.count + 1
-        let memo = FloorPlanMemo(
-            title: "메모 #\(number)",
+        fireCase.memos.append(Memo(
+            title: "메모 #\(fireCase.memos.count + 1)",
             content: draft.content,
-            locationID: draft.locationID,
+            targetKey: draft.locationID,
             locationName: draft.locationName,
-            anchor: draft.anchor
-        )
-        memoSections.append(memo)
-        updateMemoCount()
+            anchorX: draft.anchor.x,
+            anchorY: draft.anchor.y
+        ))
         isAddingMemo = false
         memoDraft = nil
     }
-    
-    // 사건 미리보기에서도 방금 작성한 메모 개수가 보이도록 맞춘다.
-    private func updateMemoCount() {
-        fireCase.memoCount = memoSections.allMemos.count
+
+    /// 이 사건에 저장된 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
+    /// 장소 이름은 지금 도면의 이름을 쓴다 (메모를 쓴 뒤 장소 이름을 고쳐도 따라온다)
+    private var memoSections: [FloorPlanMemoSection] {
+        var sections: [FloorPlanMemoSection] = []
+        for memo in fireCase.memos.sorted(by: { $0.createdAt < $1.createdAt }) {
+            sections.append(FloorPlanMemo(
+                id: memo.id,
+                title: memo.title,
+                createdAt: memo.createdAt,
+                content: memo.content,
+                locationID: memo.targetKey,
+                locationName: planData.rooms.first { $0.id == memo.targetKey }?.name ?? memo.locationName,
+                anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY)
+            ))
+        }
+        return sections
     }
     
     // 탭마다 상단 바가 따로 있어서, 어느 탭에서든 같은 상단 바 버튼이 보이도록 각 탭 내용에 붙인다
@@ -270,18 +302,20 @@ extension CaseMainView {
                     isExportSheetPresented = true
                 }
             )
-            .caseTitleToolbar(
-                title: fireCase.title,
-                sessionNumber: sessionNumber,
-                sessionNumbers: fireCase.sessionNumbers,
-                onSelectSession: { number in
-                    // TODO: 차수별 사진이 생기면 고른 차수의 사진만 보이게
-                    sessionNumber = number
-                },
-                onAddSession: addSession
-            )
-        // 나중에 붙인 toolbar의 버튼이 앞에 놓이므로, 뒤로가기가 맨 왼쪽에 오도록 backOnlyToolbar를 마지막에 붙인다
-            .backOnlyToolbar(onBack: onBack)
+    }
+
+    /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
+    private var titleHeader: some View {
+        CaseTitleHeader(
+            title: fireCase.title,
+            sessionNumber: sessionNumber,
+            sessionNumbers: fireCase.sessionNumbers,
+            onSelectSession: { number in
+                sessionNumber = number
+            },
+            onAddSession: addSession,
+            onBack: onBack
+        )
     }
     
     /// 가장 큰 차수 다음 번호로 새 차수를 만들고 그 차수를 고른다
@@ -298,9 +332,12 @@ extension CaseMainView {
             guard roomKey != nil || name == CaseAlbumView.unassignedName else { return }
             photoStore.deleteAll(inRoom: roomKey)
         case .memo(let name):
-            guard let index = memoSections.firstIndex(where: { $0.locationName == name }) else { return }
-            memoSections[index].memos.removeAll()
-            updateMemoCount()
+            // 사이드바 줄은 이름으로 오므로, 그 이름의 장소 묶음에 든 메모를 지운다
+            guard let section = memoSections.first(where: { $0.locationName == name }) else { return }
+            let removed = Set(section.memos.map(\.id))
+            for memo in fireCase.memos where removed.contains(memo.id) {
+                memo.modelContext?.delete(memo)
+            }
         case .floorPlan2D, .floorPlan3D, .albumOverview:
             // 도면 줄과 앨범 전체는 지울 수 없다
             return
@@ -308,7 +345,6 @@ extension CaseMainView {
     }
     
     /// "사진 촬영하기": 카메라, 그다음 위치 권한을 확인한다. 위치는 촬영 위치를 남기는 데 필요해서 거절하면 촬영하지 않는다
-    // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func takePhoto() {
         Task {
             guard checkAllowed(await PermissionService.requestCameraPermission(), deniedPermission: .camera) else { return }
@@ -318,7 +354,6 @@ extension CaseMainView {
     }
     
     /// "사진 불러오기": 사진 보관함 권한을 확인한다
-    // TEMP: 앞 단계 권한 화면 코드가 생기면 '이전에 물었는지'에 따른 분기 추가 필요
     private func importPhoto() {
         Task {
             guard checkAllowed(await PermissionService.requestPhotoLibraryPermission(), deniedPermission: .photoLibrary) else { return }
@@ -361,17 +396,6 @@ extension CaseMainView {
 // 문구
 extension CaseMainView {
     private enum Copy {
-        // TEMP: 메모 데이터가 생기기 전 임시 값 — 데이터가 생기면 장소별 개수로 바꿔야 함
-        // name은 ERD Room.name. count는 ERD에 없는 계산값으로 memoCount라는 이름으로 쓸 예정 (임시 이름, PR에 명시)
-        static let memoRows = [
-            CaseSidebarRow(name: "발화지점", systemImage: "flame", count: 3),
-            CaseSidebarRow(name: "거실", systemImage: "lamp.floor", count: 5),
-            CaseSidebarRow(name: "안방", systemImage: "bed.double", count: 2),
-            CaseSidebarRow(name: "방1", systemImage: "fork.knife", count: 6)
-        ]
-        
-        static let memoPlaceholder = "메모 자리"
-        
         // 거절 알림 (Figma "사진 접근이 필요해요")
         static let openSettings = "설정 열기"
         static let cancel = "취소"
@@ -417,4 +441,11 @@ extension CaseMainView {
         onEdit: {}
     )
     .modelContainer(for: FireCase.self, inMemory: true)
+}
+
+/// 사건 메인을 열 때 처음 보여 줄 탭
+enum CaseStartTab {
+    case floorPlan
+    case album
+    case memo
 }

@@ -236,7 +236,7 @@ extension PhotoLibrarySheet {
             var photos: [LibraryPhoto] = []
             for asset in orderedAssets {
                 guard let image = await Self.requestImage(for: asset) else { continue }
-                let thumbnail = await Task.detached { EvidencePhoto.makeThumbnail(from: image) }.value
+                let thumbnail = await Task.detached { LoadedPhoto.makeThumbnail(from: image) }.value
                 photos.append(LibraryPhoto(image: image, thumbnail: thumbnail, takenAt: asset.creationDate ?? .now))
             }
             isLoading = false

@@ -24,7 +24,7 @@ struct PhotoCaptureView: View {
     /// 띠에서 누른 사진. 값이 있으면 사진 보기가 뜬다
     @State private var viewerContext: PhotoViewerContext?
 
-    private var capturedPhotos: [EvidencePhoto] {
+    private var capturedPhotos: [LoadedPhoto] {
         capturedIDs.compactMap(store.photo(id:))
     }
 
@@ -132,7 +132,7 @@ extension PhotoCaptureView {
         Task {
             defer { isCapturing = false }
             guard let photo = await camera.capturePhoto() else { return }
-            let id = store.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: .now)
+            let id = store.add(image: photo.image, thumbnail: photo.thumbnail, takenAt: .now, source: .camera)
             withAnimation {
                 capturedIDs.append(id)
             }

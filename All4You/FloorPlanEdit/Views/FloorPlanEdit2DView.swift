@@ -103,9 +103,9 @@ extension FloorPlanEdit2DView {
                 editingRoomId: editingRoomId,
                 selectedRoomId: selectedRoomId,
                 selectedWallIds: wallSelection?.wallIds ?? [],
-                roomLabelActions: RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag),
+                roomLabelActions: roomLabelActions,
                 editingFurnitureId: editingFurnitureId,
-                onTapFurnitureLabel: tapFurnitureLabel
+                onTapFurnitureLabel: furnitureLabelTap
             )
                 .contentShape(.rect)
                 .gesture(tapGesture)
@@ -174,8 +174,36 @@ extension FloorPlanEdit2DView {
     }
 
     private var toolBar: some View {
+        // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 획 선택일 때만 쓸 수 있다. 펜·지우개면 흐리게 하고 누를 수 없게 한다
         EditToolBar(selectedTool: $selectedTool)
+            .disabled(!isHandTool)
+            .opacity(isHandTool ? 1 : Layout.disabledToolOpacity)
             .padding()
+            .onChange(of: drawingTool) {
+                guard !isHandTool else { return }
+                // 펜·지우개로 바꾸면 고른 도구·스탬프·이름 캡슐을 모두 푼다
+                selectedTool = nil
+                selection = nil
+                selectedRoomId = nil
+                menuTarget = nil
+            }
+    }
+
+    /// 공간 이름 캡슐 누르기·끌기. 펜·지우개일 때는 nil이라 캡슐을 누르거나 끌 수 없다
+    private var roomLabelActions: RoomLabelActions? {
+        guard isHandTool else { return nil }
+        return RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag)
+    }
+
+    /// 가구 이름 캡슐 누르기. 펜·지우개일 때는 nil이라 누를 수 없다
+    private var furnitureLabelTap: ((String) -> Void)? {
+        guard isHandTool else { return nil }
+        return { tapFurnitureLabel($0) }
+    }
+
+    /// 아래 막대가 획 선택(손)인지. 위 도구와 스탬프·라벨 상호작용은 이때만 된다
+    private var isHandTool: Bool {
+        drawingTool == .hand
     }
 
     /// 되돌리면 고른 것이 사라졌을 수 있어 고르기·메뉴·미리 보기를 비운다. 고치던 이름은 넣지 않고 닫는다
@@ -220,14 +248,17 @@ extension FloorPlanEdit2DView {
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
-        // 위 도구(스탬프·라벨)를 골랐으면 아래 펜·지우개·획 선택과 상관없이 위 도구로 처리한다
-        if selectedTool == nil, drawingTool == .hand {
-            handleHandTap(tap)
+        // 펜·지우개일 때는 스탬프·라벨·창문·문·가구와 상호작용하지 않는다. 지우개로 벽을 누르면 그 벽만 지운다
+        guard drawingTool == .hand else {
+            if drawingTool == .eraser, case .wall(let id, _, _) = tap {
+                planData.eraseWall(id: id)
+            }
+            selection = nil
             return
         }
-        if selectedTool == nil, drawingTool == .eraser, case .wall(let id, _, _) = tap {
-            planData.eraseWall(id: id)
-            selection = nil
+        // 획 선택에서 위 도구를 고르지 않았으면 벽·스탬프·가구를 고른다
+        if selectedTool == nil {
+            handleHandTap(tap)
             return
         }
         switch (selectedTool, tap) {
@@ -702,7 +733,7 @@ extension FloorPlanEdit2DView {
         LongPressGesture(minimumDuration: Layout.longPressDuration)
             .onEnded { _ in
                 // 스탬프와 창문·문 모두 꾹 누르면 메뉴가 뜬다 (창문·문은 삭제만)
-                guard let screen, let pressLocation else { return }
+                guard isHandTool, let screen, let pressLocation else { return }
                 let target: PlanSelection
                 switch screen.tap(at: pressLocation, in: planData) {
                 case .element(let element):
@@ -793,6 +824,8 @@ extension FloorPlanEdit2DView {
     private enum Layout {
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
+        /// 펜·지우개일 때 위 도구 막대의 흐린 정도
+        static let disabledToolOpacity = 0.4
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
