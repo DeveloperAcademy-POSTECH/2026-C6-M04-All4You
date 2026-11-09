@@ -45,18 +45,3 @@ extension FloorPlan {
         roomPlanData.flatMap { try? RoomPlanOriginal.decode($0) }
     }
 }
-
-#if DEBUG
-import CoreTransferable
-import UniformTypeIdentifiers
-
-/// 스캔 원본을 JSON 파일로 공유하기 위한 값. 변환 규칙을 시뮬레이터에서 확인하려고 쓰는 디버그 전용
-struct RoomPlanExport: Transferable {
-    let data: Data
-
-    static var transferRepresentation: some TransferRepresentation {
-        DataRepresentation(exportedContentType: .json) { $0.data }
-            .suggestedFileName("roomplan-원본.json")
-    }
-}
-#endif
