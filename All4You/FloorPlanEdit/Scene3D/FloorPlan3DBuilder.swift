@@ -9,7 +9,7 @@ import UIKit
 
 @MainActor
 enum FloorPlan3DBuilder {
-    /// 도면 전체(바닥·벽·문창문·콘센트·표시)를 담은 엔티티 하나. selection과 같은 요소는 고른 표시로 그린다
+    /// 도면 전체(바닥·벽·문창문·가구·콘센트·표시)를 담은 엔티티 하나. selection과 같은 요소는 고른 표시로 그린다
     static func makeScene(for plan: PlanData, selection: PlanSelection?) -> Entity {
         PlanSelectionComponent.registerComponent()
         PlanWallComponent.registerComponent()
@@ -21,6 +21,9 @@ enum FloorPlan3DBuilder {
             guard let line = plan.line(of: wall) else { continue }
             let openings = plan.doorWindows.filter { $0.wallId == wall.id }
             root.addChild(makeWall(wall, line: line, openings: openings, space: space, selection: selection))
+        }
+        for furniture in plan.furniture ?? [] {
+            root.addChild(makeFurniture(furniture, space: space))
         }
         for fixture in plan.wallFixtures {
             guard let wall = plan.wall(id: fixture.wallId), let line = plan.line(of: wall) else { continue }
@@ -313,6 +316,49 @@ extension FloorPlan3DBuilder {
     }
 }
 
+// 가구
+// 3D에서는 보기만 해서 충돌 모양을 붙이지 않는다. 그래서 가구를 눌러도 직선이 지나가 그 아래 바닥에 스탬프를 놓을 수 있다
+extension FloorPlan3DBuilder {
+    /// 윗면 모양을 높이만큼 세운 상자(원형은 원기둥). 띄운 가구는 바닥에 옅은 그림자 자리를 함께 그린다
+    private static func makeFurniture(_ furniture: Furniture, space: PlanSpace) -> Entity {
+        let height = Float(max(FurnitureModel.minHeight, furniture.height))
+        let entity = Entity()
+        entity.position = space.world(furniture.center)
+        // 도면 회전은 위에서 볼 때 시계 방향 = 위아래 축 기준 음의 회전
+        entity.orientation = simd_quatf(angle: Float(-furniture.rotation), axis: [0, 1, 0])
+        let body = ModelEntity(mesh: furnitureMesh(furniture, height: height), materials: [Materials.furniture])
+        body.position.y = Float(furniture.elevation) + height / 2
+        entity.addChild(body)
+        if furniture.elevation > FurnitureModel.floatingElevation {
+            let shadow = ModelEntity(mesh: furnitureMesh(furniture, height: FurnitureModel.shadowHeight), materials: [Materials.furnitureShadow])
+            shadow.position.y = FurnitureModel.shadowHeight / 2
+            entity.addChild(shadow)
+        }
+        return entity
+    }
+
+    /// 가구 모양 그대로 height(m) 높이의 상자·원기둥
+    private static func furnitureMesh(_ furniture: Furniture, height: Float) -> MeshResource {
+        switch furniture.shape {
+        case .rectangle:
+            .generateBox(width: Float(furniture.width), height: height, depth: Float(furniture.depth), cornerRadius: FurnitureModel.cornerRadius)
+        case .circle:
+            .generateCylinder(height: height, radius: Float(furniture.width / 2))
+        }
+    }
+
+    /// 가구 3D 모양 값 (m)
+    private enum FurnitureModel {
+        /// 높이가 이보다 낮아도 이만큼은 보이게
+        static let minHeight = 0.01
+        /// 바닥에서 이보다 높이 띄운 가구는 바닥에 그림자 자리를 그린다 (2D 점선과 같은 기준)
+        static let floatingElevation = 0.01
+        /// 그림자 자리 두께. 바닥과 겹쳐 깜빡이지 않게 조금 두껍게
+        static let shadowHeight: Float = 0.004
+        static let cornerRadius: Float = 0.01
+    }
+}
+
 // 콘센트와 표시
 // TEMP: 콘센트·사람·발화지점은 RealityKit 기본 도형으로 만든 임시 모양. 디자인의 3D 아이콘 에셋이 생기면 바꿈
 extension FloorPlan3DBuilder {
@@ -391,10 +437,20 @@ private enum Materials {
     static let selectedStamp = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     static let selectedGlass = glass(tint: UIColor(resource: .brand500), opacity: 0.6)
     static let windowEdgeHandle = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
+    // TEMP: 가구 3D 디자인이 정해지기 전이라 2D 가구 채움보다 진한 회색 상자
+    static let furniture = SimpleMaterial(color: UIColor(resource: .gray300), roughness: 0.8, isMetallic: false)
+    static let furnitureShadow = shadow(opacity: 0.12)
 
     private static func glass(tint: UIColor, opacity: Float) -> PhysicallyBasedMaterial {
         var material = PhysicallyBasedMaterial()
         material.baseColor = .init(tint: tint)
+        material.blending = .transparent(opacity: .init(scale: opacity))
+        return material
+    }
+
+    /// 빛을 받지 않는 옅은 검은 판
+    private static func shadow(opacity: Float) -> UnlitMaterial {
+        var material = UnlitMaterial(color: UIColor(resource: .gray900))
         material.blending = .transparent(opacity: .init(scale: opacity))
         return material
     }
