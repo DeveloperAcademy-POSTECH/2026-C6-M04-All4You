@@ -1,5 +1,5 @@
 // 도면을 위에서 본 2D 그림. 벽·문·창문은 선으로, 가구는 윗면 모양으로, 스탬프는 아이콘으로, 공간·가구 이름은 캡슐로 그린다
-// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐만 roomLabelActions로 누르기·끌기를 알린다)
+// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐은 roomLabelActions로 누르기·끌기를, 가구 이름 캡슐은 onTapFurnitureLabel로 누르기를 알린다)
 
 import SwiftUI
 
@@ -7,7 +7,7 @@ import SwiftUI
 struct Plan2DView: View {
     let planData: PlanData
     let screen: PlanScreen
-    /// 고른 표시(주황 사각 테두리)를 그릴 스탬프
+    /// 고른 표시를 그릴 요소. 스탬프는 주황 사각 테두리, 벽·창문·가구는 주황 선
     var selection: PlanSelection? = nil
     /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 방 (Room.id). 이 방의 캡슐은 그리지 않는다
     var editingRoomId: String? = nil

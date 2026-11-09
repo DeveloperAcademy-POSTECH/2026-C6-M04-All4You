@@ -10,6 +10,6 @@ enum PlanSelection: Equatable {
     case doorWindow(String)
     /// 벽 한 줄 (Wall.id). 2D에서 손 도구로만 고른다
     case wall(String)
-    /// 가구 (Furniture.id). 2D에서 도구를 고르지 않았을 때만 고른다
+    /// 가구 (Furniture.id). 2D에서만 고른다 (위 도구 없이 윗면을 누르거나, 도구와 상관없이 이름 캡슐을 누름)
     case furniture(String)
 }
