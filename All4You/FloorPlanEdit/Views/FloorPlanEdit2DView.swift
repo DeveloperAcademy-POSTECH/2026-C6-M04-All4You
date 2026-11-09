@@ -1,5 +1,6 @@
 // 2D 도면 수정 화면. 도면을 화면에 맞춰 보여 주고 두 손가락으로 확대·축소하고 옮긴다.
-// 스탬프는 도구로 놓고, 눌러 고르고, 끌어 옮긴다. 공간 이름은 눌러 고르고 끌어 옮기며, 고른 것을 한 번 더 누르면 키보드로 고친다. 창문·벽 수정은 이어서 들어온다
+// 스탬프는 도구로 놓고, 눌러 고르고, 끌어 옮긴다. 공간 이름은 눌러 고르고 끌어 옮기며, 고른 것을 한 번 더 누르면 키보드로 고친다.
+// 아래 막대의 펜으로 벽을 긋고, 지우개로 벽을 지우고, 손으로 벽을 골라 옮긴다
 
 import SwiftUI
 
@@ -13,9 +14,12 @@ struct FloorPlanEdit2DView: View {
     let onDone: () -> Void
 
     @State private var selectedTool: EditTool?
-    /// 아래 막대에서 고른 펜·지우개·손. 손은 벽을 골라 옮길 때 쓴다
-    // TEMP: 펜·지우개는 막대만 있고 아직 하는 일이 없음 — 할 일이 정해지면 연결
+    /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
+    /// 펜으로 긋는 중인 선의 화면 시작·끝 점. 손을 떼면 이 선을 늘여 벽을 넣는다
+    @State private var penStroke: (start: CGPoint, end: CGPoint)?
+    /// 지우개로 문지르는 중인지
+    @State private var isErasing = false
     /// 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
@@ -107,9 +111,6 @@ extension FloorPlanEdit2DView {
                     openingControls(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
-                    wallMenu(screen: screen)
-                }
-                .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
                 }
                 .coordinateSpace(.named(Layout.planSpace))
@@ -119,6 +120,9 @@ extension FloorPlanEdit2DView {
                 }
                 .overlay(alignment: .top) {
                     wallBlockedNotice
+                }
+                .overlay {
+                    penStrokeLine
                 }
         }
     }
@@ -196,6 +200,11 @@ extension FloorPlanEdit2DView {
         selectedRoomId = nil
         if drawingTool == .hand {
             handleHandTap(tap)
+            return
+        }
+        if drawingTool == .eraser, case .wall(let id, _, _) = tap {
+            planData.eraseWall(id: id)
+            selection = nil
             return
         }
         switch (selectedTool, tap) {
@@ -307,7 +316,9 @@ extension FloorPlanEdit2DView {
     private var stampDragGesture: some Gesture {
         DragGesture(minimumDistance: Layout.dragStartDistance)
             .onChanged { value in
-                guard let screen, let selection else { return }
+                guard let screen else { return }
+                if drawOrErase(value, screen: screen) { return }
+                guard let selection else { return }
                 if dragWall(value, screen: screen) { return }
                 if stampDragStart == nil {
                     guard screen.stamp(at: value.startLocation, in: planData) == selection else { return }
@@ -323,6 +334,8 @@ extension FloorPlanEdit2DView {
             }
             .onEnded { _ in
                 commitPreview()
+                finishPenStroke()
+                isErasing = false
                 stampDragStart = nil
                 wallDragBase = nil
                 wallBlockedReason = nil
@@ -345,6 +358,75 @@ extension FloorPlanEdit2DView {
             return plan.wallFixtures.first { $0.id == id }.flatMap(plan.point(of:))
         case .doorWindow, .wall:
             return nil
+        }
+    }
+}
+
+// 펜으로 벽 그리기·지우개로 벽 지우기
+// 고른 스탬프·벽을 끄는 중이 아니면, 펜 끌기는 벽 한 줄을 긋고 지우개 끌기는 손가락이 지나간 벽을 지운다.
+// 끄는 동안은 미리 보기 도면만 바꾸므로 한 번 긋거나 문지른 것이 되돌리기 한 칸이다
+extension FloorPlanEdit2DView {
+    /// 펜·지우개 끌기를 처리했으면 true
+    private func drawOrErase(_ value: DragGesture.Value, screen: PlanScreen) -> Bool {
+        let isNewStroke = penStroke == nil && !isErasing
+        if isNewStroke {
+            // 고른 스탬프·벽 위에서 시작했거나 공간 이름을 끄는 중이면 그것을 옮긴다
+            guard drawingTool != .hand, stampDragStart == nil, wallDragBase == nil, labelDragStart == nil,
+                  selection == nil || !startsOnSelection(value.startLocation, screen: screen) else { return false }
+            selection = nil
+            menuTarget = nil
+        }
+        switch drawingTool {
+        case .pen:
+            penStroke = (value.startLocation, value.location)
+        case .eraser:
+            isErasing = true
+            var preview = dragPreview ?? planData
+            if case .wall(let id, _, _) = screen.tap(at: value.location, in: preview) {
+                preview.eraseWall(id: id)
+                dragPreview = preview
+            }
+        case .hand:
+            return false
+        }
+        return true
+    }
+
+    /// 그은 선을 양쪽으로 늘여 처음 닿는 벽 사이에 벽을 넣는다. 넣을 수 없는 자리면 아무것도 바꾸지 않는다
+    private func finishPenStroke() {
+        guard let penStroke, let screen else { return }
+        self.penStroke = nil
+        if let drawn = planData.drawingWall(
+            from: screen.plan(penStroke.start),
+            to: screen.plan(penStroke.end),
+            snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
+        ) {
+            planData = drawn
+        }
+    }
+
+    /// 화면 점이 고른 스탬프나 고른 벽 위인지
+    private func startsOnSelection(_ location: CGPoint, screen: PlanScreen) -> Bool {
+        switch screen.tap(at: location, in: planData) {
+        case .element(let element):
+            return element == selection
+        case .wall(let id, _, _):
+            return selection == .wall(id) || wallSelection?.wallIds.contains(id) == true
+        case .floor:
+            return false
+        }
+    }
+
+    /// 펜으로 긋는 중인 선. 손을 떼기 전까지는 손가락이 그은 그대로 보여 준다
+    @ViewBuilder
+    private var penStrokeLine: some View {
+        if let penStroke {
+            Path { path in
+                path.move(to: penStroke.start)
+                path.addLine(to: penStroke.end)
+            }
+            .stroke(Color.brand500, style: StrokeStyle(lineWidth: Layout.penLineWidth, lineCap: .round, dash: Layout.penDash))
+            .allowsHitTesting(false)
         }
     }
 }
@@ -380,11 +462,15 @@ extension FloorPlanEdit2DView {
         menuTarget = nil
         let moved = screen.plan(value.location) - screen.plan(value.startLocation)
         guard let wallSelection else {
-            // 비스듬한 벽: 벽과 수직으로 평행 이동만
+            // 비스듬한 벽: 그 벽만 수직으로 평행 이동하고 다른 벽은 제자리. 막히면 마지막으로 맞는 미리 보기를 두고 위쪽에 이유를 띄운다
             guard let wall = planData.wall(id: id), let line = planData.line(of: wall) else { return true }
-            var preview = planData
-            _ = preview.apply(.moveWall(id: id, distance: (moved * line.leftNormal).sum()), selection: selection)
-            dragPreview = preview
+            switch planData.movingSlantedWall(id: id, by: (moved * line.leftNormal).sum()) {
+            case .success(let next):
+                dragPreview = next
+                wallBlockedReason = nil
+            case .failure(let block):
+                wallBlockedReason = block.message
+            }
             return true
         }
         let base = wallDragBase ?? (planData, planData.moveLimits(wallSelection))
@@ -409,21 +495,6 @@ extension FloorPlanEdit2DView {
                 .padding(.vertical, Layout.labelVerticalPadding)
                 .background(Color.gray900, in: .capsule)
                 .padding(.top, Layout.noticeTopPadding)
-        }
-    }
-
-    /// 고른 벽을 꾹 눌러 띄운 복제·삭제 메뉴. 벽 가운데 위에 둔다
-    @ViewBuilder
-    private func wallMenu(screen: PlanScreen) -> some View {
-        if case .wall(let id)? = selection, menuTarget == selection,
-           let wall = planData.wall(id: id), let line = planData.line(of: wall) {
-            let middle = screen.point(line.point(along: line.length / 2))
-            StampEditMenuView(
-                onDuplicate: { handleEdit(.duplicate(.wall(id))) },
-                onDelete: { handleEdit(.delete(.wall(id))) }
-            )
-            .fixedSize()
-            .position(x: middle.x, y: middle.y - Layout.menuGap)
         }
     }
 }
@@ -460,10 +531,6 @@ extension FloorPlanEdit2DView {
                 switch screen.tap(at: pressLocation, in: planData) {
                 case .element(let element):
                     target = element
-                case .wall(let id, _, _) where drawingTool == .hand:
-                    // 손 도구일 때는 벽도 꾹 눌러 복제·삭제 메뉴를 띄운다. 복제·삭제는 누른 벽 한 구간에만 한다
-                    target = .wall(id)
-                    wallSelection = planData.wallSegment(id)
                 default:
                     return
                 }
@@ -567,6 +634,11 @@ extension FloorPlanEdit2DView {
         static let keyboardFreeShare = 0.4
         /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
         static let noticeTopPadding: CGFloat = 8
+        /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
+        static let snapDistance: CGFloat = 16
+        /// 긋는 중인 펜 점선
+        static let penLineWidth: CGFloat = 2
+        static let penDash: [CGFloat] = [6, 4]
     }
 }
 

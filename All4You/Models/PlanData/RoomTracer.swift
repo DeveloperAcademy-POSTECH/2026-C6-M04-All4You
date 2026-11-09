@@ -8,8 +8,11 @@
 import Foundation
 
 extension PlanData {
-    /// 방 경계를 다시 만든다. 고리와 방의 짝이 맞지 않으면 바꾸지 않고 false
-    mutating func retraceRooms() -> Bool {
+    /// 방 경계를 다시 만든다. 고리와 방의 짝이 맞지 않으면 바꾸지 않고 false.
+    /// splitsRooms가 true면 새로 그린 벽이 방 하나를 여러 고리로 나눈 것을 허락한다.
+    /// 이름 자리가 든 고리가 원래 방을 잇고, 나머지 고리는 새 방이 된다.
+    /// mergesRooms가 true면 벽을 지워 여러 방이 한 고리가 된 것을 허락한다. 목록에서 앞선 방이 남고 나머지 방은 빠진다
+    mutating func retraceRooms(splitsRooms: Bool = false, mergesRooms: Bool = false) -> Bool {
         let pos = vertexPoints
         // 한쪽 끝이 어디에도 이어지지 않은 벽(따로 세운 벽 등)은 방을 나누지 않으므로 빼고 돈다
         let looped = loopedWalls()
@@ -35,7 +38,8 @@ extension PlanData {
         for room in rooms { for edge in room.boundary { roomOfSide["\(edge.wallId)/\(edge.forward)"] = room.id } }
 
         var visited = Set<Int>()
-        var boundaries: [String: [RoomEdge]] = [:]
+        var loopsOfRoom: [String: [[RoomEdge]]] = [:]
+        var mergedRoomIds = Set<String>()
         var outerCount = 0
         for start in sides.indices where !visited.contains(start) {
             var loop: [Int] = []
@@ -49,16 +53,36 @@ extension PlanData {
             let names = Set(loop.compactMap { roomOfSide["\(sides[$0].wallId)/\(sides[$0].forward)"] })
             if area > WallMoveRules.eps {
                 // 방이 아닌 닫힌 고리(이름이 없는 칸)는 그대로 둔다
-                guard names.count <= 1 else { return false }
-                guard let name = names.first else { continue }
-                guard boundaries[name] == nil else { return false }
-                boundaries[name] = loop.map { RoomEdge(wallId: sides[$0].wallId, forward: sides[$0].forward) }
+                guard names.count <= 1 || mergesRooms else { return false }
+                guard let name = rooms.first(where: { names.contains($0.id) })?.id else { continue }
+                mergedRoomIds.formUnion(names.subtracting([name]))
+                loopsOfRoom[name, default: []].append(loop.map { RoomEdge(wallId: sides[$0].wallId, forward: sides[$0].forward) })
             } else {
                 guard names.isEmpty else { return false }
                 outerCount += 1
             }
         }
-        guard outerCount >= 1, boundaries.count == rooms.count else { return false }
+        rooms.removeAll { mergedRoomIds.contains($0.id) }
+        guard outerCount >= 1, loopsOfRoom.count == rooms.count else { return false }
+        var boundaries: [String: [RoomEdge]] = [:]
+        var newRooms: [Room] = []
+        for room in rooms {
+            guard var loops = loopsOfRoom[room.id] else { return false }
+            if loops.count > 1 {
+                guard splitsRooms else { return false }
+                // 이름 자리가 든 고리가 원래 방을 잇는다. 그런 고리가 없으면 가장 넓은 고리
+                let label = SIMD2(room.labelX, room.labelY)
+                let keep = loops.firstIndex { Self.polygon(points(of: $0), contains: label) }
+                    ?? loops.indices.max { Self.signedArea(points(of: loops[$0])) < Self.signedArea(points(of: loops[$1])) }!
+                boundaries[room.id] = loops.remove(at: keep)
+                for loop in loops {
+                    // 이름 자리는 아래 refreshRoomLabels가 방 안으로 옮긴다
+                    newRooms.append(Room(id: UUID().uuidString, name: RoomCopy.newRoomName, boundary: loop, labelX: .infinity, labelY: .infinity))
+                }
+            } else {
+                boundaries[room.id] = loops[0]
+            }
+        }
         for index in rooms.indices {
             guard var boundary = boundaries[rooms[index].id] else { return false }
             // 시작 벽이 그대로 있으면 시작을 맞춰 둔다
@@ -67,18 +91,51 @@ extension PlanData {
             }
             rooms[index].boundary = boundary
         }
+        rooms += newRooms
         return true
+    }
+
+    /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
+    private func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
+        polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
     }
 
     /// 이름 자리가 방 밖으로 나간 방은, 방을 x·y 좌표로 격자처럼 잘라 방 안에서 가장 넓은 칸의 가운데로 옮긴다
     mutating func refreshRoomLabels() {
         for index in rooms.indices {
+            // 방을 나눠 새로 생긴 방은 이름 자리가 아직 없으므로 방 가운데에 놓는다
+            guard rooms[index].labelX.isFinite else {
+                centerRoomLabel(id: rooms[index].id)
+                continue
+            }
             let polygon = polygon(of: rooms[index])
             let label = SIMD2(rooms[index].labelX, rooms[index].labelY)
             guard room(containing: label)?.id != rooms[index].id,
                   let center = Self.largestCellCenter(polygon, inside: rooms[index].id, of: self) else { continue }
             rooms[index].labelX = center.x
             rooms[index].labelY = center.y
+        }
+    }
+
+    /// 방 이름 자리를 방 넓이의 무게중심으로 옮긴다. 무게중심이 방 밖이면(ㄷ자 방 등) 방 안 가장 넓은 칸 가운데로
+    mutating func centerRoomLabel(id: String) {
+        guard let index = rooms.firstIndex(where: { $0.id == id }) else { return }
+        let points = polygon(of: rooms[index])
+        let area = Self.signedArea(points)
+        guard abs(area) > WallMoveRules.eps else { return }
+        var center = SIMD2<Double>(0, 0)
+        for i in points.indices {
+            let a = points[i]
+            let b = points[(i + 1) % points.count]
+            center += (a + b) * (a.x * b.y - b.x * a.y)
+        }
+        center /= 6 * area
+        if room(containing: center)?.id == id {
+            rooms[index].labelX = center.x
+            rooms[index].labelY = center.y
+        } else if let cell = Self.largestCellCenter(points, inside: id, of: self) {
+            rooms[index].labelX = cell.x
+            rooms[index].labelY = cell.y
         }
     }
 
@@ -123,4 +180,10 @@ extension PlanData {
         }
         return best?.point
     }
+}
+
+// 문구
+private enum RoomCopy {
+    /// 벽을 그려 새로 생긴 방의 이름. 공간라벨로 고칠 수 있다
+    static let newRoomName = "새 공간"
 }
