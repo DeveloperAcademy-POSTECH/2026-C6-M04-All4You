@@ -38,6 +38,8 @@ struct BookmarkPhotoMarkerLayer: View {
     let screen: PlanScreen
     /// 필터의 "촬영 방향"
     let showsDirection: Bool
+    /// 고른 핀. 고른 핀만 진하게, 나머지는 흐리게 그린다
+    var selectedID: UUID? = nil
     /// 핀을 누르면 그 사진 id를 알린다
     let onTap: (UUID) -> Void
 
@@ -48,6 +50,7 @@ struct BookmarkPhotoMarkerLayer: View {
             }
             ForEach(markers) { marker in
                 markerButton(marker)
+                    .opacity(isDimmed(marker) ? Layout.dimmedOpacity : 1)
                     .position(screen.point(marker.placement.position))
                     .transition(.scale.combined(with: .opacity))
             }
@@ -69,6 +72,11 @@ struct BookmarkPhotoMarkerLayer: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Copy.markerLabel(marker.number))
+        .accessibilityAddTraits(marker.id == selectedID ? .isSelected : [])
+    }
+
+    private func isDimmed(_ marker: BookmarkPhotoMarker) -> Bool {
+        selectedID != nil && marker.id != selectedID
     }
 
     /// 핀마다 바라본 쪽으로 화각만큼 벌어진 부채꼴. 도면 좌표로 점을 찍고 screen으로 옮겨 확대해도 길이가 도면과 맞는다
@@ -87,7 +95,10 @@ struct BookmarkPhotoMarkerLayer: View {
                     cone.addLine(to: screen.point(center + direction * Layout.coneLength))
                 }
                 cone.closeSubpath()
-                context.fill(cone, with: .linearGradient(
+                // 핀마다 흐림 정도가 달라 복사본에 투명도를 준다
+                var coneContext = context
+                coneContext.opacity = isDimmed(marker) ? Layout.dimmedOpacity : 1
+                coneContext.fill(cone, with: .linearGradient(
                     Gradient(colors: [Color.brand500.opacity(Layout.coneOpacity), Color.brand500.opacity(0)]),
                     startPoint: screen.point(center),
                     endPoint: screen.point(center + SIMD2(sin(yaw * .pi / 180), -cos(yaw * .pi / 180)) * Layout.coneLength)
@@ -108,11 +119,75 @@ struct BookmarkPhotoMarkerLayer: View {
         static let maxConeAngle = 90.0
         static let coneOpacity = 0.45
         static let arcSteps = 12
+        /// 다른 핀을 골랐을 때 흐린 정도
+        static let dimmedOpacity = 0.3
     }
 
     private enum Copy {
         static func markerLabel(_ number: Int) -> String {
             "북마크 사진 \(number)번"
         }
+    }
+}
+
+/// 북마크 번호 핀을 누르면 오른쪽에 여는 사진 패널. "안방 #8" 제목과 큰 사진.
+/// 장소 사진 모음(RoomPhotoPanel)과 같은 글자·여백으로 그린다
+struct BookmarkPhotoPanel: View {
+    /// 사진이 놓인 장소 이름. 장소가 없으면 "위치 미확인"
+    let roomName: String?
+    let number: Int
+    let photo: LoadedPhoto
+    /// 확대 버튼: 전체 화면 사진 보기
+    let onExpand: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
+            header
+            Color.clear
+                .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
+                .overlay {
+                    Image(uiImage: photo.image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                .onTapGesture(perform: onExpand)
+                .accessibilityAddTraits(.isButton)
+            Spacer(minLength: 0)
+        }
+        .padding(Layout.padding)
+    }
+
+    private var header: some View {
+        HStack(spacing: Layout.headerSpacing) {
+            Text(roomName ?? Copy.unplaced)
+                .font(AppTypography.title2Emphasized)
+            Text("#\(number)")
+                .font(AppTypography.subheadlineEmphasized)
+                .monospacedDigit()
+                .padding(.horizontal, Layout.chipPadding)
+                .padding(.vertical, Layout.chipVerticalPadding)
+                .background(.gray100, in: .capsule)
+            Spacer()
+            Button(Copy.expand, systemImage: "arrow.up.left.and.arrow.down.right", action: onExpand)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+        }
+    }
+
+    private enum Layout {
+        static let padding: CGFloat = 28
+        static let sectionSpacing: CGFloat = 24
+        static let headerSpacing: CGFloat = 10
+        static let chipPadding: CGFloat = 10
+        static let chipVerticalPadding: CGFloat = 4
+        static let cornerRadius: CGFloat = 8
+        static let previewAspectRatio: CGFloat = 1.55
+    }
+
+    private enum Copy {
+        static let unplaced = "위치 미확인"
+        static let expand = "전체 화면으로 보기"
     }
 }
