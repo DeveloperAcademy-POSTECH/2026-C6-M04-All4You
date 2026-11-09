@@ -9,6 +9,9 @@ struct FloorPlanImportView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var source: UIImage?
     @State private var result: UIImage?
+    @State private var convertedPlan: FloorPlanConversion?
+    @State private var isConverting = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -23,32 +26,78 @@ struct FloorPlanImportView: View {
 
     // 보정된 도면을 화면에 최대한 크게 표시. 도면이 잘리지 않도록 비율 유지
     private func scanResult(image: UIImage) -> some View {
-        Image(uiImage: image)
+        let title: String
+        if let convertedPlan {
+            title = convertedPlan.isSegmentationPreview ? "픽셀 예측 미리보기" : "변환 도면 확인"
+        } else {
+            title = "스캔 결과 확인"
+        }
+
+        return Image(uiImage: convertedPlan?.preview ?? image)
             .resizable()
             .scaledToFit()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.white)
+            .overlay {
+                if isConverting {
+                    ProgressView("도면 변환 중")
+                        .padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
             .preferredColorScheme(.light)
-            .navigationTitle("스캔 결과 확인")
+            .navigationTitle(title)
             .navigationSubtitle(address)
             .navigationBarTitleDisplayMode(.inline)
             .bothSidesToolbar(
                 leadingTitle: "뒤로 가기",
-                trailingTitle: "저장",
+                trailingTitle: convertedPlan == nil ? "도면 변환" : "저장",
+                isDoneDisabled: isConverting,
                 customLayout: true,
-                barTitle: "스캔 결과 확인",
+                barTitle: title,
                 barSubtitle: address,
                 onBack: {
-                    // 원본 사진은 유지하고 결과만 비워 영역 조정 화면으로 돌아간다.
-                    result = nil
+                    isConverting = false
+                    if convertedPlan != nil {
+                        convertedPlan = nil
+                    } else {
+                        result = nil
+                    }
                 },
                 onDone: {
-                    if let onImport {
-                        onImport(image)
+                    if let convertedPlan {
+                        do {
+                            try convertedPlan.save()
+                            onImport?(convertedPlan.preview)
+                            dismiss()
+                        } catch {
+                            errorMessage = "도면 파일을 저장하지 못했습니다. 다시 시도해 주세요."
+                        }
+                    } else {
+                        isConverting = true
                     }
-                    dismiss()
                 }
             )
+            .task(id: isConverting) {
+                guard isConverting else { return }
+                do {
+                    let plan = try await FloorPlanConversion.request(image)
+                    try Task.checkCancellation()
+                    convertedPlan = plan
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    errorMessage = error.localizedDescription
+                }
+                isConverting = false
+            }
+            .alert("도면 처리 실패", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("확인", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
     }
 
     // 촬영한 원본이 있으면 모서리 조정 화면을, 없으면 카메라를 표시
