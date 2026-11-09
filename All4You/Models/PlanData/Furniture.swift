@@ -33,6 +33,9 @@ enum FurnitureShape: String, Codable {
 }
 
 extension Furniture {
+    /// 2D에서 크기를 줄일 수 있는 가장 작은 가로·세로 (m). 이보다 작으면 손가락으로 고르기 어렵다
+    static let minSize = 0.2
+
     /// 사각형의 네 모서리 (도면 좌표). 회전한 가로 방향은 (cos, sin), 세로 방향은 그것을 시계 방향으로 90° 돌린 쪽
     var corners: [SIMD2<Double>] {
         let across = SIMD2(cos(rotation), sin(rotation)) * (width / 2)

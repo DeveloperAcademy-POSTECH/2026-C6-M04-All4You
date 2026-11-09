@@ -153,7 +153,10 @@ extension FloorPlanEdit2DView {
                     onResize: { scale in
                         if let marker { preview(.resize(markerId: marker.id, scale: scale)) }
                     },
-                    onDragEnded: endHandleDrag
+                    onDragEnded: endHandleDrag,
+                    onResizeCorner: furniture(of: selection, in: planData).map { furniture in
+                        { location in resizeFurniture(furniture, cornerAt: location, screen: screen) }
+                    }
                 )
             }
         }
@@ -559,6 +562,22 @@ extension FloorPlanEdit2DView {
         if case .rotateFurniture(let id, let rotation) = edit {
             showFurnitureBlocked(preview.furniture?.first { $0.id == id }.map { $0.rotation != rotation } ?? false)
         }
+    }
+
+    /// 크기 손잡이가 손가락 자리에 오도록 가로·세로를 바꾼다. 가운데는 그대로라 양쪽이 함께 늘고 준다.
+    /// 손가락 자리를 가구 방향으로 되돌려 가로·세로 거리를 재고, 손잡이가 테두리 여백만큼 바깥에 있으니 그만큼 뺀다
+    private func resizeFurniture(_ furniture: Furniture, cornerAt location: CGPoint, screen: PlanScreen) {
+        let offset = screen.plan(location) - furniture.center
+        let across = abs(offset.x * cos(furniture.rotation) + offset.y * sin(furniture.rotation))
+        let along = abs(-offset.x * sin(furniture.rotation) + offset.y * cos(furniture.rotation))
+        let padding = Double(Plan2DView.selectionPadding) / Double(screen.length(1))
+        let width = max((across - padding) * 2, Furniture.minSize)
+        let depth = furniture.shape == .circle ? width : max((along - padding) * 2, Furniture.minSize)
+        var next = dragPreview ?? planData
+        next.resizeFurniture(id: furniture.id, width: width, depth: depth)
+        dragPreview = next
+        let resized = next.furniture?.first { $0.id == furniture.id }
+        showFurnitureBlocked(resized.map { $0.width != width || $0.depth != depth } ?? false)
     }
 
     /// 가구가 벽에 막혀 손가락을 따라가지 못하면 위쪽에 이유를 띄우고, 다시 따라가면 내린다 (벽이 막힐 때와 같은 캡슐)

@@ -19,6 +19,14 @@ extension PlanData {
         updateFurniture(id: id) { $0.rotation = rotation }
     }
 
+    /// 가구 가로·세로(m)를 바꾼다. 가운데는 그대로이고, 원형은 지름 하나라 width만 쓴다
+    mutating func resizeFurniture(id: String, width: Double, depth: Double) {
+        updateFurniture(id: id) { furniture in
+            furniture.width = max(width, Furniture.minSize)
+            furniture.depth = furniture.shape == .circle ? furniture.width : max(depth, Furniture.minSize)
+        }
+    }
+
     mutating func removeFurniture(id: String) {
         furniture?.removeAll { $0.id == id }
     }

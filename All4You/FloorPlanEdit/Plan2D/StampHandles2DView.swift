@@ -22,6 +22,8 @@ struct StampHandles2DView: View {
     let onResize: (Double) -> Void
     /// 돌리기·크기 바꾸기에서 손을 떼면 알린다
     let onDragEnded: () -> Void
+    /// 가구처럼 가로·세로를 따로 바꾸는 것은 배율 대신 크기 손잡이를 끄는 손가락 자리(coordinateSpace 기준)를 알린다. 있으면 scale이 nil이어도 크기 손잡이를 둔다
+    var onResizeCorner: ((CGPoint) -> Void)? = nil
 
     /// 돌리기를 시작할 때의 방향. 돌리는 동안 yaw가 바뀌어도 여기서부터 잰다
     @State private var startYaw: Double?
@@ -38,7 +40,7 @@ struct StampHandles2DView: View {
                     .position(corner(x: 1, y: -1))
                     .gesture(rotateGesture)
             }
-            if scale != nil {
+            if scale != nil || onResizeCorner != nil {
                 // 오른쪽 아래 모서리에서 가운데를 잇는 대각선 방향의 양쪽 화살표
                 handleIcon("arrow.up.left.and.arrow.down.right")
                     .accessibilityLabel(Copy.resize)
@@ -107,6 +109,10 @@ extension StampHandles2DView {
     private var resizeGesture: some Gesture {
         DragGesture(coordinateSpace: .named(coordinateSpace))
             .onChanged { value in
+                if let onResizeCorner {
+                    onResizeCorner(value.location)
+                    return
+                }
                 guard let scale else { return }
                 let start = startScale ?? scale
                 startScale = start
