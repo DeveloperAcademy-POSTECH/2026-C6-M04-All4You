@@ -82,6 +82,8 @@ struct CaseListView: View {
             }
         ) {
             CaseRegistrationView { newCase in
+                // 새 사건은 1차 조사부터 시작한다
+                newCase.addSession()
                 modelContext.insert(newCase)
                 
                 do {
