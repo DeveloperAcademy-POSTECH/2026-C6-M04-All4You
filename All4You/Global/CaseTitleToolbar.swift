@@ -19,6 +19,8 @@ struct CaseTitleHeader: View {
                 Image(systemName: "chevron.left")
                     .font(.system(size: HeaderLayout.backIconSize, weight: .semibold))
                     .frame(width: HeaderLayout.backSize, height: HeaderLayout.backSize)
+                    // plain 버튼은 그려진 선만 눌려서, 원 전체를 누르는 자리로 잡는다 (iPadOS 26에서 안 눌리던 문제)
+                    .contentShape(.circle)
             }
             .buttonStyle(.plain)
             .glassEffect(.regular.interactive(), in: .circle)
