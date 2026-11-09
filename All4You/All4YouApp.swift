@@ -12,7 +12,7 @@ import SwiftData
 struct All4YouApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            AppLaunchView()
         }
         .modelContainer(for: FireCase.self)
     }
