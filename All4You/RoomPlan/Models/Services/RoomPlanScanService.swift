@@ -51,6 +51,10 @@ import RoomPlan
     @Published private(set) var isRelocalizing = false
     @Published private(set) var mergeError: String?
     @Published private(set) var segmentID = UUID()
+    /// 스캔 중 찍은 사진 수와 촬영 안내
+    @Published private(set) var scanPhotoCount = 0
+    @Published private(set) var isCapturingPhoto = false
+    @Published private(set) var photoMessage: String?
     var arSession: ARSession { tracking.arSession }
     var onAutomaticStop: (() -> Void)?
     
@@ -119,6 +123,17 @@ import RoomPlan
     }()
     private let logger = Logger(subsystem: "All4You", category: "RoomPlan")
     private let torch = RoomPlanTorchService()
+    // 스캔과 같은 ARSession에서 찍은 사진과 카메라 자세
+    private let photoService = RoomPlanPhotoService()
+
+    /// 스캔 중 찍은 사진. 스캔을 마친 뒤(finish) 읽으면 ARKit이 다듬은 마지막 자세가 담겨 있다
+    var scanPhotos: [ScanPhoto] { photoService.photos }
+
+    /// 사진 위치가 스캔 좌표계에 맞게 남는 단계에서만 촬영 허용.
+    /// 준비(.ready) 단계는 RoomCaptureSession.run이 추적을 다시 시작할 수 있어 막는다
+    var canCapturePhoto: Bool {
+        (phase == .scanning || phase == .paused) && !isRelocalizing && !needsRelocalization && !isCapturingPhoto
+    }
     
     // 세션 재개, 저장 중 입력, 재현지화를 조율하는 내부 상태
     private var captureSession: RoomCaptureSession?
@@ -241,6 +256,30 @@ import RoomPlan
         captureSession.stop(pauseARSession: false)
     }
     
+    // 스캔을 멈추지 않고 현재 AR 프레임을 사진으로 찍어 카메라 위치·방향과 함께 보관
+    func capturePhoto(orientation: UIInterfaceOrientation) {
+        guard canCapturePhoto else { return }
+        if let frame = arSession.currentFrame, case .limited = frame.camera.trackingState {
+            // 추적이 불안정해도 사진은 남기되, 도면 위치는 지정하지 않는다 (ScanAlignment.placement)
+            photoMessage = "위치 추적이 불안정해 이 사진은 위치를 직접 지정해야 해요"
+        } else {
+            photoMessage = nil
+        }
+        isCapturingPhoto = true
+        let session = arSession
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isCapturingPhoto = false }
+            do {
+                try await self.photoService.capture(from: session, orientation: orientation)
+                self.scanPhotoCount = self.photoService.photos.count
+            } catch {
+                self.logger.error("스캔 중 사진 촬영 실패: \(error.localizedDescription, privacy: .public)")
+                self.photoMessage = error.localizedDescription
+            }
+        }
+    }
+
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
         do {
@@ -297,6 +336,8 @@ import RoomPlan
         pendingAction = .none
         turnTorchOff()
         phase = .finished
+        // ARSession을 멈추기 전에 ARKit이 다듬은 앵커 위치로 사진 자세를 고정
+        photoService.refreshPoses(from: arSession)
         tracking.stop()
         guard !completedRooms.isEmpty else {
             mergeError = "저장된 공간 결과가 없어 최종 도면을 만들 수 없습니다"
@@ -330,6 +371,8 @@ import RoomPlan
         }
         // 타임아웃으로 issue가 바뀌어도 위치를 찾기 전에는 새 구간을 시작하지 않음
         if needsRelocalization {
+            // 새 ARSession으로 바꾸기 전 사진 자세를 최신으로. 앵커는 월드맵에 담겨 재현지화 뒤에도 돌아온다
+            photoService.refreshPoses(from: arSession)
             guard tracking.prepareRestart() else {
                 issue = .captureFailed("이전 위치 정보가 없어 연속 스캔을 시작할 수 없습니다")
                 return
@@ -486,6 +529,8 @@ import RoomPlan
         captureSession?.delegate = nil
         captureSession?.stop(pauseARSession: false)
         captureSession = nil
+        // AR 좌표계를 버리므로 그동안 찍은 사진의 위치는 더 이상 도면과 맞지 않음
+        photoService.invalidatePoses()
         tracking.resetEmptyScan()
         currentRoom = nil
         pausedRoom = nil

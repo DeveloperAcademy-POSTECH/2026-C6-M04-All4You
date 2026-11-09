@@ -114,7 +114,7 @@ struct FloorPlanMethodSelectionView: View {
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
-                RoomPlanScanView(onUseResult: { _, structure, rooms in
+                RoomPlanScanView(onUseResult: { _, structure, rooms, _ in
                     scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
                     scannedPlan = PlanData(structure: structure, rooms: rooms)
                 })

@@ -114,7 +114,8 @@ final class ARCameraFrameView: MTKView, MTKViewDelegate {
 }
 
 // 화면 방향을 카메라 픽셀 버퍼의 회전 값으로 변환
-private extension UIInterfaceOrientation {
+// 스캔 중 사진 촬영(RoomPlanPhotoService)도 쓴다
+extension UIInterfaceOrientation {
     var imageOrientation: CGImagePropertyOrientation {
         switch self {
         case .portrait: .right
