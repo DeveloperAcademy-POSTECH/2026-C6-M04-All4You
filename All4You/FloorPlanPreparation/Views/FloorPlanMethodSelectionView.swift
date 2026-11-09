@@ -224,10 +224,8 @@ struct FloorPlanMethodSelectionView: View {
                     plan: convertedDrawing,
                     address: fireCase.address,
                     onBack: { self.convertedDrawing = nil },
-                    onSave: { image in
-                        onImport?(image)
-                        self.convertedDrawing = nil
-                        destination = nil
+                    onSave: { conversion in
+                        drawingError = saveConvertedFloorPlan(conversion, sourceType: .iPadDrawing)
                     }
                 )
             } else {
@@ -260,6 +258,19 @@ struct FloorPlanMethodSelectionView: View {
             Button("확인", role: .cancel) {}
         } message: {
             Text(drawingError ?? "")
+        }
+    }
+
+    /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
+    /// 평면도가 생기면 사건 목록이 이 화면 대신 2D 수정 화면을 띄운다 (공간 스캔과 같은 길)
+    private func saveConvertedFloorPlan(_ conversion: FloorPlanConversion, sourceType: FloorPlanSourceType) -> String? {
+        do {
+            let plan = try PlanData(serverJSON: conversion.json)
+            guard !plan.walls.isEmpty else { return Copy.noWalls }
+            try fireCase.replaceFloorPlan(with: plan, sourceType: sourceType)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 
@@ -374,6 +385,14 @@ struct FloorPlanMethodSelectionView: View {
         // 카메라가 없는 기기에서는 촬영 화면을 열지 않는다.
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
         isCameraPresented = true
+    }
+}
+
+// 문구
+extension FloorPlanMethodSelectionView {
+    private enum Copy {
+        // TEMP: Figma에 변환 결과에 벽이 없을 때의 문구가 없어 임의로 작성
+        static let noWalls = "도면에서 벽을 찾지 못했어요. 다시 그리거나 다른 도면으로 시도해 주세요."
     }
 }
 
