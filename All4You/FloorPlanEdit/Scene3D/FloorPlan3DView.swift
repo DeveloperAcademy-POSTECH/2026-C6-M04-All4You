@@ -31,6 +31,8 @@ struct FloorPlan3DView: View {
     @State private var committedZoom: Float = 1
     /// 공간 이름 라벨의 화면 위치 (키 = Room.id). 카메라가 움직일 때마다 다시 계산한다
     @State private var labelPoints: [String: CGPoint] = [:]
+    /// 가구 이름 라벨의 화면 위치 (키 = Furniture.id). 공간 이름 라벨과 함께 다시 계산한다
+    @State private var furnitureLabelPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
     @State private var frameUpdates: EventSubscription?
     /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
@@ -76,6 +78,10 @@ struct FloorPlan3DView: View {
         .simultaneousGesture(pressLocationGesture)
         .simultaneousGesture(stampDragGesture)
         .gesture(TwoFingerPanGesture(onChanged: panPlan, onEnded: endTwoFingers))
+        // 가구 이름을 먼저 깔아, 겹치면 공간 이름이 위에 보이게 한다 (2D와 같은 순서)
+        .overlay(alignment: .topLeading) {
+            furnitureLabels
+        }
         .overlay(alignment: .topLeading) {
             roomLabels
         }
@@ -100,7 +106,7 @@ struct FloorPlan3DView: View {
     }
 }
 
-// 공간 이름 라벨
+// 공간·가구 이름 라벨
 // iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹치는 방법 사용
 extension FloorPlan3DView {
     private var roomLabels: some View {
@@ -113,9 +119,32 @@ extension FloorPlan3DView {
         .allowsHitTesting(false)
     }
 
-    /// 장면 안 라벨 자리(FloorPlan3DBuilder)를 화면 점으로 바꾸고, 카메라 뒤에 있거나 벽에 가려지면 빠지도록 한다
+    /// 2D와 같은 가구 이름 캡슐. 3D에서는 보기만 한다
+    private var furnitureLabels: some View {
+        ForEach(planData.furniture ?? []) { furniture in
+            if let point = furnitureLabelPoints[furniture.id] {
+                FurnitureLabelView(label: furniture.label)
+                    .position(point)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 공간·가구 라벨 자리를 화면 점으로 다시 계산한다. 바뀐 것만 넣어 화면을 쓸데없이 다시 그리지 않는다
     private func updateLabelPoints(using content: RealityViewCameraContent) {
-        guard let anchors = sceneRoot.findEntity(named: FloorPlan3DBuilder.roomLabelAnchorsName) else { return }
+        let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content)
+        if rooms != labelPoints {
+            labelPoints = rooms
+        }
+        let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content)
+        if furniture != furnitureLabelPoints {
+            furnitureLabelPoints = furniture
+        }
+    }
+
+    /// 장면 안 라벨 자리 묶음(FloorPlan3DBuilder)을 화면 점으로 바꾼다 (키 = 자리 엔티티 이름). 카메라 뒤에 있거나 벽에 가려지면 뺀다
+    private func screenPoints(ofAnchorsIn groupName: String, content: RealityViewCameraContent) -> [String: CGPoint] {
+        guard let anchors = sceneRoot.findEntity(named: groupName) else { return [:] }
         var points: [String: CGPoint] = [:]
         for anchor in anchors.children {
             let position = anchor.position(relativeTo: nil)
@@ -123,9 +152,7 @@ extension FloorPlan3DView {
                   !isHiddenByWall(position, at: point, content: content) else { continue }
             points[anchor.name] = point
         }
-        if points != labelPoints {
-            labelPoints = points
-        }
+        return points
     }
     
     /// 카메라 위치와 방향을 잡아 가상의 직선을 긋는 계산식을 돌린 후, 직선이 벽과 충돌하는 결과가 나오면 라벨이 벽에 가려진 것으로 판단
@@ -261,7 +288,7 @@ extension FloorPlan3DView {
         case .wallFixture(let id):
             guard let fixture = planData.wallFixtures.first(where: { $0.id == id }) else { return nil }
             wallId = fixture.wallId
-        case .doorWindow, .wall:
+        case .doorWindow, .wall, .furniture:
             return nil
         }
         guard let start = surfacePoint(at: point, wallId: wallId) else { return nil }
@@ -597,8 +624,8 @@ extension FloorPlan3DView {
         switch selection {
         case .marker?, .wallFixture?:
             selectedStampEntity = selection.flatMap { FloorPlan3DBuilder.entity(for: $0, in: sceneRoot) }
-        // 벽은 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
-        case .doorWindow?, .wall?, nil:
+        // 벽·가구는 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
+        case .doorWindow?, .wall?, .furniture?, nil:
             selectedStampEntity = nil
         }
     }

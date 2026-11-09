@@ -8,9 +8,17 @@ extension PlanData {
     /// 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않는다
     init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
         if let structure {
-            self.init(scanSurfaces: ScanSurface.surfaces(of: structure), sections: ScanSection.sections(of: structure))
+            self.init(
+                scanSurfaces: ScanSurface.surfaces(of: structure),
+                sections: ScanSection.sections(of: structure),
+                objects: structure.objects.map(ScanObject.init)
+            )
         } else if let largest = rooms.max(by: { $0.walls.totalWidth < $1.walls.totalWidth }) {
-            self.init(scanSurfaces: ScanSurface.surfaces(of: largest), sections: ScanSection.sections(of: largest))
+            self.init(
+                scanSurfaces: ScanSurface.surfaces(of: largest),
+                sections: ScanSection.sections(of: largest),
+                objects: largest.objects.map(ScanObject.init)
+            )
         } else {
             self = .empty
         }
@@ -50,21 +58,43 @@ extension ScanSurface {
     }
 
     private init(_ surface: CapturedRoom.Surface, kind: Kind) {
-        let transform = surface.transform
-        let position = transform.columns.3
-        // 면의 로컬 x축이 폭 방향이다. 위아래 성분은 버리고 바닥면 방향만 쓴다
-        let axis = SIMD2(Double(transform.columns.0.x), Double(transform.columns.0.z))
-        let length = simd_length(axis)
         self.init(
             id: surface.identifier,
             kind: kind,
-            center: SIMD3(Double(position.x), Double(position.y), Double(position.z)),
-            widthAxis: length > 0 ? axis / length : SIMD2(1, 0),
+            center: centerPoint(of: surface.transform),
+            widthAxis: floorAxis(of: surface.transform),
             width: Double(surface.dimensions.x),
             height: Double(surface.dimensions.y),
             parentId: surface.parentIdentifier
         )
     }
+}
+
+extension ScanObject {
+    fileprivate init(_ object: CapturedRoom.Object) {
+        self.init(
+            // 종류 이름은 RoomPlan 케이스 이름 그대로 ("washerDryer" 등)
+            category: String(describing: object.category),
+            center: centerPoint(of: object.transform),
+            widthAxis: floorAxis(of: object.transform),
+            width: Double(object.dimensions.x),
+            height: Double(object.dimensions.y),
+            depth: Double(object.dimensions.z)
+        )
+    }
+}
+
+/// 변환 행렬의 위치 (x, y, z)
+private func centerPoint(of transform: simd_float4x4) -> SIMD3<Double> {
+    let position = transform.columns.3
+    return SIMD3(Double(position.x), Double(position.y), Double(position.z))
+}
+
+/// 로컬 x축(폭 방향)을 바닥면 (x, z) 방향으로. 위아래 성분은 버리고 길이 1로 맞춘다
+private func floorAxis(of transform: simd_float4x4) -> SIMD2<Double> {
+    let axis = SIMD2(Double(transform.columns.0.x), Double(transform.columns.0.z))
+    let length = simd_length(axis)
+    return length > 0 ? axis / length : SIMD2(1, 0)
 }
 
 extension ScanSection {

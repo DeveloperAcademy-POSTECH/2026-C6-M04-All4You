@@ -1,4 +1,4 @@
-// 2D에서 고른 스탬프의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌리고, 오른쪽 아래 ↔는 끌어서 크기를 바꾼다
+// 2D에서 고른 스탬프·가구의 테두리 모서리에 붙는 손잡이. 왼쪽 위 ✕는 지우고, 오른쪽 위 ↻는 끌어서 돌리고, 오른쪽 아래 ↔는 끌어서 크기를 바꾼다
 // 스탬프가 돌면 테두리와 손잡이도 함께 돈다
 
 import SwiftUI
@@ -7,8 +7,8 @@ import SwiftUI
 struct StampHandles2DView: View {
     /// 스탬프 가운데 (화면 점)
     let center: CGPoint
-    /// 가운데에서 테두리 변까지 (pt)
-    let halfSize: CGFloat
+    /// 가운데에서 테두리 변까지 가로·세로 (pt). 스탬프는 정사각형, 가구는 가구 모양대로
+    let halfSize: CGSize
     /// 스탬프 방향 (도). nil이면 돌리는 손잡이를 두지 않는다
     let yaw: Double?
     /// 스탬프 크기 배율. nil이면 크기 손잡이를 두지 않는다
@@ -22,6 +22,8 @@ struct StampHandles2DView: View {
     let onResize: (Double) -> Void
     /// 돌리기·크기 바꾸기에서 손을 떼면 알린다
     let onDragEnded: () -> Void
+    /// 가구처럼 가로·세로를 따로 바꾸는 것은 배율 대신 크기 손잡이를 끄는 손가락 자리(coordinateSpace 기준)를 알린다. 있으면 scale이 nil이어도 크기 손잡이를 둔다
+    var onResizeCorner: ((CGPoint) -> Void)? = nil
 
     /// 돌리기를 시작할 때의 방향. 돌리는 동안 yaw가 바뀌어도 여기서부터 잰다
     @State private var startYaw: Double?
@@ -38,7 +40,7 @@ struct StampHandles2DView: View {
                     .position(corner(x: 1, y: -1))
                     .gesture(rotateGesture)
             }
-            if scale != nil {
+            if scale != nil || onResizeCorner != nil {
                 // 오른쪽 아래 모서리에서 가운데를 잇는 대각선 방향의 양쪽 화살표
                 handleIcon("arrow.up.left.and.arrow.down.right")
                     .accessibilityLabel(Copy.resize)
@@ -52,8 +54,8 @@ struct StampHandles2DView: View {
     /// 테두리 모서리의 화면 점. x·y는 -1(왼쪽·위) 또는 1(오른쪽·아래). 스탬프 방향만큼 가운데를 축으로 돌린다
     private func corner(x: CGFloat, y: CGFloat) -> CGPoint {
         let radians = (yaw ?? 0) * .pi / 180
-        let dx = x * halfSize
-        let dy = y * halfSize
+        let dx = x * halfSize.width
+        let dy = y * halfSize.height
         return CGPoint(
             x: center.x + dx * cos(radians) - dy * sin(radians),
             y: center.y + dx * sin(radians) + dy * cos(radians)
@@ -107,6 +109,10 @@ extension StampHandles2DView {
     private var resizeGesture: some Gesture {
         DragGesture(coordinateSpace: .named(coordinateSpace))
             .onChanged { value in
+                if let onResizeCorner {
+                    onResizeCorner(value.location)
+                    return
+                }
                 guard let scale else { return }
                 let start = startScale ?? scale
                 startScale = start

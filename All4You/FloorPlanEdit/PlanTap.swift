@@ -18,6 +18,8 @@ enum PlanEdit {
     case rotate(markerId: String, yaw: Double)
     /// 사람·발화지점(PlanMarker.id)의 크기 배율을 scale로 바꿈
     case resize(markerId: String, scale: Double)
+    /// 가구(Furniture.id)의 방향을 rotation(라디안)으로 바꿈
+    case rotateFurniture(id: String, rotation: Double)
     /// 스탬프를 옆에 하나 더 만듦
     case duplicate(PlanSelection)
     /// 스탬프·창문을 지움
@@ -36,8 +38,15 @@ extension PlanData {
             return duplicateMarker(id: id).map(PlanSelection.marker) ?? selection
         case .duplicate(.wallFixture(let id)):
             return duplicateWallFixture(id: id).map(PlanSelection.wallFixture) ?? selection
-        case .duplicate(.doorWindow), .duplicate(.wall):
+        case .duplicate(.doorWindow), .duplicate(.wall), .duplicate(.furniture):
             return selection
+        case .delete(.furniture(let id)):
+            removeFurniture(id: id)
+            return nil
+        case .move(.furniture(let id), let point, _):
+            moveFurniture(id: id, to: point)
+        case .rotateFurniture(let id, let rotation):
+            rotateFurniture(id: id, rotation: rotation)
         case .delete(.wall(let id)):
             removeWall(id: id)
             return nil
@@ -79,6 +88,8 @@ extension PlanData {
         case .wallFixture(let id):
             guard let height = wallFixtures.first(where: { $0.id == id })?.heightFromFloor else { return }
             moveWallFixture(id: id, to: point, height: height)
+        case .furniture(let id):
+            moveFurniture(id: id, to: point)
         case .doorWindow, .wall:
             break
         }

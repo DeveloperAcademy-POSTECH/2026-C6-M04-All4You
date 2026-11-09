@@ -23,6 +23,20 @@ struct ScanSurface {
     let parentId: UUID?
 }
 
+/// 스캔이 알아본 물체 하나 (침대·의자 …). 위치는 상자 가운데
+struct ScanObject {
+    /// 물체 종류 (RoomPlan 영어 이름, 예: "refrigerator")
+    let category: String
+    /// 상자 가운데 (x, y, z)
+    let center: SIMD3<Double>
+    /// 바닥면에서 본 가로 방향 (x, z), 길이 1
+    let widthAxis: SIMD2<Double>
+    /// 가로·높이·세로 (m)
+    let width: Double
+    let height: Double
+    let depth: Double
+}
+
 /// 스캔이 알아본 방 종류와 그 방의 가운데 점. 방 경계는 주지 않는다
 struct ScanSection {
     /// 방 이름으로 쓸 종류 (침실, 거실 …). 알아보지 못한 방은 nil

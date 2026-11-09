@@ -1,5 +1,5 @@
 // 변환 서버의 도면 JSON(픽셀)을 앱 도면(PlanData, m)으로 바꾸기
-// 서버가 주지 않는 벽 두께·높이, 문·창문 높이는 기본값으로 채운다. 가구는 PlanData에 아직 칸이 없어 버린다
+// 서버가 주지 않는 벽 두께·높이, 문·창문 높이, 가구 높이는 기본값으로 채운다
 
 import Foundation
 
@@ -57,7 +57,32 @@ extension PlanData {
                     labelY: (label.dropFirst().first ?? 0) * scale
                 )
             },
-            markers: []
+            markers: [],
+            furniture: (server.furniture ?? []).compactMap { Furniture(server: $0, scale: scale) }
+        )
+    }
+}
+
+extension Furniture {
+    /// 서버 가구 상자를 돌리지 않은 사각형 가구로. 상자 값이 네 개가 아니거나 크기가 0이면 nil
+    fileprivate init?(server: ServerFloorPlan.Furniture, scale: Double) {
+        guard server.bbox.count == 4 else { return nil }
+        let topLeft = SIMD2(min(server.bbox[0], server.bbox[2]), min(server.bbox[1], server.bbox[3])) * scale
+        let bottomRight = SIMD2(max(server.bbox[0], server.bbox[2]), max(server.bbox[1], server.bbox[3])) * scale
+        let size = bottomRight - topLeft
+        guard size.x > 0, size.y > 0 else { return nil }
+        let label = server.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(
+            id: server.id,
+            label: label.isEmpty ? ServerDefault.unnamedFurniture : label,
+            category: nil,
+            shape: .rectangle,
+            center: (topLeft + bottomRight) / 2,
+            width: size.x,
+            depth: size.y,
+            rotation: 0,
+            height: ServerDefault.furnitureHeight,
+            elevation: 0
         )
     }
 }
@@ -86,4 +111,8 @@ private enum ServerDefault {
     static let windowHeight = 1.2
     /// 이름이 빈 방에 붙이는 이름. 뒤에 1부터 번호를 붙인다
     static let unnamedRoom = "공간"
+    /// 가구 자체 높이. 서버는 높이를 주지 않는다
+    static let furnitureHeight = 0.75
+    /// 이름이 빈 가구에 붙이는 이름
+    static let unnamedFurniture = "가구"
 }
