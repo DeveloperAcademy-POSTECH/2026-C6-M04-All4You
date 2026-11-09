@@ -52,10 +52,33 @@ extension CasePreviewView {
         .padding()
     }
 
-    // TEMP: 도면 데이터가 생기기 전 자리 — 저장 방식이 정해지면 사진 개수 핀이 찍힌 2D 도면으로 바꿔야 함
+    /// 사건에 저장된 도면을 2D 미리보기로 표시
+    @ViewBuilder
     private var floorPlan: some View {
-        Text(Copy.floorPlanPlaceholder)
-            .foregroundStyle(.secondary)
+        if let planData = fireCase.floorPlan?.loadPlanData(),
+           !planData.vertices.isEmpty {
+
+            GeometryReader { geometry in
+                Plan2DView(
+                    planData: planData,
+                    screen: PlanScreen(
+                        plan: planData,
+                        in: geometry.size,
+                        fill: 0.70
+                    )
+                )
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height
+                )
+                .allowsHitTesting(false)
+            }
+
+        } else {
+            Text(Copy.floorPlanPlaceholder)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     private func countButton(_ title: String, count: String, action: @escaping () -> Void) -> some View {
