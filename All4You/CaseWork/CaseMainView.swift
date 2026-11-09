@@ -249,7 +249,7 @@ extension CaseMainView {
         }
     }
 
-    /// 허용이면 true. 방금 알림에서 거절했으면 메인에 그대로 두고(Figma 40:35726),
+    /// 허용이면 true. 방금 알림에서 거절했으면 메인에 그대로 두고(Figma 권한 거부 화면),
     /// 전에 이미 거절했으면 다시 물을 수 없으므로 설정 이동 알림을 띄운다
     private func checkAllowed(_ result: PermissionService.Result, deniedPermission permission: DeniedPermission) -> Bool {
         switch result {
