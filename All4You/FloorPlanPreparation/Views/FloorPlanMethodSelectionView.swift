@@ -114,7 +114,6 @@ struct FloorPlanMethodSelectionView: View {
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
-                // TODO: PreScanChecklistView(address: address, createdAt: createdAt) 연결
                 RoomPlanScanView(onUseResult: { _, structure, rooms in
                     scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
                     scannedPlan = PlanData(structure: structure, rooms: rooms)
@@ -227,6 +226,7 @@ struct FloorPlanMethodSelectionView: View {
                 )
             } else {
                 FloorPlanDrawingView(
+                    address: fireCase.address,
                     onRetake: {
                         isConvertingDrawing = false
                         destination = nil

@@ -3,7 +3,8 @@ import SwiftUI
 struct FloorPlanImportView: View {
     /// 변환 결과를 평면도로 저장할 곳. 실패하면 알림 문구를 돌려준다
     var onImport: ((FloorPlanConversion) -> String?)? = nil
-    var address = "청암로 77"
+    /// 상단 바 부제로 보여 줄 사건 주소
+    var address: String
     var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = FloorPlanImportCamera()
@@ -253,5 +254,5 @@ struct FloorPlanImportView: View {
 }
 
 #Preview {
-    FloorPlanImportView()
+    FloorPlanImportView(address: "서울시 강남구 청암로 77")
 }

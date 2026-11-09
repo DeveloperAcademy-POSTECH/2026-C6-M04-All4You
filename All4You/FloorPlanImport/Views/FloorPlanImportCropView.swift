@@ -4,7 +4,8 @@ import UIKit
 struct FloorPlanImportCropView: View {
     let source: UIImage
     // 가져오기 화면에서 받은 주소를 상단에 표시한다.
-    var address = "청암로 77"
+    /// 상단 바 부제로 보여 줄 사건 주소
+    var address: String
     let onRetake: () -> Void
     let onConfirm: (UIImage) -> Void
     @State private var normalized: UIImage?
