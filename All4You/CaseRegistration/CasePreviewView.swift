@@ -25,7 +25,7 @@ struct CasePreviewView: View {
                     countButton(Copy.album, count: "\(fireCase.photos.count)\(Copy.photoUnit)") {
                         // TODO: 사건 작업 화면의 앨범 탭으로 이동
                     }
-                    countButton(Copy.memo, count: "\(fireCase.memoCount)\(Copy.memoUnit)") {
+                    countButton(Copy.memo, count: "\(fireCase.memos.count)\(Copy.memoUnit)") {
                         // TODO: 사건 작업 화면의 메모 탭으로 이동
                     }
                 }
