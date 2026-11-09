@@ -10,12 +10,16 @@ final class FloorPlan {
     var sourceType: FloorPlanSourceType
     /// 2D·3D가 함께 보는 도면(`PlanData`)을 JSON으로 바꾼 값. 읽고 쓰기는 `loadPlanData()`·`storePlanData(_:)`
     var planData: Data
+    /// RoomPlan 스캔 원본(JSON). 공간 스캔으로 만든 평면도만 있다. 현장은 다시 스캔할 수 없으므로, 변환 규칙을 고친 뒤 다시 변환할 때 쓴다.
+    /// 읽기는 `loadRoomPlan()`
+    @Attribute(.externalStorage) var roomPlanData: Data?
     /// 이 평면도가 속한 사건. 반대쪽은 `FireCase.floorPlan`
     var fireCase: FireCase?
 
-    init(sourceType: FloorPlanSourceType, planData: Data, fireCase: FireCase? = nil) {
+    init(sourceType: FloorPlanSourceType, planData: Data, roomPlanData: Data? = nil, fireCase: FireCase? = nil) {
         self.sourceType = sourceType
         self.planData = planData
+        self.roomPlanData = roomPlanData
         self.fireCase = fireCase
     }
 }

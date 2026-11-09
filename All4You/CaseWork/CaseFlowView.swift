@@ -34,8 +34,8 @@ struct CaseFlowView: View {
         self.onClose = onClose
         // 저장된 도면을 열면 메인부터, 막 변환한 도면이면 2D 수정부터 보여 준다
         _isCaseMainShown = State(initialValue: startsAtMain)
-        // TEMP: 평면도를 만드는 앞 단계와 아직 이어지지 않아, 저장된 도면이 없으면 더미 도면으로 시작함 — 앞 단계가 연결되면 바뀜
-        _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? DummyFloorPlan.planData)
+        // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 저장된 JSON을 못 읽으면 빈 도면
+        _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? .empty)
     }
 
     var body: some View {
@@ -78,15 +78,10 @@ extension CaseFlowView {
 
 // 저장
 extension CaseFlowView {
-    /// 고친 도면을 사건의 평면도에 덮어쓴다. 평면도가 아직 없으면 새로 만들어 사건에 붙인다
+    /// 고친 도면을 사건의 평면도에 덮어쓴다
     private func storeFloorPlan(_ plan: PlanData) {
         do {
-            if let floorPlan = fireCase.floorPlan {
-                try floorPlan.storePlanData(plan)
-            } else {
-                // TEMP: 평면도를 만드는 앞 단계와 아직 이어지지 않아 생성 방식을 직접 그리기로 둠 — 앞 단계가 연결되면 고른 방식으로 바뀜
-                fireCase.floorPlan = try FloorPlan(sourceType: .iPadDrawing, plan: plan)
-            }
+            try fireCase.floorPlan?.storePlanData(plan)
         } catch {
             // TODO: 저장 실패 알림 — 문구가 정해지면 추가
             print("도면 저장 실패: \(error)")

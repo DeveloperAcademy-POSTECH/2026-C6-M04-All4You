@@ -6,7 +6,7 @@
 // TEMP: 이번 구간에 쓰는 항목만 둠. furniture(가구)·captureAlignments(사진 정렬)·floorHeightInWorld(RoomPlan 바닥 높이)는 그 작업 때 옵셔널로 추가
 
 /// 도면 하나. 값 타입이라 복사한 값이 그대로 그 순간의 스냅샷이 된다
-struct PlanData: Codable, Equatable {
+struct PlanData: Codable, Hashable {
     /// 형식 버전. 새 항목은 옵셔널로 추가해 이전에 저장한 도면도 그대로 읽히게 한다
     var version: Int
     var vertices: [Vertex]
@@ -15,4 +15,9 @@ struct PlanData: Codable, Equatable {
     var wallFixtures: [WallFixture]
     var rooms: [Room]
     var markers: [PlanMarker]
+}
+
+extension PlanData {
+    /// 아무것도 없는 도면
+    static let empty = PlanData(version: 1, vertices: [], walls: [], doorWindows: [], wallFixtures: [], rooms: [], markers: [])
 }

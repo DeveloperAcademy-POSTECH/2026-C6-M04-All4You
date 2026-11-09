@@ -1,7 +1,7 @@
 // 벽 한쪽 면에 붙은 것 planData.wallFixtures. 지금은 콘센트뿐
 
 /// 벽을 따라간 위치와 바닥에서 높이로 저장해서, 벽을 옮기면 따라가고 3D에서 벽 면에 붙어 보인다
-struct WallFixture: Codable, Equatable, Identifiable {
+struct WallFixture: Codable, Hashable, Identifiable {
     let id: String
     /// 붙은 벽 id (Wall.id)
     var wallId: String

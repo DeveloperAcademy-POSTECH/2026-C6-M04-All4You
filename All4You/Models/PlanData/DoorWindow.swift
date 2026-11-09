@@ -1,7 +1,7 @@
 // 벽에 달린 문·창문·개구부
 
 /// 벽을 따라간 중심 위치로 저장해서, 벽을 옮기면 함께 움직인다
-struct DoorWindow: Codable, Equatable, Identifiable {
+struct DoorWindow: Codable, Hashable, Identifiable {
     let id: String
     /// 달린 벽 id (Wall.id)
     var wallId: String

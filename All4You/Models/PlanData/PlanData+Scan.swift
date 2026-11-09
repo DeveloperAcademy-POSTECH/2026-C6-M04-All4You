@@ -11,7 +11,7 @@ import simd
 extension PlanData {
     /// 스캔한 면과 방 종류로 도면을 만든다. 벽이 없으면 빈 도면
     init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = []) {
-        self.init(version: 1, vertices: [], walls: [], doorWindows: [], wallFixtures: [], rooms: [], markers: [])
+        self = .empty
         let wallSurfaces = surfaces.filter { $0.kind == .wall && $0.width >= ScanRule.minWallLength }
         guard !wallSurfaces.isEmpty else { return }
 

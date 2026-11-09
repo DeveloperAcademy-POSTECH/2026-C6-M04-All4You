@@ -3,6 +3,18 @@
 import RoomPlan
 import simd
 
+extension PlanData {
+    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을, 없으면(구간 하나, 또는 합치기 실패) 구간 결과를 모두 모아 쓴다.
+    /// 구간들은 같은 AR 좌표에 있어 그대로 모아도 된다
+    init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
+        if let structure {
+            self.init(scanSurfaces: ScanSurface.surfaces(of: structure), sections: ScanSection.sections(of: structure))
+        } else {
+            self.init(scanSurfaces: rooms.flatMap(ScanSurface.surfaces), sections: rooms.flatMap(ScanSection.sections))
+        }
+    }
+}
+
 extension ScanSurface {
     /// 구간 하나를 스캔한 결과의 면들
     static func surfaces(of room: CapturedRoom) -> [ScanSurface] {
