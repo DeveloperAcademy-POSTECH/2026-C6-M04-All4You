@@ -120,6 +120,8 @@ extension View {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 17, weight: .semibold))
                                 .frame(width: 44, height: 44)
+                                // plain 버튼은 그려진 선만 눌려서, 원 전체를 누르는 자리로 잡는다 (iPadOS 26에서 안 눌리던 문제)
+                                .contentShape(.circle)
                         }
                         .buttonStyle(.plain)
                         .glassEffect(.regular.interactive(), in: .circle)
@@ -154,6 +156,7 @@ extension View {
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
+                                .contentShape(.circle)
                         }
                         .buttonStyle(.plain)
                         .glassEffect(.regular.tint(.brand500).interactive(), in: .circle)
