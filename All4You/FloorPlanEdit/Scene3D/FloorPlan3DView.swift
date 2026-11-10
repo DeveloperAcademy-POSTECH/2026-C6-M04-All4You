@@ -18,6 +18,8 @@ struct FloorPlan3DView: View {
     var pins: [Plan3DPin] = []
     /// 핀 하나를 그리는 뷰 (Plan3DPin.id를 받음). nil이면 핀을 그리지 않는다
     var pinView: ((String) -> AnyView)? = nil
+    /// 오른쪽 아래에 처음 시야로 되돌리는 버튼을 띄울지
+    var showsResetButton = false
     /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 가구 위를 눌러도 가구를 고르지 않고 그 아래 바닥에 스탬프를 놓는다
     var isStampToolActive = false
 
@@ -102,6 +104,12 @@ struct FloorPlan3DView: View {
         }
         .overlay(alignment: .topLeading) {
             windowControls
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if showsResetButton {
+                ResetViewButton(action: resetView)
+                    .padding()
+            }
         }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
@@ -498,6 +506,22 @@ extension FloorPlan3DView {
         return (max(furniture.width * ratio, Furniture.minSize), max(furniture.depth * ratio, Furniture.minSize))
     }
 
+    /// 가구 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽(도면 y가 작은 쪽) 오른쪽 모서리, 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
+    /// 모서리는 가구 모양에 둘러싼 테두리 상자 기준이라 가구와 살짝 떨어지고, 화면에서 가구 가운데 반대쪽으로 조금 더 민다
+    private func furnitureHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
+        let bounds = entity.visualBounds(relativeTo: entity)
+        func screenPoint(z: Float) -> CGPoint? {
+            let corner = entity.convert(position: SIMD3(bounds.max.x, bounds.max.y, z), to: nil)
+            guard let point = content.project(point: corner, to: .local) else { return nil }
+            let dx = point.x - center.x
+            let dy = point.y - center.y
+            let length = max(hypot(dx, dy), 1)
+            return CGPoint(x: point.x + dx / length * Layout.cornerHandleGap, y: point.y + dy / length * Layout.cornerHandleGap)
+        }
+        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z) else { return nil }
+        return (rotate, resize)
+    }
+
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
     /// 머리가 없는 스탬프(발화지점·콘센트)는 nil
     private func personHandleAnchor(of entity: Entity, center: SIMD3<Float>) -> SIMD3<Float>? {
@@ -526,6 +550,11 @@ extension FloorPlan3DView {
                 let reach = max(screenCenter.y - menu.y - Layout.rotateHandleGap, 0) + Layout.resizeHandleGap
                 let resizeHandle = CGPoint(x: screenCenter.x + reach, y: screenCenter.y + reach / 2)
                 points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: resizeHandle)
+                // 가구는 2D처럼 윗면 모서리에 손잡이를 붙인다. 가구를 돌리면 모서리와 함께 따라 돈다
+                if case .furniture? = entity.components[PlanSelectionComponent.self]?.selection,
+                   let corners = furnitureHandlePoints(of: entity, center: screenCenter, using: content) {
+                    points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                }
             }
         }
         if points != stampScreenPoints {
@@ -638,6 +667,16 @@ extension FloorPlan3DView {
             }
     }
 
+    /// 확대·옮기기·카메라 방향을 처음으로 되돌린다
+    private func resetView() {
+        orbit = .initial
+        orbitAtDragStart = nil
+        committedZoom = 1
+        sceneRoot.scale = SIMD3(repeating: 1)
+        sceneRoot.position = .zero
+        placeCamera()
+    }
+
     private func zoom(for magnification: CGFloat) -> Float {
         let factor = pow(Float(magnification), Layout.zoomPower)
         return min(max(committedZoom * factor, Layout.zoomRange.lowerBound), Layout.zoomRange.upperBound)
@@ -746,6 +785,8 @@ extension FloorPlan3DView {
 // 레이아웃 값
 extension FloorPlan3DView {
     private enum Layout {
+        /// 가구 손잡이를 모서리에서 가구 바깥쪽으로 더 띄우는 거리 (pt)
+        static let cornerHandleGap: CGFloat = 26
         /// 카메라가 있는 쪽 (원점에서 본 방향). 오른쪽 앞 위
         static let cameraDirection = SIMD3<Float>(0.35, 0.95, 1.0)
         /// 도면 긴 변에 곱하는 카메라 거리. 세로 화면(좁은 가로 시야)에서도 도면 전체가 들어오게 함

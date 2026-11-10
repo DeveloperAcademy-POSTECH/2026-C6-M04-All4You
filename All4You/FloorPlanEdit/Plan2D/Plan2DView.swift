@@ -24,9 +24,6 @@ struct Plan2DView: View {
     /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
     var hiddenLabelRoomIds: Set<String> = []
 
-    /// 콘센트 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
-    static let stampSize = 0.4
-
     /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라, 2D와 3D 크기가 같다
     static func iconSize(of marker: PlanMarker) -> Double {
         let footprint = marker.footprint
@@ -215,8 +212,8 @@ extension Plan2DView {
     }
 
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
-    private func stampIcon(_ systemName: String, size meters: Double = Self.stampSize) -> some View {
-        let size = screen.length(meters)
+    private func stampIcon(_ systemName: String, size meters: Double? = nil) -> some View {
+        let size = screen.length(meters ?? screen.outletSize)
         return Image(systemName: systemName)
             .font(.system(size: size))
             .foregroundStyle(.brand500)

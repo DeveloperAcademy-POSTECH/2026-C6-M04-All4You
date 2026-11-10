@@ -20,8 +20,9 @@ struct RoomLabelView: View {
 // 레이아웃 값
 extension RoomLabelView {
     private enum Layout {
-        static let horizontalPadding: CGFloat = 14
-        static let verticalPadding: CGFloat = 6
+        // Figma 61:29616 공간라벨 87×36
+        static let horizontalPadding: CGFloat = 16
+        static let verticalPadding: CGFloat = 8
     }
 }
 

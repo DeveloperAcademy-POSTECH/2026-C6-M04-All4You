@@ -44,6 +44,11 @@ struct PlanScreen: Equatable {
         SIMD2((point.x - origin.x) / scale + minPoint.x, (point.y - origin.y) / scale + minPoint.y)
     }
 
+    /// 콘센트 아이콘 크기 (m). 처음 맞춘 화면에서 스탬프 기본 크기(StampDefaults.iconPoints)로 보이는 크기라, 확대하면 도면과 함께 커진다
+    var outletSize: Double {
+        StampDefaults.iconPoints / fitScale
+    }
+
     /// 도면 길이 (m)를 화면 길이 (pt)로
     func length(_ meters: Double) -> CGFloat {
         meters * scale

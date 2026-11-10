@@ -23,8 +23,6 @@ enum DrawingTool: String, CaseIterable, Identifiable {
 /// 끌어서 옮길 수 있는 펜·지우개·손 막대
 struct DrawingToolBar: View {
     @Binding var selectedTool: DrawingTool
-    /// 아래쪽에 붙을 때 화면 아래 가장자리에서 더 띄울 높이 (pt). 아래에 다른 막대가 있을 때 쓴다
-    var bottomInset: CGFloat = 0
     /// 위 스탬프 도구가 켜져 있어 펜·지우개가 잠시 쓸 수 없는 상태. 이때 펜·지우개의 고른 표시를 지운다
     var isPenAndEraserSuspended = false
     /// 도구 버튼을 눌렀다. 이미 고른 도구를 다시 눌러도 알린다
@@ -36,7 +34,7 @@ struct DrawingToolBar: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            let anchor = toolbarPosition.anchor(in: size, bottomInset: bottomInset)
+            let anchor = toolbarPosition.anchor(in: size)
             toolbar
                 .position(x: anchor.x + toolbarDrag.width, y: anchor.y + toolbarDrag.height)
                 .simultaneousGesture(dragGesture(anchor: anchor, size: size))
@@ -56,7 +54,7 @@ struct DrawingToolBar: View {
                     y: anchor.y + value.translation.height
                 )
                 toolbarPosition = ToolbarPosition.allCases.min {
-                    $0.distance(to: destination, in: size, bottomInset: bottomInset) < $1.distance(to: destination, in: size, bottomInset: bottomInset)
+                    $0.distance(to: destination, in: size) < $1.distance(to: destination, in: size)
                 } ?? .bottom
             }
     }
@@ -110,17 +108,17 @@ extension DrawingToolBar {
         case left, bottom, right
 
         /// 이 자리에 붙었을 때 막대 가운데 점
-        func anchor(in size: CGSize, bottomInset: CGFloat = 0) -> CGPoint {
+        func anchor(in size: CGSize) -> CGPoint {
             let centerInset = Layout.edgeInset + Layout.toolbarPadding + Layout.toolSize / 2
             switch self {
             case .left: return CGPoint(x: centerInset, y: size.height / 2)
-            case .bottom: return CGPoint(x: size.width / 2, y: size.height - centerInset - bottomInset)
+            case .bottom: return CGPoint(x: size.width / 2, y: size.height - centerInset)
             case .right: return CGPoint(x: size.width - centerInset, y: size.height / 2)
             }
         }
 
-        func distance(to point: CGPoint, in size: CGSize, bottomInset: CGFloat = 0) -> CGFloat {
-            let anchor = anchor(in: size, bottomInset: bottomInset)
+        func distance(to point: CGPoint, in size: CGSize) -> CGFloat {
+            let anchor = anchor(in: size)
             return hypot(point.x - anchor.x, point.y - anchor.y)
         }
     }

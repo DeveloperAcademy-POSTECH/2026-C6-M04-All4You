@@ -14,14 +14,15 @@ extension PlanData {
     /// 스탬프가 차지하는 자리가 방 안에 다 들어가지 않으면(벽에 닿음·벽 바깥·도면 밖) 놓지 않고 nil.
     /// 사람은 늘 누운 자세로 놓는다.
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
-    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String? {
+    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil) -> String? {
         let marker = PlanMarker(
             id: UUID().uuidString,
             kind: kind,
             position: point,
             height: 0,
             yaw: 0,
-            lying: kind == .person ? true : nil
+            lying: kind == .person ? true : nil,
+            scale: scale
         )
         guard fits(marker) else { return nil }
         markers.append(marker)
@@ -234,10 +235,10 @@ extension PlanData {
 
     /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문이나 문을 달고 새 id를 돌려준다.
     /// 벽 끝이나 옆 문·창문과 겹치면 그 사이 빈 칸 안으로 줄이거나 밀어 넣는다. 빈 칸이 너무 좁거나 벽을 찾지 못하면 nil
-    mutating func addOpening(_ kind: DoorWindowKind, wallId: String, at point: SIMD2<Double>) -> String? {
+    mutating func addOpening(_ kind: DoorWindowKind, wallId: String, at point: SIMD2<Double>, width wantedWidth: Double? = nil) -> String? {
         guard let wall = wall(id: wallId), let line = line(of: wall) else { return nil }
         let isDoor = kind == .door
-        let newWidth = isDoor ? Self.newDoorWidth : Self.newWindowWidth
+        let newWidth = wantedWidth ?? (isDoor ? Self.newDoorWidth : Self.newWindowWidth)
         let sillHeight = isDoor ? 0 : Self.newWindowSillHeight
         let newHeight = isDoor ? Self.newDoorHeight : Self.newWindowHeight
         let along = ((point - line.start) * line.direction).sum()

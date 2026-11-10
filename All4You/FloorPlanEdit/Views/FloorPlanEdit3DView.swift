@@ -10,8 +10,10 @@ struct FloorPlanEdit3DView: View {
     @Binding var history: PlanHistory
     /// 위 도구 막대에서 켠 스탬프 도구. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
     @Binding var selectedTool: EditTool?
-    let onBack: () -> Void
-    let onDone: () -> Void
+    /// 스탬프를 놓을 때 쓰는 Figma 기본 크기. nil이면 addMarker·addOpening의 기본 크기를 쓴다
+    var stampDefaults: StampDefaults? = nil
+    /// 값이 바뀔 때마다 고른 것을 푼다 (되돌리기·다시 하기나 2D·3D 전환 때 부모가 올린다)
+    var resetToken = 0
 
     /// 3D에서 눌러 고른 스탬프·창문
     @State private var selection: PlanSelection?
@@ -20,11 +22,11 @@ struct FloorPlanEdit3DView: View {
     static let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, isStampToolActive: selectedTool != nil)
+        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, showsResetButton: true, isStampToolActive: selectedTool != nil)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
-            .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
+            .onChange(of: resetToken) { selection = nil }
     }
 }
 
@@ -33,13 +35,6 @@ extension FloorPlanEdit3DView {
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool, hiddenTools: Self.hiddenTools)
             .padding()
-    }
-
-    /// 되돌리면 고른 것이 사라졌을 수 있어 고르기를 푼다
-    private var undoRedo: some View {
-        UndoRedoCapsule(history: $history, planData: $planData) {
-            selection = nil
-        }
     }
 }
 
@@ -56,7 +51,7 @@ extension FloorPlanEdit3DView {
         case (nil, _):
             selection = nil
         case (let tool?, let tap?):
-            selection = planData.place(tool, at: tap) ?? selection
+            selection = planData.place(tool, at: tap, defaults: stampDefaults) ?? selection
         case (_?, nil):
             break
         }
@@ -68,18 +63,11 @@ extension FloorPlanEdit3DView {
     }
 }
 
-// 문구
-extension FloorPlanEdit3DView {
-    private enum Copy {
-        static let title = "3D 도면 수정"
-    }
-}
-
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
     @Previewable @State var history = PlanHistory()
     @Previewable @State var selectedTool: EditTool?
     NavigationStack {
-        FloorPlanEdit3DView(planData: $planData, history: $history, selectedTool: $selectedTool, onBack: {}, onDone: {})
+        FloorPlanEdit3DView(planData: $planData, history: $history, selectedTool: $selectedTool)
     }
 }
