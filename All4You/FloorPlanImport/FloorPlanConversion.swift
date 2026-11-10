@@ -2,10 +2,8 @@ import Foundation
 import UIKit
 
 struct FloorPlanConversion {
-    let preview: UIImage
     let png: Data
     let json: Data
-    let isSegmentationPreview: Bool
 
     static func request(_ image: UIImage) async throws -> Self {
         // 실기기에서도 접근할 수 있는 운영 서버를 기본값으로 사용한다.
@@ -50,17 +48,12 @@ struct FloorPlanConversion {
         }
         guard let encoded = payload?["png_base64"] as? String,
               let png = Data(base64Encoded: encoded),
-              let preview = UIImage(data: png),
+              UIImage(data: png) != nil,
               let plan = payload?["plan"] as? [String: Any] else {
             throw ConversionError(message: "응답에서 도면 PNG와 좌표 JSON을 읽지 못했습니다.")
         }
         let json = try JSONSerialization.data(withJSONObject: plan, options: [.prettyPrinted, .sortedKeys])
-        return Self(
-            preview: preview,
-            png: png,
-            json: json,
-            isSegmentationPreview: (plan["format"] as? String) == "floorplan_segmentation_preview"
-        )
+        return Self(png: png, json: json)
     }
 
     func save() throws {

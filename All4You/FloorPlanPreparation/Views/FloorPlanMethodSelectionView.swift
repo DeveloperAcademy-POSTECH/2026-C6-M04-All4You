@@ -26,7 +26,6 @@ struct FloorPlanMethodSelectionView: View {
     @State private var destination: FloorPlanSourceType?
     @State private var drawingCanvas = PKCanvasView()
     @State private var isConvertingDrawing = false
-    @State private var convertedDrawing: FloorPlanConversion?
     @State private var drawingError: String?
     @State private var isImportMenuPresented = false
     @State private var importMethod: ImportMethod?
@@ -220,34 +219,21 @@ struct FloorPlanMethodSelectionView: View {
     }
     
     private var drawingFlow: some View {
-        Group {
-            if let convertedDrawing {
-                FloorPlanConversionResultView(
-                    plan: convertedDrawing,
-                    address: fireCase.address,
-                    onBack: { self.convertedDrawing = nil },
-                    onSave: { conversion in
-                        drawingError = saveConvertedFloorPlan(conversion, sourceType: .iPadDrawing)
-                    }
-                )
-            } else {
-                FloorPlanDrawingView(
-                    address: fireCase.address,
-                    onRetake: {
-                        isConvertingDrawing = false
-                        destination = nil
-                    },
-                    onConfirm: { isConvertingDrawing = true },
-                    canvasView: $drawingCanvas
-                )
-                .allowsHitTesting(!isConvertingDrawing)
-                .overlay {
-                    if isConvertingDrawing {
-                        ProgressView("도면 변환 중")
-                            .padding()
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    }
-                }
+        FloorPlanDrawingView(
+            address: fireCase.address,
+            onRetake: {
+                isConvertingDrawing = false
+                destination = nil
+            },
+            onConfirm: { isConvertingDrawing = true },
+            canvasView: $drawingCanvas
+        )
+        .allowsHitTesting(!isConvertingDrawing)
+        .overlay {
+            if isConvertingDrawing {
+                ProgressView("도면 변환 중")
+                    .padding()
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
         .task(id: isConvertingDrawing) {
@@ -270,6 +256,7 @@ struct FloorPlanMethodSelectionView: View {
         do {
             let plan = try PlanData(serverJSON: conversion.json)
             guard !plan.walls.isEmpty else { return Copy.noWalls }
+            try conversion.save()
             try fireCase.replaceFloorPlan(with: plan, sourceType: sourceType)
             return nil
         } catch {
@@ -302,7 +289,7 @@ struct FloorPlanMethodSelectionView: View {
         do {
             let plan = try await FloorPlanConversion.request(image)
             try Task.checkCancellation()
-            convertedDrawing = plan
+            drawingError = saveConvertedFloorPlan(plan, sourceType: .iPadDrawing)
         } catch {
             guard !Task.isCancelled else { return }
             drawingError = error.localizedDescription
