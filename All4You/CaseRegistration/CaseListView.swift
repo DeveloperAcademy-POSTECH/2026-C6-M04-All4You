@@ -231,12 +231,14 @@ extension CaseListView {
             .tag(CaseListSelection.filter(filter))
     }
     
-    /// 사용자가 만든 목록. 편집 중에는 개수 대신 ⋯ 메뉴(이름 변경·삭제)가 보이고, 손잡이를 끌어 순서를 바꾼다
+    /// 사용자가 만든 목록. 드래그한 사건을 놓으면 해당 목록으로 이동한다.
     private func folderRow(_ folder: CaseFolder) -> some View {
         HStack {
             Label(folder.name, systemImage: "folder")
+
             if isEditing {
                 Spacer()
+
                 Menu {
                     folderActions(folder)
                 } label: {
@@ -248,6 +250,20 @@ extension CaseListView {
         }
         .badge(isEditing ? nil : Text("\(folder.cases.count)"))
         .tag(CaseListSelection.folder(folder.id))
+        .dropDestination(for: String.self) { items, _ in
+            guard !isEditing,
+                  let caseID = items.first else {
+                return false
+            }
+
+            return moveCaseToFolder(
+                caseID: caseID,
+                folder: folder
+            )
+        } isTargeted: { isTargeted in
+            // 드래그한 사건이 폴더 위에 올라오면 강조
+            // 상태 변경 없이 기본 드롭 동작을 사용
+        }
     }
     
     /// 목록 이름 변경·목록 삭제
@@ -470,6 +486,35 @@ extension CaseListView {
             get: { deletingFolder != nil },
             set: { if !$0 { deletingFolder = nil } }
         )
+    }
+    
+    /// 드래그한 사건을 사용자 폴더로 이동하고 저장한다.
+    private func moveCaseToFolder(
+        caseID: String,
+        folder: CaseFolder
+    ) -> Bool {
+        guard let fireCase = allCases.first(where: {
+            $0.id.uuidString == caseID
+        }) else {
+            return false
+        }
+
+        // 이미 같은 폴더에 있으면 이동할 필요 없음
+        if fireCase.folder?.id == folder.id {
+            return true
+        }
+
+        let previousFolder = fireCase.folder
+
+        fireCase.folder = folder
+
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            fireCase.folder = previousFolder
+            return false
+        }
     }
 }
 

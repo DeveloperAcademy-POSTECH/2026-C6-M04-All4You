@@ -222,11 +222,45 @@ extension CaseListContent {
                     : Color.clear
                 )
         )
+        // 꾸욱 눌렀을 때 모양 및 효과
         .contextMenu {
             moveMenu(fireCase)
-            Button(Copy.deleteCase, systemImage: "trash", role: .destructive) {
+            
+            Button(
+                Copy.deleteCase,
+                systemImage: "trash",
+                role: .destructive
+            ) {
                 deletingCase = fireCase
             }
+        } preview: {
+            Text(fireCase.title)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(minWidth: 220, maxWidth: 400, alignment: .leading)
+                .background(
+                    Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+        }
+        // 드래그해서 폴더에 넣기
+        .draggable(fireCase.id.uuidString) {
+            Text(fireCase.title)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 220)
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
         }
     }
     
