@@ -94,15 +94,14 @@ nonisolated struct PhotoPlacement: Codable, Hashable, Sendable {
     /// 바라보는 방향 (도). 도면 위쪽이 0°, 시계 방향 (PlanMarker.yaw와 같은 규칙).
     /// 바닥·천장을 거의 수직으로 찍어 수평 방향이 없으면 nil
     var yaw: Double?
-    /// 위아래 기울기 (도). 수평 0°, 위를 보면 +
-    var pitch: Double
+    /// 위아래 기울기 (도). 수평 0°, 위를 보면 +. 모르면 nil(수평으로 봄)
+    var pitch: Double?
     /// 바닥에서 카메라 높이 (m)
     var height: Double
-    /// 화각 (도)
-    var fieldOfView: Double
+    /// 가로 화각 (도). 모르면 nil(`defaultFieldOfView`로 그림)
+    var fieldOfView: Double?
 
-    /// 화각을 모를 때 쓰는 값 (도)
-    // TEMP: 사진의 화각·기울기를 저장할지 ERD 9절 "사진 3D 정보"가 정해지면 바꿈
+    /// 화각을 모를 때 부채꼴을 그리는 값 (도)
     static let defaultFieldOfView = 60.0
 }
 

@@ -26,8 +26,8 @@ struct LoadedPhoto: Identifiable {
     var sessionNumber: Int? = nil
     /// AR로 찍은 사진의 카메라 자세 (ARKit 월드 좌표). 도면의 scanAlignment로 정확한 촬영 위치·방향이 된다
     var cameraPose: ScanCameraPose? = nil
-    /// 저장된 촬영 위치·방향 (EvidencePhoto의 positionX·positionY·positionZ·direction). 없으면 카메라 자세로 계산한다
-    var savedPlacement: SavedPlacement? = nil
+    /// 저장된 촬영 위치·방향·시야 (EvidencePhoto.placement). 없으면 카메라 자세로 계산한다
+    var savedPlacement: PhotoPlacement? = nil
     /// 저장된 사진 기록. 원본은 커서 미리 읽어 두지 않고 볼 때 여기서 읽는다
     fileprivate var record: EvidencePhoto?
     /// 저장하지 않는 사진(미리보기용 저장소)의 원본
@@ -56,7 +56,7 @@ extension LoadedPhoto {
     /// 저장된 사진 기록에서 화면용 사진을 만든다. 작은 사진을 읽지 못하면 nil
     fileprivate init?(record: EvidencePhoto) {
         guard let thumbnail = UIImage(data: record.thumbnailData) else { return nil }
-        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, cameraPose: record.cameraPose, savedPlacement: record.savedPlacement, record: record)
+        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, cameraPose: record.cameraPose, savedPlacement: record.placement, record: record)
     }
 
     /// 도면 위 촬영 위치·방향. 저장된 값을 먼저 쓰고, 없으면 카메라 자세로 계산한다.
@@ -183,10 +183,10 @@ final class PhotoStore {
 
     /// 사진의 촬영 위치·방향을 고쳐 저장한다. 위치가 어느 장소 안이면 사진도 그 장소로 옮기고,
     /// 어느 장소 밖이면 장소는 그대로 둔다
-    func setPlacement(id: UUID, _ placement: SavedPlacement, in plan: PlanData) {
+    func setPlacement(id: UUID, _ placement: PhotoPlacement, in plan: PlanData) {
         guard let index = index(of: id) else { return }
         allPhotos[index].savedPlacement = placement
-        allPhotos[index].record?.savedPlacement = placement
+        allPhotos[index].record?.placement = placement
         if let room = plan.room(containing: placement.position) {
             allPhotos[index].roomKey = room.id
             allPhotos[index].record?.roomKey = room.id
