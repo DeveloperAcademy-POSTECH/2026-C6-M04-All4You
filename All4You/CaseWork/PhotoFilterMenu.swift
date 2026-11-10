@@ -49,14 +49,23 @@ extension PhotoFilterMenu {
         } label: {
             HStack(spacing: Layout.buttonLabelSpacing) {
                 Image(systemName: "line.3.horizontal.decrease")
-                Text(Copy.filter)
-                Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                    .font(AppTypography.label.bold())
+                    .font(AppTypography.headline)
+                    .frame(width: Layout.buttonIconWidth)
+                HStack(spacing: Layout.buttonTextSpacing) {
+                    Text(Copy.filter)
+                        .font(AppTypography.headline)
+                    Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                        .font(AppTypography.subheadline.bold())
+                }
             }
-            // 유리 버튼은 기본으로 파란 글자라, Figma처럼 애플 기본 글자색으로 바꾼다
             .foregroundStyle(.primary)
+            .padding(.horizontal, Layout.buttonPadding)
+            .frame(height: Layout.buttonHeight)
+            // Figma의 필터 버튼은 유리가 아니라 옅은 회색으로 채운 알약 모양이다
+            .background(.fill.tertiary, in: .capsule)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
     }
 
     private var filterPanel: some View {
@@ -123,7 +132,11 @@ extension PhotoFilterMenu {
 // 크기
 extension PhotoFilterMenu {
     private enum Layout {
-        static let buttonLabelSpacing: CGFloat = 6
+        static let buttonHeight: CGFloat = 40
+        static let buttonPadding: CGFloat = 8
+        static let buttonIconWidth: CGFloat = 28
+        static let buttonLabelSpacing: CGFloat = 8
+        static let buttonTextSpacing: CGFloat = 6
         static let panelWidth: CGFloat = 238
         static let panelPadding: CGFloat = 8
         static let panelCornerRadius: CGFloat = 34
