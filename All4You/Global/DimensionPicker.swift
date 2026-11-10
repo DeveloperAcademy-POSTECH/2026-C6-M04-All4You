@@ -14,19 +14,52 @@ enum PlanDimension: CaseIterable {
     }
 }
 
-/// 2D/3D 중 하나를 고르는 막대
+/// 2D/3D 중 하나를 고르는 리퀴드 글래스 막대. 고른 칸이 두 칸 사이를 물방울처럼 옮겨 다닌다.
+/// 메인 도면 탭과 도면 수정 화면이 함께 쓴다
 struct DimensionPicker: View {
     @Binding var selection: PlanDimension
 
+    @Namespace private var namespace
+
     var body: some View {
-        Picker(Copy.label, selection: $selection) {
-            ForEach(PlanDimension.allCases, id: \.self) { dimension in
-                Text(dimension.title).tag(dimension)
+        GlassEffectContainer {
+            HStack(spacing: 0) {
+                ForEach(PlanDimension.allCases, id: \.self) { dimension in
+                    segment(dimension)
+                }
+            }
+            .padding(Layout.inset)
+            .glassEffect(.regular, in: Capsule())
+        }
+        .frame(width: Layout.width, height: Layout.height)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Copy.label)
+    }
+
+    private func segment(_ dimension: PlanDimension) -> some View {
+        let isSelected = selection == dimension
+        return Button {
+            withAnimation(.smooth) {
+                selection = dimension
+            }
+        } label: {
+            Text(dimension.title)
+                .font(AppTypography.headline)
+                .foregroundStyle(isSelected ? .white : .primary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .background {
+            // 고른 칸의 주황 유리. 같은 id라 다른 칸으로 옮겨 갈 때 이어져 움직인다
+            if isSelected {
+                Capsule()
+                    .fill(.clear)
+                    .glassEffect(.regular.tint(.brand500), in: Capsule())
+                    .glassEffectID(Copy.selectedID, in: namespace)
             }
         }
-        .pickerStyle(.segmented)
-        .controlSize(.extraLarge)
-        .frame(width: Layout.width)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -34,6 +67,10 @@ struct DimensionPicker: View {
 extension DimensionPicker {
     private enum Layout {
         static let width: CGFloat = 370
+        /// 애플 기본 가장 큰 막대(.extraLarge) 높이와 같다 (Figma 27:7166)
+        static let height: CGFloat = 50
+        /// 바깥 막대 가장자리에서 고른 칸까지 여백
+        static let inset: CGFloat = 4
     }
 }
 
@@ -41,6 +78,7 @@ extension DimensionPicker {
 extension DimensionPicker {
     private enum Copy {
         static let label = "도면 보기 방식"
+        static let selectedID = "selectedDimension"
     }
 }
 
