@@ -109,6 +109,44 @@ struct WindowEdgeComponent: Component {
     let edge: WindowEdge
 }
 
+// 고른 표시 입체 테두리
+extension FloorPlan3DBuilder {
+    /// 고른 발화지점·피해자·가구를 감싸는 주황 입체 테두리 상자(모서리 12개 선). 2D의 주황 사각형에 해당한다.
+    /// entity의 자식으로 붙어서, 스탬프를 돌리거나 크기를 바꾸면 함께 따라간다. 충돌 모양이 없어 눌러 고르는 판정에는 끼지 않는다
+    static func addSelectionFrame(to entity: Entity) {
+        let bounds = entity.visualBounds(relativeTo: entity)
+        let half = bounds.extents / 2 + SIMD3(repeating: SelectionFrame.padding)
+        let frame = Entity()
+        frame.position = bounds.center
+        let thickness = SelectionFrame.thickness
+        for axis in 0..<3 {
+            // 이 축 방향 모서리 4개: 나머지 두 축의 ±끝에 하나씩
+            let others = (0..<3).filter { $0 != axis }
+            for signA in [Float(-1), 1] {
+                for signB in [Float(-1), 1] {
+                    var size = SIMD3(repeating: thickness)
+                    size[axis] = half[axis] * 2 + thickness
+                    var position = SIMD3<Float>(repeating: 0)
+                    position[others[0]] = half[others[0]] * signA
+                    position[others[1]] = half[others[1]] * signB
+                    let edge = ModelEntity(mesh: .generateBox(size: size), materials: [Materials.selectionFrame])
+                    edge.position = position
+                    frame.addChild(edge)
+                }
+            }
+        }
+        entity.addChild(frame)
+    }
+
+    /// 테두리 상자 값 (m)
+    private enum SelectionFrame {
+        /// 선 굵기. 스탬프를 키우면 함께 굵어진다
+        static let thickness: Float = 0.02
+        /// 모양에서 테두리까지 여유
+        static let padding: Float = 0.04
+    }
+}
+
 // 공간 이름 라벨 자리
 extension FloorPlan3DBuilder {
     /// 라벨 자리들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 라벨을 겹친다
@@ -405,6 +443,8 @@ extension FloorPlan3DBuilder {
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
         entity.scale = SIMD3(repeating: Float(marker.drawScale))
         makeSelectable(entity, as: tag)
+        // 테두리 상자는 충돌 모양을 만든 뒤에 붙여, 눌러 고르는 판정에 끼지 않게 한다
+        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 
@@ -456,6 +496,7 @@ private enum Materials {
     // TEMP: 고른 표시 모양은 Figma에서 확인 전이라 임시로 진한 주황
     static let selectedStamp = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     static let selectedGlass = glass(tint: UIColor(resource: .brand500), opacity: 0.6)
+    static let selectionFrame = UnlitMaterial(color: UIColor(resource: .brand500))
     static let windowEdgeHandle = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     // TEMP: 가구 3D 디자인이 정해지기 전이라 2D 가구 채움보다 진한 회색 상자
     static let furniture = SimpleMaterial(color: UIColor(resource: .gray300), roughness: 0.8, isMetallic: false)
