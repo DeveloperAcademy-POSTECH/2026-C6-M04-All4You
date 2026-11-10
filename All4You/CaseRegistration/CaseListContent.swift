@@ -64,6 +64,34 @@ struct CaseListContent: View {
     private var selectedCase: FireCase? {
         allCases.first { $0.id == selectedCaseID }
     }
+
+    /// 전체 사건이 존재하지만 현재 선택한 목록만 비어 있을 때 표시할 문구.
+    /// 전체 사건이 0개인 경우에는 기존 emptyView의 "등록된 사건이 없어요"를 유지한다.
+    private var emptyListTitle: String {
+        switch selection {
+        case .filter(.recent):
+            return "최근 열람한 사건이 없어요"
+        case .filter(.inProgress):
+            return "조사 중인 사건이 없어요"
+        case .filter(.closed):
+            return "종결된 사건이 없어요"
+        case .folder:
+            return "해당 사건이 없어요"
+        }
+    }
+
+    private var emptyListDescription: String {
+        switch selection {
+        case .filter(.recent):
+            return "열람한 사건은 이곳에서 확인할 수 있어요"
+        case .filter(.inProgress):
+            return "조사를 시작한 사건은 이곳에서 확인할 수 있어요"
+        case .filter(.closed):
+            return "조사가 끝난 사건은 이곳에서 확인할 수 있어요"
+        case .folder:
+            return "다른 목록을 선택하거나 새로운 사건을 등록해 주세요"
+        }
+    }
     
     var body: some View {
         Group {
@@ -73,9 +101,9 @@ struct CaseListContent: View {
                 ContentUnavailableView.search(text: searchText)
             } else if cases.isEmpty {
                 ContentUnavailableView(
-                    "해당 사건이 없어요",
+                    emptyListTitle,
                     systemImage: "folder",
-                    description: Text("다른 목록을 선택하거나 새로운 사건을 등록해 주세요")
+                    description: Text(emptyListDescription)
                 )
             } else {
                 Group {
