@@ -68,6 +68,8 @@ struct RoomLabelActions {
     let onDrag: (String, CGSize) -> Void
     /// 끌기에서 손을 뗐다
     let onDragEnded: () -> Void
+    /// 고른 캡슐의 ✕를 눌렀다 (Room.id)
+    let onDelete: (String) -> Void
 }
 
 // 벽과 문·창문
@@ -228,9 +230,28 @@ extension Plan2DView {
                 if room.id != editingRoomId && !hiddenLabelRoomIds.contains(room.id) {
                     roomLabel(room)
                         .overlay { selectionBorder(isSelected: room.id == selectedRoomId) }
+                        .overlay(alignment: .topLeading) { roomDeleteHandle(room) }
                         .position(screen.point(SIMD2(room.labelX, room.labelY)))
                 }
             }
+        }
+    }
+
+    /// 고른 공간 이름 캡슐 왼쪽 위 모서리의 ✕. 스탬프의 ✕ 손잡이와 같은 모양
+    @ViewBuilder
+    private func roomDeleteHandle(_ room: Room) -> some View {
+        if room.id == selectedRoomId, let actions = roomLabelActions {
+            Button { actions.onDelete(room.id) } label: {
+                Image(systemName: "xmark")
+                    .font(AppTypography.title3)
+                    .foregroundStyle(.brand500)
+                    .frame(width: Layout.deleteHandleSize, height: Layout.deleteHandleSize)
+                    .glassEffect(.regular, in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("삭제")
+            .offset(x: -Layout.deleteHandleSize / 2, y: -Layout.deleteHandleSize / 2)
         }
     }
 
@@ -266,6 +287,8 @@ extension Plan2DView {
         static let selectionLineWidth: CGFloat = 1.5
         /// 공간 이름 캡슐을 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
         static let labelDragDistance: CGFloat = 4
+        /// 고른 공간 이름 캡슐의 ✕ 손잡이 크기 (pt). 스탬프 손잡이와 같다
+        static let deleteHandleSize: CGFloat = 44
         /// 가구 테두리 두께 (pt)
         static let furnitureLineWidth: CGFloat = 1
         /// 바닥에서 이보다(m) 높이 띄운 가구는 테두리를 점선으로

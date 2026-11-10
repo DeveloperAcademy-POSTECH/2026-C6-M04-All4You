@@ -187,6 +187,12 @@ extension PlanData {
         rooms[index].name = trimmed
     }
 
+    /// 방(공간 이름)을 지운다. 둘러싼 벽은 그대로라 이름 없는 칸으로 남고, 공간라벨 도구로 다시 달 수 있다.
+    /// 그 방에 놓였던 사진·메모는 장소가 없어진다
+    mutating func removeRoom(id: String) {
+        rooms.removeAll { $0.id == id }
+    }
+
     /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
     mutating func moveRoomLabel(id: String, to point: SIMD2<Double>) {
         guard room(containing: point)?.id == id, let index = rooms.firstIndex(where: { $0.id == id }) else { return }

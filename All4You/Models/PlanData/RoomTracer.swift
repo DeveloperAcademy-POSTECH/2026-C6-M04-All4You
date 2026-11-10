@@ -199,6 +199,32 @@ extension PlanData {
     }
 }
 
+// 이름 없는 칸에 공간 이름 달기
+extension PlanData {
+    /// 점 point를 품은, 아직 방(Room)이 없는 닫힌 칸의 경계. 이미 방 안이거나 벽으로 닫힌 칸이 아니면 nil.
+    /// 칸이 겹쳐 있으면(칸 안의 칸) 가장 작은 칸
+    func unlabeledCell(containing point: SIMD2<Double>) -> [RoomEdge]? {
+        guard room(containing: point) == nil, let loops = faceLoops() else { return nil }
+        let takenSides = Set(rooms.flatMap(\.boundary).map { "\($0.wallId)/\($0.forward)" })
+        return loops
+            .filter { loop in
+                loop.area > WallMoveRules.eps
+                    && !loop.edges.contains { takenSides.contains("\($0.wallId)/\($0.forward)") }
+                    && Self.polygon(points(of: loop.edges), contains: point)
+            }
+            .min { $0.area < $1.area }?
+            .edges
+    }
+
+    /// 이름 없는 칸에 공간 이름을 point 자리에 새로 단다. 달았으면 새 방의 id, 달 칸이 없으면 nil
+    mutating func addRoom(at point: SIMD2<Double>) -> String? {
+        guard let boundary = unlabeledCell(containing: point) else { return nil }
+        let id = UUID().uuidString
+        rooms.append(Room(id: id, name: RoomCopy.newRoomName, boundary: boundary, labelX: point.x, labelY: point.y))
+        return id
+    }
+}
+
 // 문구
 private enum RoomCopy {
     /// 벽을 그려 새로 생긴 방의 이름. 공간라벨로 고칠 수 있다
