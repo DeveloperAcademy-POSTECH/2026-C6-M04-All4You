@@ -15,14 +15,17 @@ struct EditToolBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // 접으면 도구가 모두 가려지고 '스탬프' 버튼 하나만 남는다
-            if isCollapsed {
-                stampButton
+        // 버튼마다 따로 리퀴드 글래스를 쓰되, 한 묶음으로 그려 서로 가까워지면 물방울처럼 이어지게 한다
+        GlassEffectContainer(spacing: Layout.barSpacing) {
+            HStack(spacing: 0) {
+                // 접으면 도구가 모두 가려지고 '스탬프' 버튼 하나만 남는다
+                if isCollapsed {
+                    stampButton
+                }
+                foldingToolButtons
+                collapseButton
+                    .padding(.leading, Layout.barSpacing)
             }
-            foldingToolButtons
-            collapseButton
-                .padding(.leading, Layout.barSpacing)
         }
     }
 
@@ -93,8 +96,9 @@ extension EditToolBar {
         }
         .foregroundStyle(isSelected ? .white : .black)
         .frame(width: Layout.toolButtonWidth, height: Layout.toolButtonHeight)
-        // 디자인 시스템에 Figma의 옅은 회색 바탕과 같은 색이 없어 애플 기본 옅은 바탕을 쓴다
-        .background(isSelected ? AnyShapeStyle(.brand500) : AnyShapeStyle(.fill.tertiary), in: Capsule())
+        .contentShape(Capsule())
+        // 고른 도구는 주황 틴트, 나머지는 투명한 리퀴드 글래스
+        .glassEffect(isSelected ? .regular.tint(.brand500).interactive() : .regular.interactive(), in: Capsule())
     }
     
     // 접기 펼치기 버튼
@@ -111,7 +115,8 @@ extension EditToolBar {
             .rotationEffect(.degrees(isCollapsed ? 180 : 0))
             .foregroundStyle(.primary)
             .frame(width: Layout.collapseButtonWidth, height: Layout.toolButtonHeight)
-            .background(.fill.tertiary, in: Capsule())
+            .contentShape(Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
         }
         .buttonStyle(.plain)
     }

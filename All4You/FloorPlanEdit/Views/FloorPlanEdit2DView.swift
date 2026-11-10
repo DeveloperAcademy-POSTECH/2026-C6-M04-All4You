@@ -68,11 +68,8 @@ struct FloorPlanEdit2DView: View {
                 .onAppear { fitPlan(in: proxy.size) }
                 .onChange(of: proxy.size) { _, size in fitPlan(in: size) }
         }
-        // 처음 맞출 때 도면이 위·아래 도구 막대와 겹치지 않게 한다
-        .padding(.vertical, Layout.toolBarInset)
+        // 위 도구 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (3D와 같다). 처음 맞출 때만 막대를 피해 놓는다
         .background(.white)
-        // 옮기거나 확대한 도면이 상단 바·상태 표시줄 위로 넘쳐 보이지 않게 이 영역 안에서만 그린다
-        .clipped()
         .gesture(zoomGesture)
         .gesture(TwoFingerPanGesture(onChanged: panPlan))
         .overlay(alignment: .topLeading) {
@@ -89,7 +86,10 @@ struct FloorPlanEdit2DView: View {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(in size: CGSize) {
         canvasSize = size
-        screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+        // 위·아래 막대를 뺀 영역 가운데에 맞춘 뒤 아래로 내려, 처음에는 도면이 막대와 겹치지 않게 한다
+        let inner = CGSize(width: size.width, height: max(size.height - Layout.toolBarInset * 2, 1))
+        screen = PlanScreen(plan: planData, in: inner, fill: Layout.planFill)
+            .moved(by: CGSize(width: 0, height: Layout.toolBarInset))
     }
 }
 
