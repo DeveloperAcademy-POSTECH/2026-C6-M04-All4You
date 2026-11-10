@@ -16,8 +16,8 @@ struct CaseRegistrationView: View {
     /// 기본 사건명 번호를 정하려고 이미 있는 사건 이름을 본다
     @Query private var existingCases: [FireCase]
     
-    @State private var date: Date?
-    @State private var time: Date?
+    @State private var date: Date? = .now
+    @State private var time: Date? = .now
     @State private var address = ""
     @State private var detailAddress = ""
     /// 주소·상세 주소로 자동으로 채운다. 사용자가 고칠 수 있다
