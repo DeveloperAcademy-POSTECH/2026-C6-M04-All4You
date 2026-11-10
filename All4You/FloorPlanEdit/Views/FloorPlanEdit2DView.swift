@@ -59,6 +59,8 @@ struct FloorPlanEdit2DView: View {
     @State private var wallDragBase: (plan: PlanData, limits: MoveLimits)?
     /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
     @State private var wallBlockedReason: String?
+    /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
+    @State private var noticeDismissTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -269,12 +271,14 @@ extension FloorPlanEdit2DView {
         case (nil, _):
             selection = nil
         case (.roomName?, .floor(let point)):
-            if let room = planData.room(containing: point) {
-                planData.moveRoomLabel(id: room.id, to: point)
-                startRoomEditing(room.id)
+            if planData.room(containing: point) != nil {
+                // 닫힌 공간 하나에는 라벨 하나만 둘 수 있다. 라벨 자리는 라벨을 끌어 옮긴다
+                showNotice(Copy.roomLabelExists)
             } else if let newId = planData.addRoom(at: point) {
                 // 이름 없는 닫힌 칸이면 새 공간 이름을 달고 바로 고친다
                 startRoomEditing(newId)
+            } else {
+                showNotice(Copy.roomNotClosed)
             }
         case (.furniture?, .floor(let point)):
             if let furniture = planData.furniture(at: point) {
@@ -726,6 +730,16 @@ extension FloorPlanEdit2DView {
         wallBlockedReason = isBlocked ? Copy.furnitureBlocked : nil
     }
 
+    /// 위쪽 캡슐로 안내를 잠깐 띄운다. 끄는 동안 계속 보여야 하는 막힘 안내와 달리 시간이 지나면 스스로 내려간다
+    private func showNotice(_ text: String) {
+        wallBlockedReason = text
+        noticeDismissTask?.cancel()
+        noticeDismissTask = Task {
+            try? await Task.sleep(for: Layout.noticeDuration)
+            if !Task.isCancelled, wallBlockedReason == text { wallBlockedReason = nil }
+        }
+    }
+
     /// 돌리기·크기 바꾸기에서 손을 떼면 미리 보기를 반영하고 막힘 안내를 내린다
     private func endHandleDrag() {
         commitPreview()
@@ -856,6 +870,8 @@ extension FloorPlanEdit2DView {
         static let keyboardFreeShare = 0.4
         /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
         static let noticeTopPadding: CGFloat = 8
+        /// 안내 캡슐이 떠 있는 시간
+        static let noticeDuration = Duration.seconds(2)
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
         /// 긋는 중인 펜 점선
@@ -869,6 +885,9 @@ extension FloorPlanEdit2DView {
     private enum Copy {
         static let title = "도면 수정"
         static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
+        // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
+        static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
+        static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
     }
 }
 
