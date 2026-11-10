@@ -84,16 +84,16 @@ struct CaseListContent: View {
                             let availableWidth = max(0, geometry.size.width - Layout.dividerWidth)
                             let listWidth = boundedListWidth(availableWidth: availableWidth)
                             let previewWidth = max(0, availableWidth - listWidth)
-
+                            
                             ZStack(alignment: .topLeading) {
                                 caseList
                                     .frame(width: listWidth, height: geometry.size.height)
                                     .clipped()
-
+                                
                                 CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
                                     .frame(width: previewWidth, height: geometry.size.height)
                                     .offset(x: listWidth + Layout.dividerWidth)
-
+                                
                                 resizeDivider(availableWidth: availableWidth, currentWidth: listWidth)
                                     .frame(height: geometry.size.height)
                                     .offset(x: listWidth)
@@ -193,7 +193,7 @@ extension CaseListContent {
         let proposedWidth = (dragStartListWidth ?? availableWidth * listWidthFraction) + splitDragOffset
         return min(max(proposedWidth, minimumListWidth), max(minimumListWidth, availableWidth - minimumPreviewWidth))
     }
-
+    
     private func resizeDivider(availableWidth: CGFloat, currentWidth: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
@@ -221,7 +221,7 @@ extension CaseListContent {
             )
             .accessibilityLabel("사건 목록 너비 조절")
     }
-
+    
     @ViewBuilder
     private var caseList: some View {
         // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
@@ -249,10 +249,14 @@ extension CaseListContent {
         } label: {
             HStack {
                 Text(fireCase.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
                 Text(Self.dateFormatter.string(from: fireCase.occurredAt))
                     .font(AppTypography.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundStyle(.primary)
             .contentShape(Rectangle())
