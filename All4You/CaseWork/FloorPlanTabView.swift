@@ -19,6 +19,8 @@ struct FloorPlanTabView: View {
 
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
+    /// 도면 영역의 크기. 처음 시야로 되돌릴 때 이 크기에 맞춰 다시 놓는다
+    @State private var canvasSize = CGSize.zero
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
     @State private var lastMagnification = 1.0
     /// 사진 핀을 눌러 고른 장소 (Room.id). 오른쪽에 그 장소 사진 모음이 열린다
@@ -188,6 +190,10 @@ extension FloorPlanTabView {
                 .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture)
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
+                .overlay(alignment: .bottomTrailing) {
+                    ResetViewButton { resetView(planData) }
+                        .padding()
+                }
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
                 if isThreeDReady {
                     // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
@@ -198,7 +204,8 @@ extension FloorPlanTabView {
                         onTap: { _ in clearRoomSelection() },
                         onEdit: { _ in },
                         pins: pins3D(in: planData),
-                        pinView: { id in pinView3D(id: id, in: planData) }
+                        pinView: { id in pinView3D(id: id, in: planData) },
+                        showsResetButton: true
                     )
                     .modifier(DimensionLayer(isShown: dimension == .threeD))
                 }
@@ -403,7 +410,15 @@ extension FloorPlanTabView {
 extension FloorPlanTabView {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(_ planData: PlanData, in size: CGSize) {
+        canvasSize = size
         screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+    }
+
+    /// 확대하거나 옮긴 도면을 처음 맞춘 배율·자리로 되돌린다
+    private func resetView(_ planData: PlanData) {
+        withAnimation(.easeInOut(duration: Layout.resetDuration)) {
+            fitPlan(planData, in: canvasSize)
+        }
     }
 
     /// 두 손가락 사이를 기준으로 확대·축소한다
@@ -439,6 +454,8 @@ extension FloorPlanTabView {
         static let dimensionFadeDuration = 0.3
         /// 3D 화면을 미리 만들어 두기까지 기다리는 시간
         static let threeDWarmUp = Duration.seconds(1)
+        /// 처음 시야로 되돌리는 애니메이션 시간 (초)
+        static let resetDuration = 0.35
         /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
         static let filterLeading: CGFloat = 32
         // 도면 수정 화면의 위 도구 막대(바깥 여백 16 + 높이 54) 윗줄과 맞춰 그 막대와 같은 높이에 놓는다
