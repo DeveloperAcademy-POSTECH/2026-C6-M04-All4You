@@ -212,11 +212,7 @@ private struct RoomPlanScanSessionView: View {
                     }
                 case .segmentSaved:
                     if scanService.isRelocalizing {
-                        ProgressView("이전 스캔 위치를 찾는 중…")
-                            .tint(.white)
-                            .foregroundStyle(.white)
-                            .padding(24)
-                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 16))
+                        RoomPlanRelocalizationGuidance()
                     } else if scanService.isMergingPreview && !scanService.isScanLimitReached {
                         ProgressView("도면 정리 중…")
                             .tint(.white)

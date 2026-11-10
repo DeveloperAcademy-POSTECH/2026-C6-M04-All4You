@@ -180,9 +180,6 @@ import RoomPlan
         captureSession = session
         session.delegate = self
         tracking.attach()
-        if isRelocalizing {
-            guidance = "이전 스캔 위치를 비춰 위치를 찾는 중입니다"
-        }
         if restartAfterEmptyScan {
             restartAfterEmptyScan = false
             // 새 RoomCaptureView가 화면에 연결된 다음 촬영 시작
