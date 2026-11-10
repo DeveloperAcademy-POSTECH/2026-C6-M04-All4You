@@ -15,9 +15,10 @@ struct RoomPlanScanView: View {
     @State private var skipChecklistOnRescan = false
     @State private var rescanBackdrop: UIImage?
     /// 스캔 결과: usdz 파일, 여러 구간을 합친 구조(구간이 2개 이상일 때만), 구간별 결과
-    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)?
+    /// 마지막 값: 스캔 중 찍은 사진(카메라 자세 포함)
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
 
-    init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)? = nil) {
+    init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)? = nil) {
         self.onUseResult = onUseResult
     }
 
@@ -49,7 +50,7 @@ private struct RoomPlanScanSessionView: View {
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
-    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom]) -> Void)?
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
     let onCameraReady: () -> Void
     let onRescan: (UIImage?) -> Void
 
@@ -85,7 +86,7 @@ private struct RoomPlanScanSessionView: View {
                     statusMessage: scanService.mergeError,
                     onContinue: {
                         guard let url = scanService.finalModelURL else { return }
-                        onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms)
+                        onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms, scanService.scanPhotos)
                     },
                     onChooseOtherMethod: {
                         scanService.detach()
@@ -193,7 +194,11 @@ private struct RoomPlanScanSessionView: View {
                             scanService.stop()
                         },
                         onPause: scanService.pause,
-                        onTorch: scanService.toggleTorch
+                        onTorch: scanService.toggleTorch,
+                        photoCount: scanService.scanPhotoCount,
+                        canCapturePhoto: scanService.canCapturePhoto,
+                        photoMessage: scanService.photoMessage,
+                        onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) }
                     )
                     // TODO: 디자인 나오면 수정해야함
                 case .saving:
@@ -338,14 +343,18 @@ private struct RoomPlanScanSessionView: View {
     // 종료 버튼을 누른 시점의 AR 카메라 사진을 저장하여 완료 화면 뒤에 배치
     private func captureFinishedCameraFrame() {
         guard finishedCameraSnapshot == nil else { return }
-        let orientation = UIApplication.shared.connectedScenes
+        finishedCameraSnapshot = RoomPlanCameraSnapshot.capture(
+            from: scanService.arSession,
+            orientation: currentInterfaceOrientation
+        ) ?? finishedCameraSnapshot
+    }
+
+    // 카메라 픽셀 버퍼를 화면 방향에 맞게 돌릴 때 쓰는 현재 화면 방향
+    private var currentInterfaceOrientation: UIInterfaceOrientation {
+        UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }?
             .effectiveGeometry.interfaceOrientation ?? .landscapeRight
-        finishedCameraSnapshot = RoomPlanCameraSnapshot.capture(
-            from: scanService.arSession,
-            orientation: orientation
-        ) ?? finishedCameraSnapshot
     }
 
     // 예외처리 - 일시정지 구간의 저장·병합 진행 상태 문구

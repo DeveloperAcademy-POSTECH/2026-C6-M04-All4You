@@ -40,6 +40,8 @@ extension PlanData {
         func planPoint(_ world: SIMD3<Double>) -> SIMD2<Double> {
             rotation.apply(SIMD2(world.x, world.z)) + shift
         }
+        // 같은 회전·이동을 남겨, 스캔 중 찍은 사진의 카메라 위치를 같은 도면 좌표로 옮긴다
+        scanAlignment = ScanAlignment(angle: rotation.angle, shift: shift, floorHeight: floorY)
 
         // 6) 꼭짓점 합치기
         let graph = ScanImport.mergedVertices(shifted)

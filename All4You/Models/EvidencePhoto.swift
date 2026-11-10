@@ -22,6 +22,9 @@ final class EvidencePhoto {
     var fireCase: FireCase?
     /// 찍은 조사 차수. 없을 수 있다. 반대쪽은 `InvestigationSession.photos`
     var session: InvestigationSession?
+    /// AR로 찍은 사진의 카메라 자세(ScanCameraPose JSON, ARKit 월드 좌표). 앱 일반 카메라·사진 앱 사진은 nil.
+    /// 도면의 scanAlignment와 함께 도면 위 촬영 위치·방향을 다시 계산할 때 쓴다 (`placement(in:)`)
+    var cameraPoseData: Data?
 
     init(
         id: UUID = UUID(),
@@ -31,7 +34,8 @@ final class EvidencePhoto {
         takenAt: Date,
         imageData: Data,
         thumbnailData: Data,
-        session: InvestigationSession? = nil
+        session: InvestigationSession? = nil,
+        cameraPoseData: Data? = nil
     ) {
         self.id = id
         self.source = source
@@ -41,6 +45,20 @@ final class EvidencePhoto {
         self.imageData = imageData
         self.thumbnailData = thumbnailData
         self.session = session
+        self.cameraPoseData = cameraPoseData
+    }
+}
+
+extension EvidencePhoto {
+    /// 저장된 카메라 자세. 없거나 못 읽으면 nil
+    var cameraPose: ScanCameraPose? {
+        cameraPoseData.flatMap { try? JSONDecoder().decode(ScanCameraPose.self, from: $0) }
+    }
+
+    /// 도면 위 촬영 위치·방향. 카메라 자세와 도면의 스캔 변환이 둘 다 있어야 한다
+    func placement(in plan: PlanData) -> PhotoPlacement? {
+        guard let pose = cameraPose else { return nil }
+        return plan.scanAlignment?.placement(of: pose)
     }
 }
 

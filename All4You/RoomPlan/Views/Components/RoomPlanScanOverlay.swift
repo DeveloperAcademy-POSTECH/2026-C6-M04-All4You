@@ -18,6 +18,11 @@ struct RoomPlanScanOverlay: View {
     let onStop: () -> Void
     let onPause: () -> Void
     let onTorch: () -> Void
+    /// 스캔 중 사진 촬영 (사진에 카메라 위치·방향이 함께 담김)
+    var photoCount = 0
+    var canCapturePhoto = false
+    var photoMessage: String?
+    var onCapturePhoto: () -> Void = {}
     
     var body: some View {
         ZStack {
@@ -44,6 +49,11 @@ struct RoomPlanScanOverlay: View {
             VStack(spacing: 8) {
                 if let torchMessage {
                     Label(torchMessage, systemImage: "flashlight.on.fill")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.white)
+                }
+                if let photoMessage {
+                    Label(photoMessage, systemImage: "location.slash")
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)
                 }
@@ -115,6 +125,40 @@ struct RoomPlanScanOverlay: View {
                 .accessibilityLabel("스캔 재개")
                 .padding(.trailing, 28)
                 .offset(y: 180)
+            }
+        }
+        
+        // 스캔·일시정지 중 사진 촬영. 찍은 장 수를 배지로 보여 줌
+        .overlay(alignment: .trailing) {
+            if phase == .scanning || phase == .paused {
+                Button(action: onCapturePhoto) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 54, height: 54)
+                        .background(.black.opacity(0.35), in: Circle())
+                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
+                        .overlay(alignment: .topTrailing) {
+                            if photoCount > 0 {
+                                Text(photoCount, format: .number)
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .frame(minWidth: 22, minHeight: 22)
+                                    .background(.red, in: Capsule())
+                                    .offset(x: 6, y: -6)
+                            }
+                        }
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canCapturePhoto)
+                .opacity(canCapturePhoto ? 1 : 0.5)
+                .sensoryFeedback(.impact(weight: .light), trigger: photoCount)
+                .accessibilityLabel("사진 촬영")
+                .accessibilityValue("\(photoCount)장")
+                .padding(.trailing, 37)
+                .offset(y: -100)
             }
         }
         

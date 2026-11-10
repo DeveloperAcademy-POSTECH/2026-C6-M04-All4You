@@ -41,6 +41,8 @@ struct FloorPlanMethodSelectionView: View {
     @State private var isCameraPresented = false
     /// 스캔 결과를 바꾼 도면. 변환 화면에 흐리게 깔고, 화면이 끝나면 저장한다
     @State private var scannedPlan: PlanData?
+    /// 스캔 중 찍은 사진. 도면을 저장할 때 사건 사진으로 함께 저장하고, 촬영 위치의 장소에 놓는다
+    @State private var scannedPhotos: [ScanPhoto] = []
     /// 스캔 원본(JSON). 변환한 도면과 함께 저장한다
     @State private var scannedOriginal: Data?
     
@@ -114,13 +116,17 @@ struct FloorPlanMethodSelectionView: View {
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
-                RoomPlanScanView(onUseResult: { _, structure, rooms in
+                RoomPlanScanView(onUseResult: { _, structure, rooms, photos in
                     scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
+                    scannedPhotos = photos
                     scannedPlan = PlanData(structure: structure, rooms: rooms)
                 })
                     .navigationDestination(item: $scannedPlan) { plan in
                         ConversionLoadingView(planData: plan) {
                             try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
+                            // 도면과 같은 시점에 저장해야 다음 화면(PhotoStore)이 사진을 함께 읽는다
+                            fireCase.addScanPhotos(scannedPhotos, plan: plan)
+                            scannedPhotos = []
                         }
                     }
             case .iPadDrawing:

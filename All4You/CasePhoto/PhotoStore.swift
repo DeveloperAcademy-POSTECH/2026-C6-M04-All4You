@@ -24,6 +24,8 @@ struct LoadedPhoto: Identifiable {
     var roomKey: String?
     /// 찍거나 불러온 조사 차수. nil이면 차수 없이 들어온 사진이라 모든 차수에서 보인다
     var sessionNumber: Int? = nil
+    /// AR로 찍은 사진의 카메라 자세 (ARKit 월드 좌표). 도면의 scanAlignment로 정확한 촬영 위치·방향이 된다
+    var cameraPose: ScanCameraPose? = nil
     /// 저장된 사진 기록. 원본은 커서 미리 읽어 두지 않고 볼 때 여기서 읽는다
     fileprivate var record: EvidencePhoto?
     /// 저장하지 않는 사진(미리보기용 저장소)의 원본
@@ -52,7 +54,13 @@ extension LoadedPhoto {
     /// 저장된 사진 기록에서 화면용 사진을 만든다. 작은 사진을 읽지 못하면 nil
     fileprivate init?(record: EvidencePhoto) {
         guard let thumbnail = UIImage(data: record.thumbnailData) else { return nil }
-        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, record: record)
+        self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, cameraPose: record.cameraPose, record: record)
+    }
+
+    /// 도면 위 정확한 촬영 위치·방향. 카메라 자세가 없거나(일반 카메라·사진 앱), 도면에 스캔 변환이 없으면 nil
+    func placement(in plan: PlanData) -> PhotoPlacement? {
+        guard let cameraPose else { return nil }
+        return plan.scanAlignment?.placement(of: cameraPose)
     }
 }
 
@@ -144,6 +152,25 @@ final class PhotoStore {
         } else {
             allPhotos[index].memoryImage = image
         }
+    }
+
+    /// 촬영 위치가 있는데 장소가 없는 사진을, 그 위치를 품은 장소에 놓는다. 놓은 사진 수를 돌려준다.
+    /// 스캔 때 방을 못 나눴다가 나중에 벽을 고치거나 장소를 나누면 자동으로 들어간다.
+    /// 장소가 지워져 가리키는 곳이 없어진 사진도 다시 놓는다. 사람이 직접 놓은 사진(있는 장소)은 건드리지 않는다
+    @discardableResult
+    func assignUnplacedPhotos(in plan: PlanData) -> Int {
+        guard plan.scanAlignment != nil else { return 0 }
+        let roomIDs = Set(plan.rooms.map(\.id))
+        var assigned = 0
+        for index in allPhotos.indices {
+            if let roomKey = allPhotos[index].roomKey, roomIDs.contains(roomKey) { continue }
+            guard let placement = allPhotos[index].placement(in: plan),
+                  let room = plan.room(containing: placement.position) else { continue }
+            allPhotos[index].roomKey = room.id
+            allPhotos[index].record?.roomKey = room.id
+            assigned += 1
+        }
+        return assigned
     }
 
     /// 사진을 장소에 놓는다

@@ -29,6 +29,8 @@ struct FloorPlanTabView: View {
     @State private var draggingPhotoID: UUID?
     /// 끌고 있는 사진이 지금 손가락 아래에 있는 장소 (Room.id). 이 장소에 미리보기 핀을 띄운다
     @State private var hoveredRoomID: String?
+    /// 누른 북마크 번호 핀의 사진 (LoadedPhoto.id). 나머지 도면·핀은 흐려지고 오른쪽에 그 사진이 열린다
+    @State private var selectedBookmarkID: UUID?
 
     /// 도면을 평면으로 볼지 입체로 볼지
     typealias Dimension = PlanDimension
@@ -42,7 +44,7 @@ struct FloorPlanTabView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     // 패널을 닫아도 위치를 정하지 않은 사진이 남아 있으면 언제든 다시 열 수 있게 둔다
-                    if !isPlacingPhotos && selectedRoom == nil && unassignedCount > 0 {
+                    if !isPlacingPhotos && selectedRoom == nil && selectedBookmark == nil && unassignedCount > 0 {
                         openPanelButton
                             .padding()
                     }
@@ -59,6 +61,19 @@ struct FloorPlanTabView: View {
                 } onDragStart: { id in
                     draggingPhotoID = id
                 }
+                .frame(maxWidth: .infinity)
+                .transition(.move(edge: .trailing))
+            } else if let selected = selectedBookmark {
+                Divider()
+                BookmarkPhotoPanel(
+                    roomName: selected.photo.roomKey.flatMap { key in planData?.rooms.first { $0.id == key }?.name },
+                    number: selected.marker.number,
+                    photo: selected.photo
+                ) {
+                    openBookmarkViewer(initialID: selected.photo.id)
+                }
+                // 다른 핀을 고르면 사진을 처음부터 보여 준다
+                .id(selected.photo.id)
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .trailing))
             } else if let selectedRoom {
@@ -82,6 +97,7 @@ struct FloorPlanTabView: View {
         .onChange(of: isPlacingPhotos) { _, isPlacing in
             if isPlacing {
                 selectedRoomID = nil
+                selectedBookmarkID = nil
             }
         }
     }
@@ -100,8 +116,13 @@ extension FloorPlanTabView {
                 GeometryReader { proxy in
                     if let screen {
                         let pins = visiblePins(in: planData)
-                        // 핀이 있는 장소는 핀 캡슐이 이름 라벨을 대신하므로 도면의 이름 라벨은 숨긴다
-                        Plan2DView(planData: planData, screen: screen, hiddenLabelRoomIds: Set(pins.keys))
+                        let focusedRoom = selectedBookmark.flatMap { selected in
+                            planData.rooms.first { $0.id == selected.photo.roomKey }
+                        }
+                        // 핀이 있는 장소는 핀 캡슐이 이름 라벨을 대신하므로 도면의 이름 라벨은 숨긴다.
+                        // 북마크 핀을 고르면 도면·장소 핀을 흐리게 하고, 그 사진의 장소 라벨만 위에 진하게 다시 그린다
+                        Plan2DView(planData: planData, screen: screen, hiddenLabelRoomIds: Set(pins.keys).union(focusedRoom.map { [$0.id] } ?? []))
+                            .opacity(selectedBookmark == nil ? 1 : Layout.focusDimmedOpacity)
                         PhotoPinLayer(
                             planData: planData,
                             screen: screen,
@@ -109,6 +130,22 @@ extension FloorPlanTabView {
                             selectedRoomID: selectedRoomID,
                             onTapRoom: selectRoom
                         )
+                        .opacity(selectedBookmark == nil ? 1 : Layout.focusDimmedOpacity)
+                        if let focusedRoom {
+                            RoomLabelView(name: focusedRoom.name)
+                                .position(screen.point(SIMD2(focusedRoom.labelX, focusedRoom.labelY)))
+                                .allowsHitTesting(false)
+                        }
+                        // 북마크 필터: 북마크 사진을 찍은 정확한 자리에 번호 핀 (촬영 방향을 켜면 부채꼴도)
+                        if showsBookmarkMarkers {
+                            BookmarkPhotoMarkerLayer(
+                                markers: bookmarkMarkers(in: planData),
+                                screen: screen,
+                                showsDirection: photoFilter.showsDirection,
+                                selectedID: selectedBookmark?.photo.id,
+                                onTap: selectBookmark
+                            )
+                        }
                         // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
                         FloorPlanMemoPlacementOverlay(
                             planData: planData,
@@ -211,17 +248,35 @@ extension FloorPlanTabView {
         return planData?.rooms.first { $0.id == selectedRoomID }
     }
 
-    /// 장소 선택을 풀어 오른쪽 사진 모음을 닫는다
+    /// 장소·북마크 선택을 풀어 오른쪽 패널을 닫는다
     private func clearRoomSelection() {
         withAnimation {
             selectedRoomID = nil
+            selectedBookmarkID = nil
         }
     }
 
     private func selectRoom(_ room: Room) {
         withAnimation {
+            selectedBookmarkID = nil
             selectedRoomID = room.id
         }
+    }
+
+    /// 북마크 번호 핀을 고른다. 같은 핀을 다시 누르면 푼다
+    private func selectBookmark(_ id: UUID) {
+        withAnimation {
+            selectedRoomID = nil
+            selectedBookmarkID = selectedBookmarkID == id ? nil : id
+        }
+    }
+
+    /// 고른 북마크 핀과 그 사진. 필터를 바꾸거나 북마크를 풀어 핀이 사라지면 고르지 않은 것으로 본다
+    private var selectedBookmark: (marker: BookmarkPhotoMarker, photo: LoadedPhoto)? {
+        guard let selectedBookmarkID, showsBookmarkMarkers, let planData,
+              let marker = bookmarkMarkers(in: planData).first(where: { $0.id == selectedBookmarkID }),
+              let photo = photoStore.photo(id: selectedBookmarkID) else { return nil }
+        return (marker, photo)
     }
 
     /// 장소 사진 중 필터에 맞는 것을 최근에 찍은 것부터. 북마크를 고르면 북마크한 사진만
@@ -287,17 +342,33 @@ extension FloorPlanTabView {
         return [hoveredRoomID: PhotoPin(thumbnail: photo.thumbnail, count: count, isPreview: true)]
     }
 
-    /// 장소마다 가장 최근 사진과 사진 수. 필터에서 사진 표시를 끄면 핀이 없고, 북마크를 고르면 북마크한 사진만 센다
-    // TODO: 필터의 "촬영 방향" 표시 — 촬영 위치·방향 데이터가 생기면
+    /// 장소마다 가장 최근 사진과 사진 수. 필터에서 사진 표시를 끄면 핀이 없고, 북마크를 고르면 북마크한 사진만 센다.
+    /// 북마크 사진 중 정확한 촬영 위치가 있는 것은 번호 핀으로 따로 보이므로 장소 핀에서는 뺀다
     private func photoPins(in planData: PlanData) -> [String: PhotoPin] {
         guard photoFilter.isPhotoVisible else { return [:] }
+        let markedIDs = showsBookmarkMarkers ? Set(bookmarkMarkers(in: planData).map(\.id)) : []
         var pins: [String: PhotoPin] = [:]
         for room in planData.rooms {
-            let photos = filteredPhotos(inRoom: room.id)
+            let photos = filteredPhotos(inRoom: room.id).filter { !markedIDs.contains($0.id) }
             guard let latest = photos.first else { continue }
             pins[room.id] = PhotoPin(thumbnail: latest.thumbnail, count: photos.count)
         }
         return pins
+    }
+
+    /// 북마크 번호 핀을 보여 줄지. 사진을 끌어다 놓는 동안은 숨긴다 (3D에는 아직 없음)
+    private var showsBookmarkMarkers: Bool {
+        photoFilter.isPhotoVisible && photoFilter.scope == .bookmarked && !isPlacingPhotos
+    }
+
+    private func bookmarkMarkers(in planData: PlanData) -> [BookmarkPhotoMarker] {
+        BookmarkPhotoMarker.markers(for: photoStore.photos, in: planData)
+    }
+
+    /// 북마크 사진 패널의 확대 버튼: 그 사진부터 북마크 사진을 번호 순서로 넘겨 본다
+    private func openBookmarkViewer(initialID: UUID) {
+        guard let planData else { return }
+        viewerContext = PhotoViewerContext(photoIDs: bookmarkMarkers(in: planData).map(\.id), initialID: initialID)
     }
 
     /// 끌고 있던 사진을 놓은 장소로 옮긴다
@@ -345,6 +416,8 @@ extension FloorPlanTabView {
     private enum Layout {
         /// 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
+        /// 북마크 핀을 골랐을 때 나머지 도면·장소 핀을 흐리게 하는 정도
+        static let focusDimmedOpacity = 0.35
         /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
         static let openPanelSpacing: CGFloat = 8

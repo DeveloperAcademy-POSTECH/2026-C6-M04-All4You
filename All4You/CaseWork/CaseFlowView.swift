@@ -60,6 +60,14 @@ struct CaseFlowView: View {
         .onChange(of: planData) { old, new in
             history.record(from: old, to: new)
             storeFloorPlan(new)
+            // 장소가 새로 생기거나 바뀌면 촬영 위치가 있는 위치 미확인 사진을 그 장소에 놓는다
+            if old.rooms != new.rooms {
+                photoStore.assignUnplacedPhotos(in: new)
+            }
+        }
+        // 이전에 위치 미확인으로 남은 사진도 사건을 열 때 한 번 맞춰 본다
+        .task {
+            photoStore.assignUnplacedPhotos(in: planData)
         }
         .alert(Copy.saveFailedTitle, isPresented: $isSaveFailed) {
             Button(Copy.confirm, role: .cancel) {}
