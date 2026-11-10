@@ -8,15 +8,16 @@ struct FloorPlanEdit3DView: View {
     @Binding var planData: PlanData
     /// 2D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
     @Binding var history: PlanHistory
+    /// 위 도구 막대에서 켠 스탬프 도구. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
+    @Binding var selectedTool: EditTool?
     let onBack: () -> Void
     let onDone: () -> Void
 
-    @State private var selectedTool: EditTool?
     /// 3D에서 눌러 고른 스탬프·창문
     @State private var selection: PlanSelection?
 
     /// 3D에서 가구는 만들 수 없고(고른 가구만 옮기고 돌리고 크기를 바꿈) 공간 이름은 라벨로만 보여 주므로 두 도구를 숨긴다
-    private let hiddenTools: Set<EditTool> = [.roomName, .furniture]
+    static let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
         FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, isStampToolActive: selectedTool != nil)
@@ -30,7 +31,7 @@ struct FloorPlanEdit3DView: View {
 // 서브 뷰
 extension FloorPlanEdit3DView {
     private var toolBar: some View {
-        EditToolBar(selectedTool: $selectedTool, hiddenTools: hiddenTools)
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: Self.hiddenTools)
             .padding()
     }
 
@@ -77,7 +78,8 @@ extension FloorPlanEdit3DView {
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
     @Previewable @State var history = PlanHistory()
+    @Previewable @State var selectedTool: EditTool?
     NavigationStack {
-        FloorPlanEdit3DView(planData: $planData, history: $history, onBack: {}, onDone: {})
+        FloorPlanEdit3DView(planData: $planData, history: $history, selectedTool: $selectedTool, onBack: {}, onDone: {})
     }
 }

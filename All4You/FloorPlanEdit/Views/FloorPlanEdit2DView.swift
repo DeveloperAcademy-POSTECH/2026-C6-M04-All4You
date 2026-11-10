@@ -11,10 +11,11 @@ struct FloorPlanEdit2DView: View {
     @Binding var planData: PlanData
     /// 3D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
     @Binding var history: PlanHistory
+    /// 위 도구 막대에서 켠 스탬프 도구. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
+    @Binding var selectedTool: EditTool?
     let onBack: () -> Void
     let onDone: () -> Void
 
-    @State private var selectedTool: EditTool?
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
     /// 펜으로 긋는 중인 선의 화면 시작·끝 점. 손을 떼면 이 선을 늘여 벽을 넣는다
@@ -65,8 +66,8 @@ struct FloorPlanEdit2DView: View {
     var body: some View {
         GeometryReader { proxy in
             planCanvas
-                .onAppear { fitPlan(in: proxy.size) }
-                .onChange(of: proxy.size) { _, size in fitPlan(in: size) }
+                // 도면을 맞추기 전에는 planCanvas가 비어 있어 onAppear가 불리지 않을 수 있다. 그래서 처음 크기도 initial: true로 받는다
+                .onChange(of: proxy.size, initial: true) { _, size in fitPlan(in: size) }
         }
         // 위 도구 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (3D와 같다). 처음 맞출 때만 막대를 피해 놓는다
         .background(.white)
@@ -76,7 +77,7 @@ struct FloorPlanEdit2DView: View {
             toolBar
         }
         .overlay {
-            DrawingToolBar(selectedTool: $drawingTool, isPenAndEraserSuspended: isStampActive, onSelect: pickDrawingTool)
+            DrawingToolBar(selectedTool: $drawingTool, bottomInset: Layout.drawingBarBottomInset, isPenAndEraserSuspended: isStampActive, onSelect: pickDrawingTool)
         }
         .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
@@ -866,6 +867,8 @@ extension FloorPlanEdit2DView {
         static let planFill = 0.85
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
+        /// 아래 2D·3D 전환 막대에 가리지 않게 펜·지우개·손 막대를 올릴 높이 (pt). 전환 막대 높이 + 바깥 여백 + 사이 여백
+        static let drawingBarBottomInset: CGFloat = 50 + 16 + 12
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
         static let dragStartDistance: CGFloat = 4
         /// 편집 메뉴를 띄우는 꾹 누르기 시간 (초). 3D와 같다
@@ -908,8 +911,9 @@ extension FloorPlanEdit2DView {
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
     @Previewable @State var history = PlanHistory()
+    @Previewable @State var selectedTool: EditTool?
 
     NavigationStack {
-        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: {}, onDone: {})
+        FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool, onBack: {}, onDone: {})
     }
 }
