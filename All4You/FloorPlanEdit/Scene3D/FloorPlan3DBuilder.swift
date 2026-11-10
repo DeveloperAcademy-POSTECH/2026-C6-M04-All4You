@@ -20,7 +20,7 @@ enum FloorPlan3DBuilder {
         for wall in plan.walls where !wall.isVirtual {
             guard let line = plan.line(of: wall) else { continue }
             let openings = plan.doorWindows.filter { $0.wallId == wall.id }
-            root.addChild(makeWall(wall, line: line, openings: openings, space: space, selection: selection))
+            root.addChild(makeWall(wall, line: line, openings: openings, miter: plan.wallMiter(of: wall), space: space, selection: selection))
         }
         for furniture in plan.furniture ?? [] {
             root.addChild(makeFurniture(furniture, space: space, selection: selection))
@@ -229,48 +229,52 @@ extension FloorPlan3DBuilder {
         let from: Double
         let to: Double
         let opening: DoorWindow?
+        /// 벽의 맨 앞·맨 뒤 토막. 이 토막의 바깥 끝은 이웃 벽에 맞춰 비스듬히 자른다
+        var isFirst = false
+        var isLast = false
     }
 
     /// 벽 하나. 벽 엔티티 안에서는 +x = 벽 시작점에서 벽을 따라간 거리, +y = 위
-    private static func makeWall(_ wall: Wall, line: WallLine, openings: [DoorWindow], space: PlanSpace, selection: PlanSelection?) -> Entity {
+    private static func makeWall(_ wall: Wall, line: WallLine, openings: [DoorWindow], miter: WallMiter, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let entity = Entity()
         entity.components.set(PlanWallComponent(wallId: wall.id))
         entity.position = space.world(line.start)
         entity.orientation = PlanSpace.orientation(along: line.direction)
-        let pieces = wallPieces(length: line.length, thickness: wall.thickness, openings: openings)
+        let pieces = wallPieces(miter: miter, openings: openings)
         for piece in pieces {
-            boxes(for: piece, wall: wall, selection: selection).forEach { entity.addChild($0) }
+            boxes(for: piece, wall: wall, miter: miter, selection: selection).forEach { entity.addChild($0) }
         }
         return entity
     }
 
-    /// 벽을 문·창문 자리 기준으로 자른다. 모서리가 비지 않게 양 끝을 두께 절반씩 늘린다
-    private static func wallPieces(length: Double, thickness: Double, openings: [DoorWindow]) -> [WallPiece] {
+    /// 벽을 문·창문 자리 기준으로 자른다. 양 끝은 이웃 벽에 맞춰 늘이거나 줄인 자리(miter)까지 간다
+    private static func wallPieces(miter: WallMiter, openings: [DoorWindow]) -> [WallPiece] {
         var pieces: [WallPiece] = []
-        var cursor = -thickness / 2
-        let end = length + thickness / 2
+        var cursor = min(miter.startLeft, miter.startRight)
+        let end = max(miter.endLeft, miter.endRight)
+        let wallStart = cursor
         for opening in openings.sorted(by: { $0.centerAlongWall < $1.centerAlongWall }) {
             let from = max(opening.centerAlongWall - opening.width / 2, cursor)
             let to = min(opening.centerAlongWall + opening.width / 2, end)
             guard to > from else { continue }
-            pieces.append(WallPiece(from: cursor, to: from, opening: nil))
+            pieces.append(WallPiece(from: cursor, to: from, opening: nil, isFirst: cursor == wallStart))
             pieces.append(WallPiece(from: from, to: to, opening: opening))
             cursor = to
         }
-        pieces.append(WallPiece(from: cursor, to: end, opening: nil))
+        pieces.append(WallPiece(from: cursor, to: end, opening: nil, isFirst: cursor == wallStart, isLast: true))
         return pieces
     }
 
     /// 토막 하나를 상자로. 개구부는 위쪽 벽만, 창문은 위·아래 벽과 유리, 문은 위쪽 벽과 눌러 고를 수 있는 얇은 판
-    private static func boxes(for piece: WallPiece, wall: Wall, selection: PlanSelection?) -> [ModelEntity] {
+    private static func boxes(for piece: WallPiece, wall: Wall, miter: WallMiter, selection: PlanSelection?) -> [ModelEntity] {
         guard let opening = piece.opening else {
-            return [wallBox(piece, bottom: 0, top: wall.height, depth: wall.thickness)].compactMap { $0 }
+            return [wallBox(piece, bottom: 0, top: wall.height, depth: wall.thickness, miter: miter)].compactMap { $0 }
         }
         let top = min(opening.sillHeight + opening.height, wall.height)
-        var result = [wallBox(piece, bottom: top, top: wall.height, depth: wall.thickness)]
+        var result = [wallBox(piece, bottom: top, top: wall.height, depth: wall.thickness, miter: miter)]
         switch opening.kind {
         case .window:
-            result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness))
+            result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness, miter: miter))
             result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
         case .door:
             result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
@@ -329,9 +333,65 @@ extension FloorPlan3DBuilder {
     }
 
     /// 벽 상자. 벽 충돌 그룹이라 직선이 부딪힌다 (벽 뒤 라벨은 숨고, 벽 뒤 스탬프는 못 고름)
-    private static func wallBox(_ piece: WallPiece, bottom: Double, top: Double, depth: Double) -> ModelEntity? {
+    private static func wallBox(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, miter: WallMiter) -> ModelEntity? {
         let filter = CollisionFilter(group: wallCollisionGroup, mask: .all)
+        // 맨 앞·맨 뒤 토막은 끝을 이웃 벽 면에 맞춰 비스듬히 자른 기둥으로, 나머지는 상자로
+        if piece.isFirst || piece.isLast, let prism = mitredPrism(piece, bottom: bottom, top: top, depth: depth, miter: miter, filter: filter) {
+            return prism
+        }
         return box(piece, bottom: bottom, top: top, depth: depth, material: Materials.wall, filter: filter)
+    }
+
+    /// 벽 끝이 이웃 벽에 맞춰 비스듬한 토막. 위에서 본 모양은 네 점(왼쪽 면 두 점, 오른쪽 면 두 점)이고 위아래로 세운 기둥이다.
+    /// 벽 엔티티 안에서 +x는 벽을 따라간 거리, 왼쪽 면은 z = -두께/2, 오른쪽 면은 z = +두께/2다
+    private static func mitredPrism(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, miter: WallMiter, filter: CollisionFilter) -> ModelEntity? {
+        guard top - bottom > 0.001, piece.to - piece.from > 0.001 else { return nil }
+        let half = Float(depth / 2)
+        let fromLeft = Float(piece.isFirst ? miter.startLeft : piece.from)
+        let fromRight = Float(piece.isFirst ? miter.startRight : piece.from)
+        let toLeft = Float(piece.isLast ? miter.endLeft : piece.to)
+        let toRight = Float(piece.isLast ? miter.endRight : piece.to)
+        let low = Float(bottom)
+        let high = Float(top)
+        let ring: [SIMD2<Float>] = [[fromLeft, -half], [toLeft, -half], [toRight, half], [fromRight, half]]
+
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+        /// 네 점 면 하나를 더한다. 바깥(outward)을 보는 쪽이 앞면이 되게 점 순서를 맞춘다
+        func addFace(_ corners: [SIMD3<Float>], outward: SIMD3<Float>) {
+            var points = corners
+            var normal = simd_normalize(simd_cross(points[1] - points[0], points[2] - points[0]))
+            if simd_dot(normal, outward) < 0 {
+                points.reverse()
+                normal = -normal
+            }
+            let base = UInt32(positions.count)
+            positions += points
+            normals += [normal, normal, normal, normal]
+            indices += [base, base + 1, base + 2, base, base + 2, base + 3]
+        }
+        addFace(ring.map { SIMD3($0.x, high, $0.y) }, outward: [0, 1, 0])
+        addFace(ring.map { SIMD3($0.x, low, $0.y) }, outward: [0, -1, 0])
+        let center = (ring[0] + ring[1] + ring[2] + ring[3]) / 4
+        for index in 0..<4 {
+            let a = ring[index]
+            let b = ring[(index + 1) % 4]
+            let middle = (a + b) / 2 - center
+            addFace(
+                [SIMD3(a.x, low, a.y), SIMD3(b.x, low, b.y), SIMD3(b.x, high, b.y), SIMD3(a.x, high, a.y)],
+                outward: SIMD3(middle.x, 0, middle.y)
+            )
+        }
+
+        var descriptor = MeshDescriptor(name: "wallPrism")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.primitives = .triangles(indices)
+        guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return nil }
+        let entity = ModelEntity(mesh: mesh, materials: [Materials.wall])
+        entity.components.set(CollisionComponent(shapes: [ShapeResource.generateConvex(from: mesh)], filter: filter))
+        return entity
     }
 
     /// 창문 유리·문짝 자리의 얇은 판. 눌러 고를 수 있고, 벽 그룹이 아니라 너머 라벨은 가리지 않는다.
@@ -462,7 +522,7 @@ extension FloorPlan3DBuilder {
         let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
-        entity.scale = SIMD3(repeating: Float(marker.drawScale))
+        entity.scale = SIMD3(repeating: Float(marker.modelScale))
         makeSelectable(entity, as: tag)
         // 테두리 상자는 충돌 모양을 만든 뒤에 붙여, 눌러 고르는 판정에 끼지 않게 한다
         if tag == selection { addSelectionFrame(to: entity) }

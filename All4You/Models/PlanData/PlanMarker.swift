@@ -17,6 +17,13 @@ struct PlanMarker: Codable, Hashable, Identifiable {
 
     /// 그릴 때 쓰는 배율. 저장된 값이 없으면 1
     var drawScale: Double { scale ?? 1 }
+
+    /// 사람은 실제 사람 크기(누운 몸 1.5m)가 아니라 발화지점·콘센트와 같은 기호 크기(약 0.6m)로 그린다.
+    /// 2D 아이콘은 이 몸 길이에 맞춰 그려서, 사람만 2D에서 유독 커 보이지 않게 한다
+    static let personTokenScale = 0.4
+
+    /// 3D 모델에 곱하는 배율. 사람은 기호 크기 배율을 더 곱한다
+    var modelScale: Double { drawScale * (kind == .person ? Self.personTokenScale : 1) }
 }
 
 /// 표시 종류

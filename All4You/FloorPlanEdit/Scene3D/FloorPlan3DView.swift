@@ -449,7 +449,8 @@ extension FloorPlan3DView {
     private func resizeGesture(markerId: String, center: CGPoint) -> some Gesture {
         DragGesture(coordinateSpace: .named(Layout.sceneSpace))
             .onChanged { value in
-                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center)))
+                let personFactor = planData.markers.first { $0.id == markerId }?.kind == .person ? PlanMarker.personTokenScale : 1
+                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center) * personFactor))
             }
             .onEnded { value in
                 onEdit(.resize(markerId: markerId, scale: resizedScale(markerId: markerId, drag: value, center: center)))
