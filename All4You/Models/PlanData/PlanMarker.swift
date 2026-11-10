@@ -22,8 +22,17 @@ struct PlanMarker: Codable, Hashable, Identifiable {
     /// 2D 아이콘은 이 몸 길이에 맞춰 그려서, 사람만 2D에서 유독 커 보이지 않게 한다
     static let personTokenScale = 0.4
 
-    /// 3D 모델에 곱하는 배율. 사람은 기호 크기 배율을 더 곱한다
-    var modelScale: Double { drawScale * (kind == .person ? Self.personTokenScale : 1) }
+    /// 3D에서만 사람 모델을 기호 크기보다 더 키우는 배수. 2D 아이콘과 놓을 수 있는 자리(footprint)는 그대로다
+    // TEMP: 3D에서 피해자가 작아 보여 임시로 정한 값 — 실기기에서 보고 조절
+    static let personModelEnlargement = 1.5
+
+    /// 3D에서 사람 모델에 곱하는 배수 (기호 크기 × 3D 확대). 사람이 아니면 1
+    static func modelFactor(of kind: MarkerKind) -> Double {
+        kind == .person ? personTokenScale * personModelEnlargement : 1
+    }
+
+    /// 3D 모델에 곱하는 배율
+    var modelScale: Double { drawScale * Self.modelFactor(of: kind) }
 }
 
 /// 표시 종류
