@@ -458,7 +458,7 @@ extension CaseListContent {
 // 크기
 extension CaseListContent {
     private enum Layout {
-        static let minimumListWidth: CGFloat = 250
+        static let minimumListWidth: CGFloat = 390
         static let minimumPreviewWidth: CGFloat = 280
         static let dividerWidth: CGFloat = 14
         static let registerButtonWidth: CGFloat = 330
