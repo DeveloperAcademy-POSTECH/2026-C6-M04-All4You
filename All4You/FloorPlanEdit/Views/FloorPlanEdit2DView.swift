@@ -320,7 +320,7 @@ extension FloorPlanEdit2DView {
                 selection = placed
             } else {
                 // 벽에 닿거나 방 밖이거나 도구와 맞지 않는 자리면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
-                showNotice(Copy.cannotPlace)
+                showNotice(planData.placementHint(for: tool, at: tap))
             }
         }
     }
@@ -585,12 +585,17 @@ extension FloorPlanEdit2DView {
     private func finishPenStroke() {
         guard let penStroke, let screen else { return }
         self.penStroke = nil
-        if let drawn = planData.drawingWall(
+        let result = planData.drawingWall(
             from: screen.plan(penStroke.start),
             to: screen.plan(penStroke.end),
             snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
-        ) {
+        )
+        switch result {
+        case .success(let drawn):
             planData = drawn
+        case .failure(let failure):
+            // 손가락을 짧게 스치기만 한 것까지 매번 안내하지 않게, 짧은 선은 안내하지 않는다
+            if failure != .strokeTooShort { showNotice(failure.message) }
         }
     }
 
@@ -922,7 +927,6 @@ extension FloorPlanEdit2DView {
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
         static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
-        static let cannotPlace = "이 자리에는 놓을 수 없어요"
     }
 }
 

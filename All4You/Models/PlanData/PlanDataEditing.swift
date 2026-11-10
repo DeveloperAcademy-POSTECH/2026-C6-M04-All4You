@@ -226,7 +226,7 @@ extension PlanData {
     fileprivate static let newDoorWidth = 0.9
     fileprivate static let newDoorHeight = 2.0
     /// 창문·문 폭·높이의 가장 작은 값 (m)
-    fileprivate static let minimumWindowSize = 0.2
+    static let minimumWindowSize = 0.2
 
     /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문을 달고 새 id를 돌려준다. addOpening(.window, …)과 같다
     mutating func addWindow(wallId: String, at point: SIMD2<Double>) -> String? {

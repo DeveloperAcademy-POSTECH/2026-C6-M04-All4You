@@ -166,8 +166,8 @@ extension CaseFlowView {
     private enum Layout {
         /// 흰 막이 덮이고 걷히는 시간 (초)
         static let coverDuration = 0.5
-        /// 막이 덮인 뒤 화면을 바꾸기까지 머무는 시간. 덮이는 시간까지 합쳐 1.5초쯤 걸린다
-        static let coverHold = Duration.seconds(1.0)
+        /// 막이 덮인 뒤 화면을 바꾸기까지 머무는 시간. 덮이는 시간까지 합쳐 1.2초쯤 걸린다
+        static let coverHold = Duration.milliseconds(700)
         /// 화면을 바꾼 뒤 막을 걷기 전에 잠시 머무는 시간 (수정 화면이 자리 잡도록)
         static let afterSwitchHold = Duration.milliseconds(300)
     }

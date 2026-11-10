@@ -6,8 +6,10 @@ struct StampDefaults: Equatable {
     /// 1m가 화면에서 몇 pt인지
     let pointsPerMeter: Double
 
-    /// 발화지점·전기·피해자·문의 기본 크기 (pt). Figma 61:29608의 48×48 칸 안 아이콘 32pt (사용자 확인 2026-11-11)
-    static let iconPoints = 32.0
+    /// 발화지점·전기·피해자의 기본 크기 (pt). 32pt에서 36pt로 키움 (사용자 요청 2026-11-11)
+    static let iconPoints = 36.0
+    /// 문의 기본 크기 (pt). Figma 61:29608의 48×48 칸 안 아이콘 32pt
+    static let doorPoints = 32.0
     /// 창문의 기본 폭 (pt). Figma 100×24
     static let windowWidthPoints = 100.0
 
@@ -20,7 +22,7 @@ struct StampDefaults: Equatable {
 
     /// 새 문의 폭 (m). 도면이 아주 작거나 커도 문답게 보이게 범위 안으로 맞춘다
     var doorWidth: Double {
-        min(max(Self.iconPoints / pointsPerMeter, Self.doorRange.lowerBound), Self.doorRange.upperBound)
+        min(max(Self.doorPoints / pointsPerMeter, Self.doorRange.lowerBound), Self.doorRange.upperBound)
     }
 
     /// 새 창문의 폭 (m)

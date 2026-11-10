@@ -118,3 +118,33 @@ extension PlanData {
         }
     }
 }
+
+// 놓지 못한 이유
+extension PlanData {
+    /// 도구로 tap 자리에 스탬프를 놓지 못했을 때, 어디에 어떻게 놓으면 되는지 알려 주는 문장.
+    /// 눌렀다가 놓이지 않은 자리만 다룬다 (place가 nil을 돌려준 경우)
+    func placementHint(for tool: EditTool, at tap: PlanTap) -> String {
+        switch (tool, tap) {
+        case (.ignitionPoint, .floor(let point)), (.person, .floor(let point)):
+            if !isInsideRoom(point) {
+                return "\(tool.title)는 방 안쪽 바닥에만 놓을 수 있어요. 벽으로 둘러싸인 방 안을 눌러 주세요"
+            }
+            if tool == .person {
+                return "피해자는 몸이 길어서 벽에서 1m쯤 떨어진 곳에만 놓을 수 있어요. 방 가운데쪽 빈 바닥을 눌러 주세요"
+            }
+            return "벽에 너무 가까워요. 벽에서 조금 떨어진 방 안쪽 바닥을 눌러 주세요"
+        case (.ignitionPoint, _), (.person, _):
+            return "\(tool.title)는 벽이 아니라 바닥에 놓아요. 방 안쪽 바닥을 눌러 주세요"
+        case (.outlet, .floor):
+            return "전기는 벽에만 붙일 수 있어요. 방 안쪽을 향한 벽을 눌러 주세요"
+        case (.outlet, _):
+            return "전기는 방 안쪽을 향한 벽 면에만 붙일 수 있어요. 건물 바깥쪽이 아니라 방 안쪽에서 벽을 눌러 주세요"
+        case (.window, .wall), (.door, .wall):
+            return "벽에 \(tool.title)을 달 빈 자리가 부족해요. 문·창문이 없는 더 긴 벽 구간을 눌러 주세요"
+        case (.window, _), (.door, _):
+            return "\(tool.title)은 벽에만 달 수 있어요. 벽을 눌러 주세요"
+        default:
+            return "이 도구는 이 자리에 쓸 수 없어요. 다른 자리를 눌러 주세요"
+        }
+    }
+}

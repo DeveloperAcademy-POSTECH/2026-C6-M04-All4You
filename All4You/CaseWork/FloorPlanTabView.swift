@@ -89,6 +89,8 @@ struct FloorPlanTabView: View {
                 .transition(.move(edge: .trailing))
             }
         }
+        // 2D·3D를 바꿀 때 막대의 유리 애니메이션이 나오고 도면이 서서히 바뀌게 한다 (사이드바에서 바꿔도 같다)
+        .animation(.easeInOut(duration: Layout.dimensionFadeDuration), value: dimension)
         .fullScreenCover(item: $viewerContext) { context in
             PhotoDetailView(store: photoStore, context: context) {
                 viewerContext = nil
@@ -186,6 +188,7 @@ extension FloorPlanTabView {
                 .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture)
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
+                .transition(.opacity)
             case .threeD:
                 // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
                 FloorPlan3DView(
@@ -197,6 +200,7 @@ extension FloorPlanTabView {
                     pins: pins3D(in: planData),
                     pinView: { id in pinView3D(id: id, in: planData) }
                 )
+                .transition(.opacity)
             }
         } else {
             Text(Copy.placeholder)
@@ -422,6 +426,8 @@ extension FloorPlanTabView {
         /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
         /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
+        /// 2D·3D가 서로 바뀌는 시간 (초)
+        static let dimensionFadeDuration = 0.3
         static let filterLeading: CGFloat = 32
         // 도면 수정 화면의 위 도구 막대(바깥 여백 16 + 높이 54) 윗줄과 맞춰 그 막대와 같은 높이에 놓는다
         static let filterTop: CGFloat = 42
