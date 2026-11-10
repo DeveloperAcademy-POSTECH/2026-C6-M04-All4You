@@ -96,8 +96,8 @@ nonisolated struct PhotoPlacement: Codable, Hashable, Sendable {
     var yaw: Double?
     /// 위아래 기울기 (도). 수평 0°, 위를 보면 +. 모르면 nil(수평으로 봄)
     var pitch: Double?
-    /// 바닥에서 카메라 높이 (m)
-    var height: Double
+    /// 바닥에서 카메라 높이 (m). 카메라 자세가 없으면 nil
+    var height: Double?
     /// 가로 화각 (도). 모르면 nil(`defaultFieldOfView`로 그림)
     var fieldOfView: Double?
 
