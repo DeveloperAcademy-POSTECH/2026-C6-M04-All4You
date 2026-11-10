@@ -23,7 +23,7 @@ enum FloorPlan3DBuilder {
             root.addChild(makeWall(wall, line: line, openings: openings, space: space, selection: selection))
         }
         for furniture in plan.furniture ?? [] {
-            root.addChild(makeFurniture(furniture, space: space))
+            root.addChild(makeFurniture(furniture, space: space, selection: selection))
         }
         for fixture in plan.wallFixtures {
             guard let wall = plan.wall(id: fixture.wallId), let line = plan.line(of: wall) else { continue }
@@ -45,6 +45,8 @@ extension FloorPlan3DBuilder {
     static let wallCollisionGroup = CollisionGroup(rawValue: 1 << 1)
     /// 바닥의 충돌 그룹. 스탬프를 끌 때 스탬프 자신은 빼고 바닥만 맞히려고 쓴다
     static let floorCollisionGroup = CollisionGroup(rawValue: 1 << 2)
+    /// 가구의 충돌 그룹. 스탬프 도구를 켠 채 누르면 이 그룹을 빼고 맞혀, 가구 위를 눌러도 그 아래 바닥에 스탬프가 놓이게 한다
+    static let furnitureCollisionGroup = CollisionGroup(rawValue: 1 << 3)
 
     /// 직선이 부딪힌 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)에 부딪혀도 부모로 올라가 찾는다
     static func selection(of entity: Entity) -> PlanSelection? {
@@ -356,10 +358,11 @@ extension FloorPlan3DBuilder {
 }
 
 // 가구
-// 3D에서는 보기만 해서 충돌 모양을 붙이지 않는다. 그래서 가구를 눌러도 직선이 지나가 그 아래 바닥에 스탬프를 놓을 수 있다
+// 3D에서는 만들 수 없고 눌러 고른 뒤 옮기고 돌리고 크기만 바꾼다. 몸통에만 충돌 모양이 있고(그림자 자리는 없음),
+// 스탬프 도구를 켠 채 누를 때는 가구 충돌 그룹을 빼고 맞혀 가구 아래 바닥에 스탬프를 놓을 수 있다
 extension FloorPlan3DBuilder {
     /// 윗면 모양을 높이만큼 세운 상자(원형은 원기둥). 띄운 가구는 바닥에 옅은 그림자 자리를 함께 그린다
-    private static func makeFurniture(_ furniture: Furniture, space: PlanSpace) -> Entity {
+    private static func makeFurniture(_ furniture: Furniture, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let height = Float(max(FurnitureModel.minHeight, furniture.height))
         let entity = Entity()
         entity.position = space.world(furniture.center)
@@ -367,12 +370,20 @@ extension FloorPlan3DBuilder {
         entity.orientation = simd_quatf(angle: Float(-furniture.rotation), axis: [0, 1, 0])
         let body = ModelEntity(mesh: furnitureMesh(furniture, height: height), materials: [Materials.furniture])
         body.position.y = Float(furniture.elevation) + height / 2
+        body.generateCollisionShapes(recursive: false)
+        if var collision = body.components[CollisionComponent.self] {
+            collision.filter = CollisionFilter(group: furnitureCollisionGroup, mask: .all)
+            body.components.set(collision)
+        }
         entity.addChild(body)
         if furniture.elevation > FurnitureModel.floatingElevation {
             let shadow = ModelEntity(mesh: furnitureMesh(furniture, height: FurnitureModel.shadowHeight), materials: [Materials.furnitureShadow])
             shadow.position.y = FurnitureModel.shadowHeight / 2
             entity.addChild(shadow)
         }
+        let tag = PlanSelection.furniture(furniture.id)
+        entity.components.set(PlanSelectionComponent(selection: tag))
+        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 
