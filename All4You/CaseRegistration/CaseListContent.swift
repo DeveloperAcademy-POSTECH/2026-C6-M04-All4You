@@ -84,16 +84,16 @@ struct CaseListContent: View {
                             let availableWidth = max(0, geometry.size.width - Layout.dividerWidth)
                             let listWidth = boundedListWidth(availableWidth: availableWidth)
                             let previewWidth = max(0, availableWidth - listWidth)
-                            
+
                             ZStack(alignment: .topLeading) {
                                 caseList
                                     .frame(width: listWidth, height: geometry.size.height)
                                     .clipped()
-                                
+
                                 CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
                                     .frame(width: previewWidth, height: geometry.size.height)
                                     .offset(x: listWidth + Layout.dividerWidth)
-                                
+
                                 resizeDivider(availableWidth: availableWidth, currentWidth: listWidth)
                                     .frame(height: geometry.size.height)
                                     .offset(x: listWidth)
@@ -186,14 +186,27 @@ extension CaseListContent {
         .ignoresSafeArea(.container, edges: .top)
     }
     
-    /// 메모 화면과 같이 드래그 중 이동량만 변경하고, 종료 시 최종 비율을 저장한다.
-    private func boundedListWidth(availableWidth: CGFloat) -> CGFloat {
-        let minimumListWidth = min(Layout.minimumListWidth, availableWidth * 0.45)
-        let minimumPreviewWidth = min(Layout.minimumPreviewWidth, availableWidth * 0.45)
-        let proposedWidth = (dragStartListWidth ?? availableWidth * listWidthFraction) + splitDragOffset
-        return min(max(proposedWidth, minimumListWidth), max(minimumListWidth, availableWidth - minimumPreviewWidth))
+    /// 현재 선택한 사건명이 두 줄 이내로 표시되도록 미리보기 최소 폭을 계산한다.
+    /// 드래그 좌표계(caseSplitArea)와 이동량 처리 방식은 변경하지 않는다.
+    private func splitWidthLimits(availableWidth: CGFloat) -> (minList: CGFloat, maxList: CGFloat) {
+        // 왼쪽 사건 목록은 390pt를 확보한다. 화면이 더 좁을 때만 예외적으로 축소한다.
+        let minList = min(Layout.minimumListWidth, max(0, availableWidth - Layout.minimumPreviewWidth))
+        let titleWidth = selectedCase.map { CasePreviewView.minimumWidthForTwoLineTitle($0.title) }
+            ?? Layout.minimumPreviewWidth
+        let requiredPreview = max(Layout.minimumPreviewWidth, titleWidth)
+        // 제목이 길더라도 왼쪽 최소 폭이 우선이다. 양쪽 조건을 모두
+        // 충족할 수 없는 화면 크기에서는 오른쪽에 가능한 공간을 남긴다.
+        let maxList = max(minList, availableWidth - requiredPreview)
+        return (minList, maxList)
     }
-    
+
+    /// 메모처럼 드래그 도중 화면에 이동량을 반영하고 손을 떼면 비율을 저장한다.
+    private func boundedListWidth(availableWidth: CGFloat) -> CGFloat {
+        let limits = splitWidthLimits(availableWidth: availableWidth)
+        let proposed = (dragStartListWidth ?? availableWidth * listWidthFraction) + splitDragOffset
+        return min(max(proposed, limits.minList), limits.maxList)
+    }
+
     private func resizeDivider(availableWidth: CGFloat, currentWidth: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
@@ -209,10 +222,9 @@ extension CaseListContent {
                     }
                     .onEnded { value in
                         if availableWidth > 0 {
-                            let minimumListWidth = min(Layout.minimumListWidth, availableWidth * 0.45)
-                            let minimumPreviewWidth = min(Layout.minimumPreviewWidth, availableWidth * 0.45)
-                            let proposedWidth = (dragStartListWidth ?? currentWidth) + value.translation.width
-                            let finalWidth = min(max(proposedWidth, minimumListWidth), max(minimumListWidth, availableWidth - minimumPreviewWidth))
+                            let limits = splitWidthLimits(availableWidth: availableWidth)
+                            let proposed = (dragStartListWidth ?? currentWidth) + value.translation.width
+                            let finalWidth = min(max(proposed, limits.minList), limits.maxList)
                             listWidthFraction = finalWidth / availableWidth
                         }
                         dragStartListWidth = nil
@@ -221,7 +233,7 @@ extension CaseListContent {
             )
             .accessibilityLabel("사건 목록 너비 조절")
     }
-    
+
     @ViewBuilder
     private var caseList: some View {
         // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
@@ -251,7 +263,7 @@ extension CaseListContent {
                 Text(fireCase.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Spacer()
+                Spacer(minLength: 8)
                 Text(Self.dateFormatter.string(from: fireCase.occurredAt))
                     .font(AppTypography.subheadline)
                     .foregroundStyle(.secondary)
@@ -268,7 +280,8 @@ extension CaseListContent {
                     selectedCaseID == fireCase.id
                     ? Color.gray200
                     : Color.clear
-                ) .padding(.leading, 7)
+                )
+                .padding(.leading, 7)
         )
         // 꾸욱 눌렀을 때 모양 및 효과
         .contextMenu {

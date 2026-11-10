@@ -39,18 +39,52 @@ struct CasePreviewView: View {
 extension CasePreviewView {
     /// 사건명과 사건 열기 버튼
     private var header: some View {
-        HStack {
+        HStack(alignment: .top, spacing: Layout.headerSpacing) {
             Text(fireCase.title)
-                // TEMP: Figma는 Large Title(34pt 굵게)인데 AppTypography에 없어 애플 기본 글꼴을 씀
                 .font(.largeTitle.bold())
-            Spacer()
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             Button(Copy.open) { onOpen(.floorPlan) }
                 .buttonStyle(.glassProminent)
                 .controlSize(.large)
-                // TEMP: 팀 공용 색이 정해지면 바꿔야 함 (Figma 기준 검정)
                 .tint(.black)
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .padding()
+        .padding(Layout.headerPadding)
+    }
+
+    /// 큰 제목을 최대 2줄로 보여 주는 데 필요한 미리보기 폭.
+    /// 실제 줄바꿈 기준에 가깝게 UIKit 텍스트 측정으로 계산한다.
+    static func minimumWidthForTwoLineTitle(_ title: String) -> CGFloat {
+        let size = UIFont.preferredFont(forTextStyle: .largeTitle).pointSize
+        let font = UIFont.systemFont(ofSize: size, weight: .bold)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let text = title as NSString
+        let naturalWidth = ceil(text.size(withAttributes: attributes).width)
+        var low: CGFloat = 1
+        var high: CGFloat = max(1, naturalWidth)
+
+        // 1pt 단위 이진 탐색. 폭이 좁아졌을 때 3줄 이상이 되는 지점을 찾는다.
+        while high - low > 1 {
+            let middle = floor((low + high) / 2)
+            let measured = text.boundingRect(
+                with: CGSize(width: middle, height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: attributes,
+                context: nil
+            )
+            if measured.height <= font.lineHeight * 2 + 2 {
+                high = middle
+            } else {
+                low = middle
+            }
+        }
+
+        // 헤더 좌우 여백 + 버튼 + 제목/버튼 사이 간격
+        return ceil(high + Layout.headerPadding * 2
+            + Layout.headerSpacing + Layout.openButtonReservedWidth)
     }
 
     /// 사건에 저장된 도면을 2D 미리보기로 표시
@@ -121,6 +155,10 @@ extension CasePreviewView {
 // 크기
 extension CasePreviewView {
     private enum Layout {
+        static let headerSpacing: CGFloat = 16
+        static let headerPadding: CGFloat = 16
+        /// 사건 열기 버튼의 여유 폭 (큰 컨트롤 크기 기준)
+        static let openButtonReservedWidth: CGFloat = 120
         static let buttonSpacing: CGFloat = 8
         static let buttonWidth: CGFloat = 246
         static let buttonHeight: CGFloat = 55
