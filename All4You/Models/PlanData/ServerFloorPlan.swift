@@ -1,4 +1,4 @@
-// 도면 변환 서버가 돌려주는 도면 JSON(format "floorplan_annotation_proposal")을 읽는 그릇
+// 도면 변환 서버가 돌려주는 도면 JSON을 읽는 그릇
 // 좌표는 픽셀, 원점 = 사진 왼쪽 위, +x 오른쪽, +y 아래. 앱 도면(PlanData)으로 바꿀 때 쓰는 칸만 읽는다
 
 import Foundation
@@ -62,15 +62,18 @@ struct ServerFloorPlan: Decodable {
 }
 
 extension ServerFloorPlan {
-    /// 좌표가 들어 있는 형식 이름. 픽셀 예측 미리보기("floorplan_segmentation_preview")는 꼭짓점·벽이 없어 도면으로 바꿀 수 없다
-    static let annotationFormat = "floorplan_annotation_proposal"
+    /// 기존 라벨과 현재 서버에서 좌표를 담는 형식 이름
+    private static let coordinateFormats: Set<String> = [
+        "floorplan_annotation_proposal",
+        "editable_floorplan_proposal"
+    ]
 
     /// 서버 JSON을 읽는다. 좌표가 없는 형식이면 에러
     static func decode(_ data: Data) throws -> ServerFloorPlan {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let header = try decoder.decode(Header.self, from: data)
-        guard header.format == annotationFormat else {
+        guard coordinateFormats.contains(header.format) else {
             throw FormatError(format: header.format)
         }
         return try decoder.decode(ServerFloorPlan.self, from: data)

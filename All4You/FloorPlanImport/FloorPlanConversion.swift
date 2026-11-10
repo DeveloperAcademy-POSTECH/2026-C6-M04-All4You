@@ -29,13 +29,16 @@ struct FloorPlanConversion {
         }
 
         let boundary = UUID().uuidString
-        var request = URLRequest(url: url.appending(path: "v1/floor-plans"), timeoutInterval: 60)
+        // 서버는 기하 검증에 실패하면 한 번 보정할 수 있다.
+        var request = URLRequest(url: url.appending(path: "v1/floor-plans"), timeoutInterval: 95)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"scan.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8)
         body.append(photo)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
 
+        try Task.checkCancellation()
+        try FloorPlanUploadLimit.recordUpload()
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
         let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let response = response as? HTTPURLResponse else {
