@@ -23,7 +23,8 @@ extension FireCase {
                 imageData: scanPhoto.imageData,
                 thumbnailData: scanPhoto.thumbnailData,
                 session: session,
-                cameraPoseData: scanPhoto.pose.flatMap { try? encoder.encode($0) }
+                cameraPoseData: scanPhoto.pose.flatMap { try? encoder.encode($0) },
+                placement: placement.map { SavedPlacement($0) }
             ))
         }
         let placed = scanPhotos.filter { photo in photos.contains { $0.id == photo.id && $0.roomKey != nil } }.count
