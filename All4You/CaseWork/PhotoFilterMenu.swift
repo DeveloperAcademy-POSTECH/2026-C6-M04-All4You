@@ -75,8 +75,8 @@ extension PhotoFilterMenu {
             .foregroundStyle(.primary)
             .padding(.horizontal, Layout.buttonPadding)
             .frame(height: Layout.buttonHeight)
-            // Figma의 필터 버튼은 유리가 아니라 옅은 회색으로 채운 알약 모양이다
-            .background(.fill.tertiary, in: .capsule)
+            // 크기와 간격은 직접 정하고 배경만 리퀴드 글래스를 쓴다. 누르면 유리가 반응한다
+            .glassEffect(.regular.interactive(), in: .capsule)
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
@@ -85,8 +85,8 @@ extension PhotoFilterMenu {
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(Copy.showPhotos, isOn: $filter.isPhotoVisible)
-            // 사진 표시를 끄면 도면만 보이므로 아래 항목을 고를 수 없게 한다
-            Group {
+            // 사진 표시를 끄면 도면만 보이므로 "사진 표시" 줄만 남기고 아래 항목은 감춘다
+            if filter.isPhotoVisible {
                 optionRow(Copy.allPhotos, isChecked: filter.scope == .all) {
                     filter.scope = .all
                 }
@@ -102,7 +102,6 @@ extension PhotoFilterMenu {
                     sectionTitle(Copy.direction, isOn: $filter.showsDirection)
                 }
             }
-            .disabled(!filter.isPhotoVisible)
         }
         .padding(.vertical, Layout.panelVerticalPadding)
         .padding(.horizontal, Layout.panelHorizontalPadding)
@@ -117,7 +116,7 @@ extension PhotoFilterMenu {
                 .font(AppTypography.label.weight(.medium))
             Spacer()
             // 줄인 스위치는 누를 곳이 작아서, 자리는 그대로 두고 누르는 영역만 사방으로 넓힌다.
-            // 눌림은 바깥 버튼이 받아 값을 바꾸고, 안쪽 스위치는 모양만 보여 준다 (비활성도 버튼이 따른다)
+            // 눌림은 바깥 버튼이 받아 값을 바꾸고, 안쪽 스위치는 모양만 보여 준다
             Button {
                 withAnimation {
                     isOn.wrappedValue.toggle()
