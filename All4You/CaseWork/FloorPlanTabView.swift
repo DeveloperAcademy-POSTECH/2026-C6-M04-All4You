@@ -421,7 +421,7 @@ extension FloorPlanTabView {
         static let focusDimmedOpacity = 0.35
         /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
-        /// 필터 버튼 자리 (Figma 메인 화면 기준 왼쪽 끝 32, 화면 위에서 135 → 상단 바 아래로 48)
+        /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
         static let filterLeading: CGFloat = 32
         static let filterTop: CGFloat = 48
         static let openPanelSpacing: CGFloat = 8

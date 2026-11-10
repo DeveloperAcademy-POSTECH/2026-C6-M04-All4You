@@ -152,7 +152,7 @@ extension PhotoFilterMenu {
                         Circle()
                             .fill(.brand500)
                         Image(systemName: "checkmark")
-                            // TEMP: Figma는 11pt인데 AppTypography에 11pt가 없어 12pt를 씀
+                            // TEMP: 디자인 글자 크기에 맞는 AppTypography가 없어 가장 가까운 label을 씀
                             .font(AppTypography.label.weight(.semibold))
                             .foregroundStyle(.white)
                     }
