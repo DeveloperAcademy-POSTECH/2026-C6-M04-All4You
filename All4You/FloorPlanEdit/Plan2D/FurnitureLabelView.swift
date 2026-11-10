@@ -24,8 +24,9 @@ struct FurnitureLabelView: View {
 // 레이아웃 값
 extension FurnitureLabelView {
     private enum Layout {
-        static let horizontalPadding: CGFloat = 10
-        static let verticalPadding: CGFloat = 4
+        // Figma 61:29619 가구라벨 67×28
+        static let horizontalPadding: CGFloat = 13
+        static let verticalPadding: CGFloat = 7.5
         static let borderWidth: CGFloat = 1
     }
 }

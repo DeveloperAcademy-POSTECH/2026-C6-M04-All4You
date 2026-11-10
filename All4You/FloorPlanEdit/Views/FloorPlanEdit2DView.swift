@@ -11,10 +11,13 @@ struct FloorPlanEdit2DView: View {
     @Binding var planData: PlanData
     /// 3D 수정 화면과 함께 쓰는 되돌리기·다시 하기 기록
     @Binding var history: PlanHistory
-    let onBack: () -> Void
-    let onDone: () -> Void
+    /// 위 도구 막대에서 켠 스탬프 도구. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
+    @Binding var selectedTool: EditTool?
+    /// 스탬프를 놓을 때 쓰는 Figma 기본 크기. nil이면 addMarker·addOpening의 기본 크기를 쓴다
+    var stampDefaults: StampDefaults? = nil
+    /// 값이 바뀔 때마다 고른 것·메뉴·미리 보기를 비운다 (되돌리기·다시 하기나 2D·3D 전환 때 부모가 올린다)
+    var resetToken = 0
 
-    @State private var selectedTool: EditTool?
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
     /// 펜으로 긋는 중인 선의 화면 시작·끝 점. 손을 떼면 이 선을 늘여 벽을 넣는다
@@ -59,27 +62,30 @@ struct FloorPlanEdit2DView: View {
     @State private var wallDragBase: (plan: PlanData, limits: MoveLimits)?
     /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
     @State private var wallBlockedReason: String?
+    /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
+    @State private var noticeDismissTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
             planCanvas
-                .onAppear { fitPlan(in: proxy.size) }
-                .onChange(of: proxy.size) { _, size in fitPlan(in: size) }
+                // 도면을 맞추기 전에는 planCanvas가 비어 있어 onAppear가 불리지 않을 수 있다. 그래서 처음 크기도 initial: true로 받는다
+                .onChange(of: proxy.size, initial: true) { _, size in fitPlan(in: size) }
         }
-        // 처음 맞출 때 도면이 위·아래 도구 막대와 겹치지 않게 한다
-        .padding(.vertical, Layout.toolBarInset)
+        // 위 도구 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (3D와 같다). 처음 맞출 때만 막대를 피해 놓는다
         .background(.white)
-        // 옮기거나 확대한 도면이 상단 바·상태 표시줄 위로 넘쳐 보이지 않게 이 영역 안에서만 그린다
-        .clipped()
         .gesture(zoomGesture)
         .gesture(TwoFingerPanGesture(onChanged: panPlan))
         .overlay(alignment: .topLeading) {
             toolBar
         }
         .overlay {
-            DrawingToolBar(selectedTool: $drawingTool)
+            DrawingToolBar(selectedTool: $drawingTool, isPenAndEraserSuspended: isStampActive, onSelect: pickDrawingTool)
         }
-        .bothSidesToolbar(customLayout: true, barTitle: Copy.title, trailingAccessory: AnyView(undoRedo), onBack: onBack, onDone: onDone)
+        .overlay(alignment: .bottomTrailing) {
+            ResetViewButton(action: resetView)
+                .padding()
+        }
+        .onChange(of: resetToken) { clearEditingState() }
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
         .ignoresSafeArea(.keyboard)
     }
@@ -87,7 +93,10 @@ struct FloorPlanEdit2DView: View {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(in size: CGSize) {
         canvasSize = size
-        screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+        // 위·아래 막대를 뺀 영역 가운데에 맞춘 뒤 아래로 내려, 처음에는 도면이 막대와 겹치지 않게 한다
+        let inner = CGSize(width: size.width, height: max(size.height - Layout.toolBarInset * 2, 1))
+        screen = PlanScreen(plan: planData, in: inner, fill: Layout.planFill)
+            .moved(by: CGSize(width: 0, height: Layout.toolBarInset))
     }
 }
 
@@ -174,30 +183,34 @@ extension FloorPlanEdit2DView {
     }
 
     private var toolBar: some View {
-        // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 획 선택일 때만 쓸 수 있다. 펜·지우개면 흐리게 하고 누를 수 없게 한다
+        // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 펜·지우개·손 어느 것이어도 쓸 수 있고, 켜 두면 아래 동작보다 먼저 처리된다
         EditToolBar(selectedTool: $selectedTool)
-            .disabled(!isHandTool)
-            .opacity(isHandTool ? 1 : Layout.disabledToolOpacity)
             .padding()
-            .onChange(of: drawingTool) {
-                guard !isHandTool else { return }
-                // 펜·지우개로 바꾸면 고른 도구·스탬프·이름 캡슐을 모두 푼다
-                selectedTool = nil
-                selection = nil
-                selectedRoomId = nil
-                menuTarget = nil
+            .onChange(of: selectedTool) {
+                // 도구를 켜면 고른 벽은 풀어 둔다 (도구가 켜진 동안은 벽을 고르거나 옮기지 않는다)
+                if selectedTool != nil, case .wall? = selection { selection = nil }
             }
     }
 
-    /// 공간 이름 캡슐 누르기·끌기. 펜·지우개일 때는 nil이라 캡슐을 누르거나 끌 수 없다
+    /// 아래 막대에서 도구를 눌렀다. 펜·지우개를 쓰려는 것이므로 위 도구와 고른 스탬프·이름 캡슐을 모두 푼다.
+    /// 이미 고른 펜을 다시 눌러도 값이 안 바뀌어 onChange로는 알 수 없어서 막대가 누른 것을 알려 준다
+    private func pickDrawingTool(_ tool: DrawingTool) {
+        guard tool != .hand else { return }
+        selectedTool = nil
+        selection = nil
+        selectedRoomId = nil
+        menuTarget = nil
+    }
+
+    /// 공간 이름 캡슐 누르기·끌기. 펜·지우개일 때는 nil이라 캡슐을 누르거나 끌 수 없다 (위 도구가 켜져 있으면 쓸 수 있다)
     private var roomLabelActions: RoomLabelActions? {
-        guard isHandTool else { return nil }
-        return RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag)
+        guard canUseStamps else { return nil }
+        return RoomLabelActions(onTap: tapRoomLabel, onDrag: dragRoomLabel, onDragEnded: endRoomLabelDrag, onDelete: deleteRoomLabel)
     }
 
     /// 가구 이름 캡슐 누르기. 펜·지우개일 때는 nil이라 누를 수 없다
     private var furnitureLabelTap: ((String) -> Void)? {
-        guard isHandTool else { return nil }
+        guard canUseStamps else { return nil }
         return { tapFurnitureLabel($0) }
     }
 
@@ -206,17 +219,33 @@ extension FloorPlanEdit2DView {
         drawingTool == .hand
     }
 
-    /// 되돌리면 고른 것이 사라졌을 수 있어 고르기·메뉴·미리 보기를 비운다. 고치던 이름은 넣지 않고 닫는다
-    private var undoRedo: some View {
-        UndoRedoCapsule(history: $history, planData: $planData) {
-            editingRoomId = nil
-            isRoomNameFocused = false
-            editingFurnitureId = nil
-            isFurnitureLabelFocused = false
-            selection = nil
-            selectedRoomId = nil
-            menuTarget = nil
-            dragPreview = nil
+    /// 위 도구(스탬프·라벨·창문·문)를 켜 두었는지. 켜 두면 아래 막대가 무엇이든 스탬프 동작이 먼저다
+    private var isStampActive: Bool {
+        selectedTool != nil
+    }
+
+    /// 스탬프·라벨·창문·문과 상호작용할 수 있는지: 손 도구이거나 위 도구가 켜져 있을 때
+    private var canUseStamps: Bool {
+        isHandTool || isStampActive
+    }
+
+    /// 되돌리거나 2D·3D를 바꾸면 고른 것이 사라졌을 수 있어 고르기·메뉴·미리 보기를 비운다. 고치던 이름은 넣지 않고 닫는다
+    private func clearEditingState() {
+        editingRoomId = nil
+        isRoomNameFocused = false
+        editingFurnitureId = nil
+        isFurnitureLabelFocused = false
+        selection = nil
+        selectedRoomId = nil
+        menuTarget = nil
+        dragPreview = nil
+        wallSelection = nil
+    }
+
+    /// 처음 맞춘 화면(배율·자리)으로 되돌린다. 확대하거나 도면을 잘못 옮겼을 때 쓴다
+    private func resetView() {
+        withAnimation(.easeInOut(duration: Layout.resetDuration)) {
+            fitPlan(in: canvasSize)
         }
     }
 }
@@ -236,20 +265,22 @@ extension FloorPlanEdit2DView {
                     finishFurnitureEditing()
                     return
                 }
-                handleTap(screen.tap(at: value.location, in: planData))
+                // 발화지점·피해자 도구는 문이 열리는 자리에도 놓을 수 있게, 부채꼴 안을 문으로 치지 않는다
+                let isPlacingOnFloor = selectedTool == .ignitionPoint || selectedTool == .person
+                handleTap(screen.tap(at: value.location, in: planData, includesDoorSwing: !isPlacingOnFloor))
             }
     }
 
     /// 이미 놓인 스탬프를 누르면 도구와 상관없이 그것을 고른다.
     /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 그 아래 가구를 고르거나 고른 것을 푼다.
     /// 그래서 도구를 고른 채 가구 위를 누르면 가구를 고르지 않고 그 자리에 스탬프를 놓는다 (침대 위 발화지점 등).
-    /// 공간라벨 도구로 방 안을 누르면 그 방 이름을 그 자리로 옮기고 바로 고친다. 가구라벨 도구로 가구를 누르면 고르고, 고른 가구를 한 번 더 누르면 이름을 고친다. 가구가 없는 바닥을 누르면 새 가구를 놓고 바로 이름을 고친다.
+    /// 공간라벨 도구로 방 안을 누르면 그 방 이름을 그 자리로 옮기고 바로 고친다. 이름 없는 닫힌 칸을 누르면 거기에 새 공간 이름을 달고 바로 고친다. 고른 이름은 ✕로 지운다. 가구라벨 도구로 가구를 누르면 고르고, 고른 가구를 한 번 더 누르면 이름을 고친다. 가구가 없는 바닥을 누르면 새 가구를 놓고 바로 이름을 고친다.
     /// 도구는 놓은 뒤에도 켜져 있고, 방금 놓은 스탬프를 고른 상태로 둔다 (3D 수정 화면과 같다).
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
-        // 펜·지우개일 때는 스탬프·라벨·창문·문·가구와 상호작용하지 않는다. 지우개로 벽을 누르면 그 벽만 지운다
-        guard drawingTool == .hand else {
+        // 펜·지우개이고 위 도구도 꺼져 있으면 스탬프·라벨·창문·문·가구와 상호작용하지 않는다. 지우개로 벽을 누르면 그 벽만 지운다
+        guard canUseStamps else {
             if drawingTool == .eraser, case .wall(let id, _, _) = tap {
                 planData.eraseWall(id: id)
             }
@@ -269,17 +300,30 @@ extension FloorPlanEdit2DView {
         case (nil, _):
             selection = nil
         case (.roomName?, .floor(let point)):
-            guard let room = planData.room(containing: point) else { return }
-            planData.moveRoomLabel(id: room.id, to: point)
-            startRoomEditing(room.id)
+            if planData.room(containing: point) != nil {
+                // 닫힌 공간 하나에는 라벨 하나만 둘 수 있다. 라벨 자리는 라벨을 끌어 옮긴다
+                showNotice(Copy.roomLabelExists)
+            } else if let newId = planData.addRoom(at: point) {
+                // 이름 없는 닫힌 칸이면 새 공간 이름을 달고 바로 고친다
+                startRoomEditing(newId)
+            } else {
+                showNotice(Copy.roomNotClosed)
+            }
         case (.furniture?, .floor(let point)):
             if let furniture = planData.furniture(at: point) {
                 selectOrEditFurniture(furniture.id)
             } else if let newId = planData.addFurniture(at: point) {
                 startFurnitureEditing(newId)
+            } else {
+                showNotice(planData.furniturePlacementHint(at: point))
             }
         case (let tool?, _):
-            selection = planData.place(tool, at: tap) ?? selection
+            if let placed = planData.place(tool, at: tap, defaults: stampDefaults) {
+                selection = placed
+            } else {
+                // 벽에 닿거나 방 밖이거나 도구와 맞지 않는 자리면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
+                showNotice(planData.placementHint(for: tool, at: tap))
+            }
         }
     }
 }
@@ -372,6 +416,12 @@ extension FloorPlanEdit2DView {
         var preview = dragPreview ?? planData
         preview.moveRoomLabel(id: roomId, to: point)
         dragPreview = preview
+    }
+
+    /// 고른 공간 이름을 지운다. 벽은 그대로라 그 칸은 이름 없는 칸이 되고, 공간라벨 도구로 다시 달 수 있다
+    private func deleteRoomLabel(_ roomId: String) {
+        planData.removeRoom(id: roomId)
+        selectedRoomId = nil
     }
 
     private func endRoomLabelDrag() {
@@ -472,12 +522,15 @@ extension FloorPlanEdit2DView {
                 showFurnitureBlocked(furniture(of: selection, in: preview).map { $0.center != point } ?? false)
             }
             .onEnded { _ in
+                // 끄는 동안 띄운 막힘 이유는 손을 떼도 잠깐 남겨 읽을 수 있게 한다. 벽 그리기 실패 안내는 그 뒤에 띄워 바로 지워지지 않게 한다
+                let blockedWhileDragging = wallBlockedReason
+                wallBlockedReason = nil
                 commitPreview()
                 finishPenStroke()
                 isErasing = false
                 stampDragStart = nil
                 wallDragBase = nil
-                wallBlockedReason = nil
+                if let blockedWhileDragging, wallBlockedReason == nil { showNotice(blockedWhileDragging) }
             }
     }
 
@@ -512,7 +565,7 @@ extension FloorPlanEdit2DView {
         let isNewStroke = penStroke == nil && !isErasing
         if isNewStroke {
             // 고른 스탬프·벽 위에서 시작했거나 공간 이름을 끄는 중이면 그것을 옮긴다
-            guard drawingTool != .hand, stampDragStart == nil, wallDragBase == nil, labelDragStart == nil,
+            guard drawingTool != .hand, !isStampActive, stampDragStart == nil, wallDragBase == nil, labelDragStart == nil,
                   selection == nil || !startsOnSelection(value.startLocation, screen: screen) else { return false }
             selection = nil
             menuTarget = nil
@@ -537,12 +590,17 @@ extension FloorPlanEdit2DView {
     private func finishPenStroke() {
         guard let penStroke, let screen else { return }
         self.penStroke = nil
-        if let drawn = planData.drawingWall(
+        let result = planData.drawingWall(
             from: screen.plan(penStroke.start),
             to: screen.plan(penStroke.end),
             snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
-        ) {
+        )
+        switch result {
+        case .success(let drawn):
             planData = drawn
+        case .failure(let failure):
+            // 손가락을 짧게 스치기만 한 것까지 매번 안내하지 않게, 짧은 선은 안내하지 않는다
+            if failure != .strokeTooShort { showNotice(failure.message) }
         }
     }
 
@@ -629,12 +687,16 @@ extension FloorPlanEdit2DView {
     @ViewBuilder
     private var wallBlockedNotice: some View {
         if let wallBlockedReason {
+            // 안내가 길어도 화면 가로로 늘어지지 않게 폭을 제한하고 두 줄까지 줄바꿈한다
             Text(wallBlockedReason)
                 .font(AppTypography.subheadline)
                 .foregroundStyle(.white)
-                .padding(.horizontal, Layout.labelHorizontalPadding)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Layout.noticeHorizontalPadding)
                 .padding(.vertical, Layout.labelVerticalPadding)
-                .background(Color.gray900, in: .capsule)
+                .frame(maxWidth: Layout.noticeMaxWidth)
+                .background(Color.gray900, in: .rect(cornerRadius: Layout.noticeCornerRadius))
                 .padding(.top, Layout.noticeTopPadding)
         }
     }
@@ -665,7 +727,7 @@ extension FloorPlanEdit2DView {
         if let furniture = furniture(of: selection, in: plan) {
             return CGSize(width: screen.length(furniture.width / 2) + padding, height: screen.length(furniture.depth / 2) + padding)
         }
-        let iconSize = marker(of: selection, in: plan).map { Plan2DView.iconSize(of: $0) } ?? Plan2DView.stampSize
+        let iconSize = marker(of: selection, in: plan).map { Plan2DView.iconSize(of: $0) } ?? screen.outletSize
         let half = screen.length(iconSize) / 2 + padding
         return CGSize(width: half, height: half)
     }
@@ -716,6 +778,16 @@ extension FloorPlanEdit2DView {
         wallBlockedReason = isBlocked ? Copy.furnitureBlocked : nil
     }
 
+    /// 위쪽 캡슐로 안내를 잠깐 띄운다. 끄는 동안 계속 보여야 하는 막힘 안내와 달리 시간이 지나면 스스로 내려간다
+    private func showNotice(_ text: String) {
+        wallBlockedReason = text
+        noticeDismissTask?.cancel()
+        noticeDismissTask = Task {
+            try? await Task.sleep(for: Layout.noticeDuration)
+            if !Task.isCancelled, wallBlockedReason == text { wallBlockedReason = nil }
+        }
+    }
+
     /// 돌리기·크기 바꾸기에서 손을 떼면 미리 보기를 반영하고 막힘 안내를 내린다
     private func endHandleDrag() {
         commitPreview()
@@ -733,7 +805,7 @@ extension FloorPlanEdit2DView {
         LongPressGesture(minimumDuration: Layout.longPressDuration)
             .onEnded { _ in
                 // 스탬프와 창문·문 모두 꾹 누르면 메뉴가 뜬다 (창문·문은 삭제만)
-                guard isHandTool, let screen, let pressLocation else { return }
+                guard canUseStamps, let screen, let pressLocation else { return }
                 let target: PlanSelection
                 switch screen.tap(at: pressLocation, in: planData) {
                 case .element(let element):
@@ -824,8 +896,6 @@ extension FloorPlanEdit2DView {
     private enum Layout {
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
-        /// 펜·지우개일 때 위 도구 막대의 흐린 정도
-        static let disabledToolOpacity = 0.4
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
@@ -837,15 +907,24 @@ extension FloorPlanEdit2DView {
         /// 손잡이를 끄는 거리를 재는 좌표 공간 이름 (도면 그림 전체)
         static let planSpace = "plan2D"
         /// 이름 입력칸의 안쪽 여백. RoomLabelView 캡슐과 같게 맞춘다
-        static let labelHorizontalPadding: CGFloat = 14
-        static let labelVerticalPadding: CGFloat = 6
+        static let labelHorizontalPadding: CGFloat = 16
+        static let labelVerticalPadding: CGFloat = 8
         /// 가구 이름 입력칸의 안쪽 여백. FurnitureLabelView 캡슐과 같게 맞춘다
-        static let furnitureLabelHorizontalPadding: CGFloat = 10
-        static let furnitureLabelVerticalPadding: CGFloat = 4
+        static let furnitureLabelHorizontalPadding: CGFloat = 13
+        static let furnitureLabelVerticalPadding: CGFloat = 7.5
         /// 키보드가 올라와도 가리지 않는 위쪽 몫. 이름 캡슐이 이보다 아래면 도면을 올린다
         static let keyboardFreeShare = 0.4
         /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
-        static let noticeTopPadding: CGFloat = 8
+        /// 안내 캡슐을 위 도구 막대(바깥 여백 16 + 높이 54) 아래로 넉넉히(44pt) 띄우는 위쪽 여백. 스탬프와 가깝지 않게
+        static let noticeTopPadding: CGFloat = 16 + 54 + 44
+        /// 처음 시야로 되돌리는 애니메이션 시간 (초)
+        static let resetDuration = 0.35
+        /// 안내 캡슐의 최대 폭과 둥근 정도, 좌우 여백 (pt)
+        static let noticeMaxWidth: CGFloat = 560
+        static let noticeCornerRadius: CGFloat = 22
+        static let noticeHorizontalPadding: CGFloat = 20
+        /// 안내 캡슐이 떠 있는 시간
+        static let noticeDuration = Duration.seconds(2)
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
         /// 긋는 중인 펜 점선
@@ -857,16 +936,19 @@ extension FloorPlanEdit2DView {
 // 문구
 extension FloorPlanEdit2DView {
     private enum Copy {
-        static let title = "도면 수정"
         static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
+        // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
+        static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
+        static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
     }
 }
 
 #Preview {
     @Previewable @State var planData = DummyFloorPlan.planData
     @Previewable @State var history = PlanHistory()
+    @Previewable @State var selectedTool: EditTool?
 
     NavigationStack {
-        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: {}, onDone: {})
+        FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool)
     }
 }

@@ -3,8 +3,8 @@
 import CoreGraphics
 
 extension PlanScreen {
-    /// 화면 점 point를 누른 곳으로 바꾼다
-    func tap(at point: CGPoint, in plan: PlanData) -> PlanTap {
+    /// 화면 점 point를 누른 곳으로 바꾼다. includesDoorSwing이 참이면 문이 열리는 부채꼴 안도 그 문을 누른 것으로 본다
+    func tap(at point: CGPoint, in plan: PlanData, includesDoorSwing: Bool = true) -> PlanTap {
         if let element = stamp(at: point, in: plan) {
             return .element(element)
         }
@@ -15,13 +15,17 @@ extension PlanScreen {
             }
             return .wall(id: wallId, point: planPoint, height: Plan2DHit.outletHeight)
         }
+        if includesDoorSwing, let door = doorSwing(at: planPoint, in: plan) {
+            return .element(.doorWindow(door))
+        }
         return .floor(planPoint)
     }
 
     /// 아이콘 안을 누른 스탬프. 겹치면 나중에 그린(위에 보이는) 것
     func stamp(at point: CGPoint, in plan: PlanData) -> PlanSelection? {
         /// 아이콘 크기 size(m)인 스탬프가 planPoint에 있을 때 누른 점이 아이콘 안인지
-        func isNear(_ planPoint: SIMD2<Double>, size: Double = Plan2DView.stampSize) -> Bool {
+        func isNear(_ planPoint: SIMD2<Double>, size: Double? = nil) -> Bool {
+            let size = size ?? outletSize
             let radius = length(size) / 2 + Plan2DHit.fingerMargin
             let screenPoint = self.point(planPoint)
             return hypot(screenPoint.x - point.x, screenPoint.y - point.y) <= radius
@@ -42,6 +46,19 @@ extension PlanScreen {
         return plan.doorWindows.first { opening in
             opening.wallId == wallId && opening.kind != .passage
                 && abs(along - opening.centerAlongWall) <= opening.width / 2
+        }?.id
+    }
+
+    /// planPoint가 문이 열리는 부채꼴 안인 문 (DoorWindow.id). 부채꼴은 문 시작 쪽 끝을 경첩으로, 문 폭을 반지름으로 벽 왼쪽에 그려지는 사분원이다. 판정에는 손가락 여유를 더한다
+    private func doorSwing(at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
+        let margin = Plan2DHit.fingerMargin / scale
+        return plan.doorWindows.first { opening in
+            guard opening.kind == .door, let wall = plan.wall(id: opening.wallId), let line = plan.line(of: wall) else { return false }
+            let hinge = line.point(along: opening.centerAlongWall - opening.width / 2)
+            let offset = planPoint - hinge
+            let along = (offset * line.direction).sum()
+            let across = (offset * line.leftNormal).sum()
+            return along >= -margin && across >= -margin && (offset * offset).sum().squareRoot() <= opening.width + margin
         }?.id
     }
 

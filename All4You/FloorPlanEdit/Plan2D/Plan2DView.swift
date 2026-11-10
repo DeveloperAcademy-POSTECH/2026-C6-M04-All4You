@@ -24,10 +24,8 @@ struct Plan2DView: View {
     /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
     var hiddenLabelRoomIds: Set<String> = []
 
-    /// 콘센트 아이콘 크기 (m). 누르기 판정도 이 크기를 쓴다
-    static let stampSize = 0.4
-
-    /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라, 2D와 3D 크기가 같다
+    /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라 2D와 3D 크기가 비슷하다.
+    /// 사람은 몸 길이(누운 몸), 발화지점은 지름이다. 서 있는 사람 아이콘은 이 길이만큼 키로 그린다
     static func iconSize(of marker: PlanMarker) -> Double {
         let footprint = marker.footprint
         let delta = footprint.end - footprint.start
@@ -68,6 +66,8 @@ struct RoomLabelActions {
     let onDrag: (String, CGSize) -> Void
     /// 끌기에서 손을 뗐다
     let onDragEnded: () -> Void
+    /// 고른 캡슐의 ✕를 눌렀다 (Room.id)
+    let onDelete: (String) -> Void
 }
 
 // 벽과 문·창문
@@ -107,7 +107,17 @@ extension Plan2DView {
         let start = line.point(along: opening.centerAlongWall - opening.width / 2)
         let end = line.point(along: opening.centerAlongWall + opening.width / 2)
         let isSelected = selection == .doorWindow(opening.id)
-        if isSelected {
+        if isSelected && opening.kind == .door {
+            // 문은 문짝이 열리는 자리까지 주황 사각형으로 감싼다 (창문은 아래 띠)
+            var box = Path()
+            let across = line.leftNormal * opening.width
+            let along = line.direction * opening.width
+            let back = line.leftNormal * (-wall.thickness / 2)
+            let corners = [start + back, start + back + along, start + across + along, start + across]
+            box.addLines(corners.map(screen.point))
+            box.closeSubpath()
+            context.stroke(box, with: .color(.brand500), style: StrokeStyle(lineWidth: Layout.selectionLineWidth))
+        } else if isSelected {
             var band = Path()
             band.move(to: screen.point(start))
             band.addLine(to: screen.point(end))
@@ -203,8 +213,8 @@ extension Plan2DView {
     }
 
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
-    private func stampIcon(_ systemName: String, size meters: Double = Self.stampSize) -> some View {
-        let size = screen.length(meters)
+    private func stampIcon(_ systemName: String, size meters: Double? = nil) -> some View {
+        let size = screen.length(meters ?? screen.outletSize)
         return Image(systemName: systemName)
             .font(.system(size: size))
             .foregroundStyle(.brand500)
@@ -228,9 +238,28 @@ extension Plan2DView {
                 if room.id != editingRoomId && !hiddenLabelRoomIds.contains(room.id) {
                     roomLabel(room)
                         .overlay { selectionBorder(isSelected: room.id == selectedRoomId) }
+                        .overlay(alignment: .topLeading) { roomDeleteHandle(room) }
                         .position(screen.point(SIMD2(room.labelX, room.labelY)))
                 }
             }
+        }
+    }
+
+    /// 고른 공간 이름 캡슐 왼쪽 위 모서리의 ✕. 스탬프의 ✕ 손잡이와 같은 모양
+    @ViewBuilder
+    private func roomDeleteHandle(_ room: Room) -> some View {
+        if room.id == selectedRoomId, let actions = roomLabelActions {
+            Button { actions.onDelete(room.id) } label: {
+                Image(systemName: "xmark")
+                    .font(AppTypography.title3)
+                    .foregroundStyle(.brand500)
+                    .frame(width: Layout.deleteHandleSize, height: Layout.deleteHandleSize)
+                    .glassEffect(.regular, in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("삭제")
+            .offset(x: -Layout.deleteHandleSize / 2, y: -Layout.deleteHandleSize / 2)
         }
     }
 
@@ -266,6 +295,8 @@ extension Plan2DView {
         static let selectionLineWidth: CGFloat = 1.5
         /// 공간 이름 캡슐을 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기
         static let labelDragDistance: CGFloat = 4
+        /// 고른 공간 이름 캡슐의 ✕ 손잡이 크기 (pt). 스탬프 손잡이와 같다
+        static let deleteHandleSize: CGFloat = 44
         /// 가구 테두리 두께 (pt)
         static let furnitureLineWidth: CGFloat = 1
         /// 바닥에서 이보다(m) 높이 띄운 가구는 테두리를 점선으로

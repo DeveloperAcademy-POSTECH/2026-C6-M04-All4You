@@ -14,14 +14,15 @@ extension PlanData {
     /// 스탬프가 차지하는 자리가 방 안에 다 들어가지 않으면(벽에 닿음·벽 바깥·도면 밖) 놓지 않고 nil.
     /// 사람은 늘 누운 자세로 놓는다.
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
-    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>) -> String? {
+    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil) -> String? {
         let marker = PlanMarker(
             id: UUID().uuidString,
             kind: kind,
             position: point,
             height: 0,
             yaw: 0,
-            lying: kind == .person ? true : nil
+            lying: kind == .person ? true : nil,
+            scale: scale
         )
         guard fits(marker) else { return nil }
         markers.append(marker)
@@ -95,8 +96,8 @@ extension PlanData {
     }
 
     /// 사람·발화지점 크기 배율의 범위
-    /// TEMP: 디자인 확인 전이라 임시로 정한 값 (기본의 절반 ~ 2.5배)
-    static let markerScaleRange = 0.5...2.5
+    /// TEMP: 디자인 확인 전이라 임시로 정한 값 (기본의 0.2배 ~ 2.5배). 스탬프 기본 크기(StampDefaults)에 맞추면 사람이 0.5배보다 작아져서 하한을 낮췄다
+    static let markerScaleRange = 0.2...2.5
 
     mutating func removeMarker(id: String) {
         markers.removeAll { $0.id == id }
@@ -187,6 +188,12 @@ extension PlanData {
         rooms[index].name = trimmed
     }
 
+    /// 방(공간 이름)을 지운다. 둘러싼 벽은 그대로라 이름 없는 칸으로 남고, 공간라벨 도구로 다시 달 수 있다.
+    /// 그 방에 놓였던 사진·메모는 장소가 없어진다
+    mutating func removeRoom(id: String) {
+        rooms.removeAll { $0.id == id }
+    }
+
     /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
     mutating func moveRoomLabel(id: String, to point: SIMD2<Double>) {
         guard room(containing: point)?.id == id, let index = rooms.firstIndex(where: { $0.id == id }) else { return }
@@ -219,7 +226,7 @@ extension PlanData {
     fileprivate static let newDoorWidth = 0.9
     fileprivate static let newDoorHeight = 2.0
     /// 창문·문 폭·높이의 가장 작은 값 (m)
-    fileprivate static let minimumWindowSize = 0.2
+    static let minimumWindowSize = 0.2
 
     /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문을 달고 새 id를 돌려준다. addOpening(.window, …)과 같다
     mutating func addWindow(wallId: String, at point: SIMD2<Double>) -> String? {
@@ -228,10 +235,10 @@ extension PlanData {
 
     /// 벽 wallId 위 점 point(도면 좌표)를 가운데로 창문이나 문을 달고 새 id를 돌려준다.
     /// 벽 끝이나 옆 문·창문과 겹치면 그 사이 빈 칸 안으로 줄이거나 밀어 넣는다. 빈 칸이 너무 좁거나 벽을 찾지 못하면 nil
-    mutating func addOpening(_ kind: DoorWindowKind, wallId: String, at point: SIMD2<Double>) -> String? {
+    mutating func addOpening(_ kind: DoorWindowKind, wallId: String, at point: SIMD2<Double>, width wantedWidth: Double? = nil) -> String? {
         guard let wall = wall(id: wallId), let line = line(of: wall) else { return nil }
         let isDoor = kind == .door
-        let newWidth = isDoor ? Self.newDoorWidth : Self.newWindowWidth
+        let newWidth = wantedWidth ?? (isDoor ? Self.newDoorWidth : Self.newWindowWidth)
         let sillHeight = isDoor ? 0 : Self.newWindowSillHeight
         let newHeight = isDoor ? Self.newDoorHeight : Self.newWindowHeight
         let along = ((point - line.start) * line.direction).sum()

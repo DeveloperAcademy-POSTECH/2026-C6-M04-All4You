@@ -18,6 +18,10 @@ struct FloorPlan3DView: View {
     var pins: [Plan3DPin] = []
     /// 핀 하나를 그리는 뷰 (Plan3DPin.id를 받음). nil이면 핀을 그리지 않는다
     var pinView: ((String) -> AnyView)? = nil
+    /// 오른쪽 아래에 처음 시야로 되돌리는 버튼을 띄울지
+    var showsResetButton = false
+    /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 가구 위를 눌러도 가구를 고르지 않고 그 아래 바닥에 스탬프를 놓는다
+    var isStampToolActive = false
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -100,6 +104,12 @@ struct FloorPlan3DView: View {
         }
         .overlay(alignment: .topLeading) {
             windowControls
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if showsResetButton {
+                ResetViewButton(action: resetView)
+                    .padding()
+            }
         }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
@@ -224,13 +234,13 @@ extension FloorPlan3DView {
     private var tapGesture: some Gesture {
         SpatialTapGesture()
             .onEnded { value in
-                onTap(tapResult(at: value.location))
+                onTap(tapResult(at: value.location, excludingFurniture: isStampToolActive))
             }
     }
 
     /// 누른 화면 점에서 3D 안쪽으로 가상의 직선을 그어, 가장 먼저 부딪힌 것을 도면 기준 값으로 바꾼다
-    private func tapResult(at point: CGPoint) -> PlanTap? {
-        guard let hit = firstHit(at: point) else { return nil }
+    private func tapResult(at point: CGPoint, excludingFurniture: Bool = false) -> PlanTap? {
+        guard let hit = firstHit(at: point, excludingFurniture: excludingFurniture) else { return nil }
         if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
             return .element(element)
         }
@@ -244,11 +254,13 @@ extension FloorPlan3DView {
     }
 
     /// 화면 점에서 3D 안쪽으로 그은 직선이 가장 먼저 부딪힌 것
-    private func firstHit(at point: CGPoint) -> CollisionCastHit? {
+    /// excludingFurniture가 참이면 가구는 직선이 지나가게 한다
+    private func firstHit(at point: CGPoint, excludingFurniture: Bool = false) -> CollisionCastHit? {
         guard let cameraContent,
               let scene = sceneRoot.scene,
               let ray = cameraContent.ray(through: point, in: .local, to: .scene) else { return nil }
-        return scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, relativeTo: nil).first
+        let mask = excludingFurniture ? CollisionGroup.all.subtracting(FloorPlan3DBuilder.furnitureCollisionGroup) : CollisionGroup.all
+        return scene.raycast(origin: ray.origin, direction: ray.direction, query: .nearest, mask: mask, relativeTo: nil).first
     }
 }
 
@@ -330,12 +342,12 @@ extension FloorPlan3DView {
               let entity = FloorPlan3DBuilder.selectableEntity(of: hit.entity) else { return nil }
         let wallId: String?
         switch selection {
-        case .marker:
+        case .marker, .furniture:
             wallId = nil
         case .wallFixture(let id):
             guard let fixture = planData.wallFixtures.first(where: { $0.id == id }) else { return nil }
             wallId = fixture.wallId
-        case .doorWindow, .wall, .furniture:
+        case .doorWindow, .wall:
             return nil
         }
         guard let start = surfacePoint(at: point, wallId: wallId) else { return nil }
@@ -366,7 +378,11 @@ extension FloorPlan3DView {
             .onEnded { _ in
                 guard let pressLocation,
                       case .element(let element)? = tapResult(at: pressLocation) else { return }
-                menuTarget = element
+                // 가구는 복제·삭제 메뉴가 없어 고르기만 한다
+                switch element {
+                case .furniture: break
+                default: menuTarget = element
+                }
                 onTap(.element(element))
             }
     }
@@ -399,6 +415,13 @@ extension FloorPlan3DView {
                 ResizeHandleView()
                     .position(stampScreenPoints.resizeHandle)
                     .gesture(resizeGesture(markerId: id, center: stampScreenPoints.center))
+            } else if case .furniture(let id) = selection {
+                RotateHandleView()
+                    .position(stampScreenPoints.handle)
+                    .gesture(rotateFurnitureGesture(id: id, center: stampScreenPoints.center))
+                ResizeHandleView()
+                    .position(stampScreenPoints.resizeHandle)
+                    .gesture(resizeFurnitureGesture(id: id, center: stampScreenPoints.center))
             }
         }
     }
@@ -426,7 +449,8 @@ extension FloorPlan3DView {
     private func resizeGesture(markerId: String, center: CGPoint) -> some Gesture {
         DragGesture(coordinateSpace: .named(Layout.sceneSpace))
             .onChanged { value in
-                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center)))
+                let modelFactor = planData.markers.first { $0.id == markerId }.map { PlanMarker.modelFactor(of: $0.kind) } ?? 1
+                selectedStampEntity?.scale = SIMD3(repeating: Float(resizedScale(markerId: markerId, drag: value, center: center) * modelFactor))
             }
             .onEnded { value in
                 onEdit(.resize(markerId: markerId, scale: resizedScale(markerId: markerId, drag: value, center: center)))
@@ -439,6 +463,64 @@ extension FloorPlan3DView {
         func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
         let resized = scale * distance(drag.location) / max(distance(drag.startLocation), 1)
         return min(max(resized, PlanData.markerScaleRange.lowerBound), PlanData.markerScaleRange.upperBound)
+    }
+
+    /// 가구 회전 손잡이. 사람·발화지점과 같이 손가락이 가구 가운데를 돈 각도만큼 돌린다. 도면의 가구 방향은 라디안, 위에서 볼 때 시계 방향이 +
+    private func rotateFurnitureGesture(id: String, center: CGPoint) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                let rotation = rotatedFurniture(id: id, drag: value, center: center)
+                selectedStampEntity?.orientation = simd_quatf(angle: Float(-rotation), axis: [0, 1, 0])
+            }
+            .onEnded { value in
+                onEdit(.rotateFurniture(id: id, rotation: rotatedFurniture(id: id, drag: value, center: center)))
+            }
+    }
+
+    private func rotatedFurniture(id: String, drag: DragGesture.Value, center: CGPoint) -> Double {
+        let rotation = planData.furniture?.first { $0.id == id }?.rotation ?? 0
+        func angle(_ point: CGPoint) -> Double { atan2(point.y - center.y, point.x - center.x) }
+        return rotation + angle(drag.location) - angle(drag.startLocation)
+    }
+
+    /// 가구 크기 손잡이. 가운데에서 멀어지게 끌면 가로·세로가 같은 비율로 커지고, 가까워지게 끌면 작아진다.
+    /// 끄는 동안은 미리 보기 도면으로 장면을 다시 만들고(엔티티 배율을 바꾸면 높이도 함께 변하므로), 손을 떼면 도면을 한 번 바꾼다
+    private func resizeFurnitureGesture(id: String, center: CGPoint) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                guard let size = resizedFurniture(id: id, drag: value, center: center) else { return }
+                var preview = planData
+                preview.resizeFurniture(id: id, width: size.width, depth: size.depth)
+                windowPreview = preview
+            }
+            .onEnded { value in
+                windowPreview = nil
+                guard let size = resizedFurniture(id: id, drag: value, center: center) else { return }
+                onEdit(.resizeFurniture(id: id, width: size.width, depth: size.depth))
+            }
+    }
+
+    private func resizedFurniture(id: String, drag: DragGesture.Value, center: CGPoint) -> (width: Double, depth: Double)? {
+        guard let furniture = planData.furniture?.first(where: { $0.id == id }) else { return nil }
+        func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
+        let ratio = distance(drag.location) / max(distance(drag.startLocation), 1)
+        return (max(furniture.width * ratio, Furniture.minSize), max(furniture.depth * ratio, Furniture.minSize))
+    }
+
+    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
+    /// 손잡이가 모서리를 가리지 않도록 화면에서 가운데 반대쪽으로 cornerHandleGap만큼 더 민다
+    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
+        let bounds = entity.visualBounds(relativeTo: entity)
+        func screenPoint(z: Float) -> CGPoint? {
+            let corner = entity.convert(position: SIMD3(bounds.max.x, bounds.max.y, z), to: nil)
+            guard let point = content.project(point: corner, to: .local) else { return nil }
+            let dx = point.x - center.x
+            let dy = point.y - center.y
+            let length = max(hypot(dx, dy), 1)
+            return CGPoint(x: point.x + dx / length * Layout.cornerHandleGap, y: point.y + dy / length * Layout.cornerHandleGap)
+        }
+        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z) else { return nil }
+        return (rotate, resize)
     }
 
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
@@ -469,6 +551,18 @@ extension FloorPlan3DView {
                 let reach = max(screenCenter.y - menu.y - Layout.rotateHandleGap, 0) + Layout.resizeHandleGap
                 let resizeHandle = CGPoint(x: screenCenter.x + reach, y: screenCenter.y + reach / 2)
                 points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: resizeHandle)
+                // 가구는 2D처럼 윗면 모서리에 손잡이를 붙인다. 가구를 돌리면 모서리와 함께 따라 돈다
+                if let corners = cornerHandlePoints(of: entity, center: screenCenter, using: content) {
+                    switch entity.components[PlanSelectionComponent.self]?.selection {
+                    case .furniture?:
+                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                    case .marker?:
+                        // 사람·발화지점도 크기 손잡이를 모서리에 붙여 돌리면 함께 돌게 한다. 회전 손잡이는 그대로
+                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: corners.resize)
+                    default:
+                        break
+                    }
+                }
             }
         }
         if points != stampScreenPoints {
@@ -581,6 +675,16 @@ extension FloorPlan3DView {
             }
     }
 
+    /// 확대·옮기기·카메라 방향을 처음으로 되돌린다
+    private func resetView() {
+        orbit = .initial
+        orbitAtDragStart = nil
+        committedZoom = 1
+        sceneRoot.scale = SIMD3(repeating: 1)
+        sceneRoot.position = .zero
+        placeCamera()
+    }
+
     private func zoom(for magnification: CGFloat) -> Float {
         let factor = pow(Float(magnification), Layout.zoomPower)
         return min(max(committedZoom * factor, Layout.zoomRange.lowerBound), Layout.zoomRange.upperBound)
@@ -670,10 +774,10 @@ extension FloorPlan3DView {
         sceneRoot.addChild(makePinAnchors(for: plan))
         selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
-        case .marker?, .wallFixture?:
+        case .marker?, .wallFixture?, .furniture?:
             selectedStampEntity = selection.flatMap { FloorPlan3DBuilder.entity(for: $0, in: sceneRoot) }
-        // 벽·가구는 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
-        case .doorWindow?, .wall?, .furniture?, nil:
+        // 벽은 3D에서 고르지 않지만, 2D에서 고른 채로 넘어올 수 있다
+        case .doorWindow?, .wall?, nil:
             selectedStampEntity = nil
         }
     }
@@ -689,6 +793,8 @@ extension FloorPlan3DView {
 // 레이아웃 값
 extension FloorPlan3DView {
     private enum Layout {
+        /// 가구 손잡이를 모서리에서 가구 바깥쪽으로 더 띄우는 거리 (pt)
+        static let cornerHandleGap: CGFloat = 26
         /// 카메라가 있는 쪽 (원점에서 본 방향). 오른쪽 앞 위
         static let cameraDirection = SIMD3<Float>(0.35, 0.95, 1.0)
         /// 도면 긴 변에 곱하는 카메라 거리. 세로 화면(좁은 가로 시야)에서도 도면 전체가 들어오게 함

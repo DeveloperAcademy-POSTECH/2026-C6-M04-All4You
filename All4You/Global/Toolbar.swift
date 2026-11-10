@@ -10,6 +10,8 @@ extension View {
         customLayout: Bool = false,
         barTitle: String = "",
         barSubtitle: String = "",
+        titleFont: Font = AppTypography.subheadlineEmphasized,
+        centerAccessory: AnyView? = nil,
         trailingAccessory: AnyView? = nil,
         onBack: @escaping () -> Void,
         onDone: @escaping () -> Void
@@ -21,6 +23,8 @@ extension View {
                 leadingTitle: leadingTitle,
                 trailingTitle: trailingTitle,
                 isDoneDisabled: isDoneDisabled,
+                titleFont: titleFont,
+                centerAccessory: centerAccessory,
                 trailingAccessory: trailingAccessory,
                 onBack: onBack,
                 onDone: onDone
@@ -106,6 +110,8 @@ extension View {
         leadingTitle: String = "뒤로",
         trailingTitle: String = "완료",
         isDoneDisabled: Bool = false,
+        titleFont: Font = AppTypography.subheadlineEmphasized,
+        centerAccessory: AnyView? = nil,
         trailingAccessory: AnyView? = nil,
         onBack: (() -> Void)? = nil,
         onDone: (() -> Void)? = nil
@@ -130,11 +136,11 @@ extension View {
                     
                     if subtitle.isEmpty {
                         Text(title)
-                            .font(AppTypography.subheadlineEmphasized)
+                            .font(titleFont)
                     } else {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(title)
-                                .font(AppTypography.subheadlineEmphasized)
+                                .font(titleFont)
                             Text(subtitle)
                                 .font(AppTypography.label)
                                 .foregroundStyle(.secondary)
@@ -163,6 +169,10 @@ extension View {
                         .disabled(isDoneDisabled)
                         .accessibilityLabel(trailingTitle)
                     }
+                }
+                // 바 가운데에 놓는 것(예: 2D·3D 전환 막대). 뒤로가기·제목·오른쪽 버튼과 같은 줄 가운데에 겹친다
+                .overlay {
+                    centerAccessory
                 }
                 .padding(.top, 16)
                 .padding(.horizontal, 32)

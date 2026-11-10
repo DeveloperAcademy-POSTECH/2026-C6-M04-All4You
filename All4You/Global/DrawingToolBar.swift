@@ -23,6 +23,10 @@ enum DrawingTool: String, CaseIterable, Identifiable {
 /// 끌어서 옮길 수 있는 펜·지우개·손 막대
 struct DrawingToolBar: View {
     @Binding var selectedTool: DrawingTool
+    /// 위 스탬프 도구가 켜져 있어 펜·지우개가 잠시 쓸 수 없는 상태. 이때 펜·지우개의 고른 표시를 지운다
+    var isPenAndEraserSuspended = false
+    /// 도구 버튼을 눌렀다. 이미 고른 도구를 다시 눌러도 알린다
+    var onSelect: ((DrawingTool) -> Void)? = nil
 
     @State private var toolbarPosition: ToolbarPosition = .bottom
     @GestureState private var toolbarDrag: CGSize = .zero
@@ -77,18 +81,24 @@ extension DrawingToolBar {
     private func toolButton(_ tool: DrawingTool) -> some View {
         Button {
             selectedTool = tool
+            onSelect?(tool)
         } label: {
             Image(systemName: tool.icon)
                 .frame(width: Layout.toolSize, height: Layout.toolSize)
                 .background {
-                    if selectedTool == tool {
+                    if isHighlighted(tool) {
                         Circle().fill(Color.gray200)
                     }
                 }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tool.rawValue)
-        .accessibilityAddTraits(selectedTool == tool ? .isSelected : [])
+        .accessibilityAddTraits(isHighlighted(tool) ? .isSelected : [])
+    }
+
+    /// 고른 표시를 보일 도구. 스탬프가 켜져 있으면 펜·지우개는 표시하지 않는다
+    private func isHighlighted(_ tool: DrawingTool) -> Bool {
+        selectedTool == tool && !(isPenAndEraserSuspended && tool != .hand)
     }
 }
 

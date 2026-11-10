@@ -19,6 +19,8 @@ struct FloorPlanTabView: View {
 
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
+    /// 도면 영역의 크기. 처음 시야로 되돌릴 때 이 크기에 맞춰 다시 놓는다
+    @State private var canvasSize = CGSize.zero
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
     @State private var lastMagnification = 1.0
     /// 사진 핀을 눌러 고른 장소 (Room.id). 오른쪽에 그 장소 사진 모음이 열린다
@@ -31,6 +33,8 @@ struct FloorPlanTabView: View {
     @State private var hoveredRoomID: String?
     /// 누른 북마크 번호 핀의 사진 (LoadedPhoto.id). 나머지 도면·핀은 흐려지고 오른쪽에 그 사진이 열린다
     @State private var selectedBookmarkID: UUID?
+    /// 3D 화면을 만들어 뒀는지. 도면 수정 화면과 같이 2D·3D를 계속 띄워 두고 겹쳐서 바꾸는데, 처음부터 만들면 느려서 잠시 뒤에 만들고 3D를 먼저 누르면 바로 만든다
+    @State private var isThreeDReady = false
 
     /// 도면을 평면으로 볼지 입체로 볼지
     typealias Dimension = PlanDimension
@@ -112,8 +116,8 @@ extension FloorPlanTabView {
     @ViewBuilder
     private var floorPlanArea: some View {
         if let planData {
-            switch dimension {
-            case .twoD:
+            // 2D·3D를 모두 띄워 두고 겹쳐서 바꾼다. 도면 수정 화면(FloorPlanEditView)과 같은 방식이다
+            ZStack {
                 GeometryReader { proxy in
                     if let screen {
                         let pins = visiblePins(in: planData)
@@ -186,17 +190,34 @@ extension FloorPlanTabView {
                 .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture)
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
-            case .threeD:
-                // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
-                FloorPlan3DView(
-                    planData: planData,
-                    selection: nil,
-                    // 도면을 누르면 2D처럼 장소 선택을 풀고 오른쪽 사진 모음을 닫는다. 사진 핀(버튼)은 핀이 먼저 받는다
-                    onTap: { _ in clearRoomSelection() },
-                    onEdit: { _ in },
-                    pins: pins3D(in: planData),
-                    pinView: { id in pinView3D(id: id, in: planData) }
-                )
+                .overlay(alignment: .bottomTrailing) {
+                    ResetViewButton { resetView(planData) }
+                        .padding()
+                }
+                .modifier(DimensionLayer(isShown: dimension == .twoD))
+                if isThreeDReady {
+                    // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
+                    FloorPlan3DView(
+                        planData: planData,
+                        selection: nil,
+                        // 도면을 누르면 2D처럼 장소 선택을 풀고 오른쪽 사진 모음을 닫는다. 사진 핀(버튼)은 핀이 먼저 받는다
+                        onTap: { _ in clearRoomSelection() },
+                        onEdit: { _ in },
+                        pins: pins3D(in: planData),
+                        pinView: { id in pinView3D(id: id, in: planData) },
+                        showsResetButton: true
+                    )
+                    .modifier(DimensionLayer(isShown: dimension == .threeD))
+                }
+            }
+            // 도면만 서서히 바뀐다. 2D·3D 막대(DimensionPicker)의 유리 애니메이션은 막대 자신이 낸다
+            .animation(.easeInOut(duration: Layout.dimensionFadeDuration), value: dimension)
+            .task {
+                try? await Task.sleep(for: Layout.threeDWarmUp)
+                isThreeDReady = true
+            }
+            .onChange(of: dimension) {
+                if dimension == .threeD { isThreeDReady = true }
             }
         } else {
             Text(Copy.placeholder)
@@ -389,7 +410,15 @@ extension FloorPlanTabView {
 extension FloorPlanTabView {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(_ planData: PlanData, in size: CGSize) {
+        canvasSize = size
         screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+    }
+
+    /// 확대하거나 옮긴 도면을 처음 맞춘 배율·자리로 되돌린다
+    private func resetView(_ planData: PlanData) {
+        withAnimation(.easeInOut(duration: Layout.resetDuration)) {
+            fitPlan(planData, in: canvasSize)
+        }
     }
 
     /// 두 손가락 사이를 기준으로 확대·축소한다
@@ -421,9 +450,16 @@ extension FloorPlanTabView {
         static let focusDimmedOpacity = 0.35
         /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
+        /// 2D·3D가 서로 바뀌는 시간 (초)
+        static let dimensionFadeDuration = 0.3
+        /// 3D 화면을 미리 만들어 두기까지 기다리는 시간
+        static let threeDWarmUp = Duration.seconds(1)
+        /// 처음 시야로 되돌리는 애니메이션 시간 (초)
+        static let resetDuration = 0.35
         /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
         static let filterLeading: CGFloat = 32
-        static let filterTop: CGFloat = 48
+        // 도면 수정 화면의 위 도구 막대(바깥 여백 16 + 높이 54) 윗줄과 맞춰 그 막대와 같은 높이에 놓는다
+        static let filterTop: CGFloat = 42
         static let openPanelSpacing: CGFloat = 8
         static let openPanelPadding: CGFloat = 16
         static let openPanelHeight: CGFloat = 48

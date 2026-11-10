@@ -314,7 +314,8 @@ extension CaseMainView {
                 sessionNumber = number
             },
             onAddSession: addSession,
-            onBack: onBack
+            onBack: onBack,
+            onRename: { fireCase.caseName = $0 }
         )
     }
     

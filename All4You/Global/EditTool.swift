@@ -9,7 +9,7 @@ enum EditTool: CaseIterable {
         switch self {
         case .ignitionPoint: ("발화지점", "flame.fill")
         case .outlet:        ("전기", "bolt.fill")
-        case .person:        ("피해자", "figure.fall")
+        case .person:        ("피해자", "figure.stand")
         case .roomName:      ("공간라벨", "a.square.fill")
         case .furniture:     ("가구라벨", "a.square")
         case .window:        ("창문", "rectangle")

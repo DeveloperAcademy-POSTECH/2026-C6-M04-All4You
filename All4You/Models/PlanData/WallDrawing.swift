@@ -22,26 +22,54 @@ private enum WallEnd {
     case wall(String, SIMD2<Double>)
 }
 
+/// 벽을 그리지 못한 이유. message는 화면에 띄워, 어떻게 다시 그으면 되는지 알려 주는 문장이다
+enum WallDrawingFailure: Error {
+    case strokeTooShort
+    case noWallToAttach
+    case wallTooShort
+    case doorInTheWay
+    case wallAlreadyThere
+    case crossesWall
+    case roomsCannotBeRebuilt
+    case stampInTheWay
+
+    var message: String {
+        switch self {
+        case .strokeTooShort: "선이 너무 짧아요. 벽 사이를 가로질러 길게 그어 주세요"
+        case .noWallToAttach: "새 벽은 양쪽 끝이 다른 벽과 붙어야 해요. 한쪽 끝에 붙을 벽이 없어요. 선을 양쪽으로 늘렸을 때 벽에 닿도록, 두 벽 사이를 가로질러 그어 주세요"
+        case .wallTooShort: "벽이 너무 짧아요(0.3m 미만). 맞은편 벽과 더 멀리 떨어진 곳에 그어 주세요"
+        case .doorInTheWay: "문이 있는 자리에는 벽을 붙일 수 없어요. 문에서 떨어진 벽 자리에서 시작하거나 끝나게 그어 주세요"
+        case .wallAlreadyThere: "그 자리에는 이미 벽이 있어요. 벽이 없는 다른 자리에 그어 주세요"
+        case .crossesWall: "다른 벽을 가로질러요. 다른 벽을 지나지 않고 두 벽 사이만 잇도록 그어 주세요"
+        case .roomsCannotBeRebuilt: "벽으로 방을 나눌 수 없어요. 벽이 끊기지 않고 이어진 방 안에서 그어 주세요"
+        case .stampInTheWay: "스탬프가 걸려요. 발화지점·피해자에서 떨어진 자리에 그어 주세요"
+        }
+    }
+}
+
 // 그리기
 extension PlanData {
     /// start → end 방향 직선을 양쪽으로 늘여 처음 부딪히는 벽 사이에 벽을 넣은 새 도면. snapRadius(m) 안의 꼭짓점에는 꼭짓점으로 붙인다.
-    /// 어느 쪽이든 부딪히는 벽이 없거나, 너무 짧거나, 다른 벽을 가로지르거나, 스탬프에 걸리거나, 방을 다시 만들 수 없으면 nil
-    func drawingWall(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> PlanData? {
+    /// 부딪힌 자리에 창문이 걸려 있으면 창문을 벽을 나눈 두 조각으로 나눠 붙인다.
+    /// 어느 쪽이든 부딪히는 벽이 없거나, 너무 짧거나, 문이 걸리거나, 다른 벽을 가로지르거나, 스탬프에 걸리거나, 방을 다시 만들 수 없으면 그 이유(failure)
+    func drawingWall(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> Result<PlanData, WallDrawingFailure> {
         let stroke = end - start
         let strokeLength = Self.length(stroke)
-        guard strokeLength > WallMoveRules.eps else { return nil }
+        guard strokeLength > WallMoveRules.eps else { return .failure(.strokeTooShort) }
         let direction = Self.straightened(stroke / strokeLength)
         let strokeEnd = start + direction * (stroke * direction).sum()
         guard let startEnd = firstWall(from: start, toward: -direction, snapRadius: snapRadius),
-              let endEnd = firstWall(from: strokeEnd, toward: direction, snapRadius: snapRadius),
-              Self.length(point(of: endEnd) - point(of: startEnd)) >= WallMoveRules.minWallLength else { return nil }
+              let endEnd = firstWall(from: strokeEnd, toward: direction, snapRadius: snapRadius) else { return .failure(.noWallToAttach) }
+        guard Self.length(point(of: endEnd) - point(of: startEnd)) >= WallMoveRules.minWallLength else { return .failure(.wallTooShort) }
+        // 문이 걸린 자리에는 벽을 붙일 수 없다 (창문은 둘로 나눈다)
+        guard !isDoorInTheWay(startEnd), !isDoorInTheWay(endEnd) else { return .failure(.doorInTheWay) }
 
         var result = self
         guard let model = walls.first(where: { !$0.isVirtual }),
               let startVertex = result.vertexId(for: startEnd),
               let endVertex = result.vertexId(for: endEnd),
               startVertex != endVertex,
-              !result.hasWall(between: startVertex, and: endVertex) else { return nil }
+              !result.hasWall(between: startVertex, and: endVertex) else { return .failure(.wallAlreadyThere) }
         let wall = Wall(
             id: UUID().uuidString,
             startVertex: startVertex,
@@ -50,13 +78,20 @@ extension PlanData {
             height: model.height,
             isVirtual: false
         )
-        guard !result.crossesWalls(wall) else { return nil }
+        guard !result.crossesWalls(wall) else { return .failure(.crossesWall) }
         result.walls.append(wall)
-        guard result.retraceRooms(splitsRooms: true) else { return nil }
+        guard result.retraceRooms(splitsRooms: true) else { return .failure(.roomsCannotBeRebuilt) }
         // 방 안에 잘 있던 사람·발화지점을 벽이 지나가면 그리지 않는다
-        guard markers.filter(fits).allSatisfy(result.fits) else { return nil }
+        guard markers.filter(fits).allSatisfy(result.fits) else { return .failure(.stampInTheWay) }
         result.refreshRoomLabels()
-        return result
+        return .success(result)
+    }
+
+    /// 벽 끝이 붙을 자리에 문이 걸려 있는지. 창문·개구부는 나눌 수 있어서 걸리지 않는다
+    private func isDoorInTheWay(_ end: WallEnd) -> Bool {
+        guard case .wall(let wallId, let point) = end, let wall = wall(id: wallId), let line = line(of: wall) else { return false }
+        let at = ((point - line.start) * line.direction).sum()
+        return doorWindows.contains { $0.wallId == wallId && $0.kind == .door && abs($0.centerAlongWall - at) < $0.width / 2 }
     }
 
     /// origin에서 direction으로 간 반직선이 처음 부딪히는 진짜 벽. 부딪힌 자리 가까이 꼭짓점이 있으면 그 꼭짓점.
@@ -118,7 +153,8 @@ extension PlanData {
     }
 
     /// 벽을 point에서 둘로 나누고 나눈 꼭짓점 id를 돌려준다.
-    /// 뒤쪽 조각에 달린 창문·문·콘센트는 새 벽으로 옮긴다. 나누는 자리에 창문·문이 걸려 있으면 nil
+    /// 뒤쪽 조각에 달린 창문·문·콘센트는 새 벽으로 옮긴다. 나누는 자리에 걸친 창문은 두 조각으로 나눠 양쪽 벽에 하나씩 둔다
+    /// (너무 좁아지는 조각은 뺀다). 나누는 자리에 문이 걸려 있으면 nil
     private mutating func splitWall(_ wallId: String, at point: SIMD2<Double>) -> String? {
         guard let index = walls.firstIndex(where: { $0.id == wallId }), let line = line(of: walls[index]) else { return nil }
         let at = ((point - line.start) * line.direction).sum()
@@ -126,7 +162,7 @@ extension PlanData {
         guard at > eps, at < line.length - eps else {
             return at <= eps ? walls[index].startVertex : walls[index].endVertex
         }
-        guard !doorWindows.contains(where: { $0.wallId == wallId && abs($0.centerAlongWall - at) < $0.width / 2 }) else { return nil }
+        guard !doorWindows.contains(where: { $0.wallId == wallId && $0.kind == .door && abs($0.centerAlongWall - at) < $0.width / 2 }) else { return nil }
 
         let vertex = Vertex(id: UUID().uuidString, x: point.x, y: point.y)
         let front = walls[index]
@@ -135,10 +171,35 @@ extension PlanData {
         walls[index].endVertex = vertex.id
         vertices.append(vertex)
         walls.append(back)
-        for i in doorWindows.indices where doorWindows[i].wallId == wallId && doorWindows[i].centerAlongWall > at {
-            doorWindows[i].wallId = back.id
-            doorWindows[i].centerAlongWall -= at
+        var addedPieces: [DoorWindow] = []
+        var removedIds = Set<String>()
+        for i in doorWindows.indices where doorWindows[i].wallId == wallId {
+            let piece = doorWindows[i]
+            let pieceStart = piece.centerAlongWall - piece.width / 2
+            let pieceEnd = piece.centerAlongWall + piece.width / 2
+            if pieceStart < at, pieceEnd > at {
+                // 나누는 자리에 걸친 창문: 앞 조각은 그대로 두고 크기만 줄이고, 뒤 조각은 새 벽에 새로 단다
+                let frontWidth = at - pieceStart
+                let backWidth = pieceEnd - at
+                if frontWidth >= Self.minimumWindowSize {
+                    doorWindows[i].width = frontWidth
+                    doorWindows[i].centerAlongWall = pieceStart + frontWidth / 2
+                } else {
+                    removedIds.insert(piece.id)
+                }
+                if backWidth >= Self.minimumWindowSize {
+                    addedPieces.append(DoorWindow(
+                        id: UUID().uuidString, wallId: back.id, kind: piece.kind,
+                        centerAlongWall: backWidth / 2, width: backWidth, sillHeight: piece.sillHeight, height: piece.height
+                    ))
+                }
+            } else if pieceStart >= at {
+                doorWindows[i].wallId = back.id
+                doorWindows[i].centerAlongWall -= at
+            }
         }
+        doorWindows.removeAll { removedIds.contains($0.id) }
+        doorWindows.append(contentsOf: addedPieces)
         for i in wallFixtures.indices where wallFixtures[i].wallId == wallId && wallFixtures[i].positionAlongWall > at {
             wallFixtures[i].wallId = back.id
             wallFixtures[i].positionAlongWall -= at

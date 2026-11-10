@@ -91,9 +91,9 @@ extension PlanMarker {
     /// 3D 모델(FloorPlan3DBuilder)의 크기 (m). 모델을 바꾸면 함께 바꾼다
     private enum Footprint {
         /// 누운 사람: 표시 위치(몸통 가운데)에서 발끝까지, 머리끝까지, 몸 폭의 절반
-        static let lyingToFeet = 0.6
-        static let lyingToHead = 0.88
-        static let lyingHalfWidth = 0.2
+        static let lyingToFeet = 0.6 * PlanMarker.personTokenScale
+        static let lyingToHead = 0.88 * PlanMarker.personTokenScale
+        static let lyingHalfWidth = 0.2 * PlanMarker.personTokenScale
         /// 선 사람·발화지점이 바닥에서 차지하는 원의 반지름
         static let uprightRadius = 0.2
     }

@@ -20,14 +20,16 @@ enum FloorPlan3DBuilder {
         for wall in plan.walls where !wall.isVirtual {
             guard let line = plan.line(of: wall) else { continue }
             let openings = plan.doorWindows.filter { $0.wallId == wall.id }
-            root.addChild(makeWall(wall, line: line, openings: openings, space: space, selection: selection))
+            root.addChild(makeWall(wall, line: line, openings: openings, miter: plan.wallMiter(of: wall), space: space, selection: selection))
         }
         for furniture in plan.furniture ?? [] {
-            root.addChild(makeFurniture(furniture, space: space))
+            root.addChild(makeFurniture(furniture, space: space, selection: selection))
         }
+        // 콘센트 판 크기는 2D 아이콘(40pt)과 비슷하게 보이도록 도면 크기로 정한다. 너무 작거나 크지 않게 제한
+        let outletSide = Float(min(max(StampDefaults.reference(for: plan).iconMeters, OutletModel.minSide), OutletModel.maxSide))
         for fixture in plan.wallFixtures {
             guard let wall = plan.wall(id: fixture.wallId), let line = plan.line(of: wall) else { continue }
-            root.addChild(makeOutlet(fixture, wall: wall, line: line, space: space, selection: selection))
+            root.addChild(makeOutlet(fixture, wall: wall, line: line, space: space, selection: selection, side: outletSide))
         }
         for marker in plan.markers {
             root.addChild(makeMarker(marker, space: space, selection: selection))
@@ -45,6 +47,8 @@ extension FloorPlan3DBuilder {
     static let wallCollisionGroup = CollisionGroup(rawValue: 1 << 1)
     /// 바닥의 충돌 그룹. 스탬프를 끌 때 스탬프 자신은 빼고 바닥만 맞히려고 쓴다
     static let floorCollisionGroup = CollisionGroup(rawValue: 1 << 2)
+    /// 가구의 충돌 그룹. 스탬프 도구를 켠 채 누르면 이 그룹을 빼고 맞혀, 가구 위를 눌러도 그 아래 바닥에 스탬프가 놓이게 한다
+    static let furnitureCollisionGroup = CollisionGroup(rawValue: 1 << 3)
 
     /// 직선이 부딪힌 엔티티가 어느 도면 요소인지. 모델의 일부(사람 머리 등)에 부딪혀도 부모로 올라가 찾는다
     static func selection(of entity: Entity) -> PlanSelection? {
@@ -107,6 +111,44 @@ struct PlanWallComponent: Component {
 /// 창문 테두리 손잡이가 어느 테두리인지 적어 두는 표시
 struct WindowEdgeComponent: Component {
     let edge: WindowEdge
+}
+
+// 고른 표시 입체 테두리
+extension FloorPlan3DBuilder {
+    /// 고른 발화지점·피해자·가구를 감싸는 주황 입체 테두리 상자(모서리 12개 선). 2D의 주황 사각형에 해당한다.
+    /// entity의 자식으로 붙어서, 스탬프를 돌리거나 크기를 바꾸면 함께 따라간다. 충돌 모양이 없어 눌러 고르는 판정에는 끼지 않는다
+    static func addSelectionFrame(to entity: Entity) {
+        let bounds = entity.visualBounds(relativeTo: entity)
+        let half = bounds.extents / 2 + SIMD3(repeating: SelectionFrame.padding)
+        let frame = Entity()
+        frame.position = bounds.center
+        let thickness = SelectionFrame.thickness
+        for axis in 0..<3 {
+            // 이 축 방향 모서리 4개: 나머지 두 축의 ±끝에 하나씩
+            let others = (0..<3).filter { $0 != axis }
+            for signA in [Float(-1), 1] {
+                for signB in [Float(-1), 1] {
+                    var size = SIMD3(repeating: thickness)
+                    size[axis] = half[axis] * 2 + thickness
+                    var position = SIMD3<Float>(repeating: 0)
+                    position[others[0]] = half[others[0]] * signA
+                    position[others[1]] = half[others[1]] * signB
+                    let edge = ModelEntity(mesh: .generateBox(size: size), materials: [Materials.selectionFrame])
+                    edge.position = position
+                    frame.addChild(edge)
+                }
+            }
+        }
+        entity.addChild(frame)
+    }
+
+    /// 테두리 상자 값 (m)
+    private enum SelectionFrame {
+        /// 선 굵기. 스탬프를 키우면 함께 굵어진다
+        static let thickness: Float = 0.02
+        /// 모양에서 테두리까지 여유
+        static let padding: Float = 0.04
+    }
 }
 
 // 공간 이름 라벨 자리
@@ -187,48 +229,52 @@ extension FloorPlan3DBuilder {
         let from: Double
         let to: Double
         let opening: DoorWindow?
+        /// 벽의 맨 앞·맨 뒤 토막. 이 토막의 바깥 끝은 이웃 벽에 맞춰 비스듬히 자른다
+        var isFirst = false
+        var isLast = false
     }
 
     /// 벽 하나. 벽 엔티티 안에서는 +x = 벽 시작점에서 벽을 따라간 거리, +y = 위
-    private static func makeWall(_ wall: Wall, line: WallLine, openings: [DoorWindow], space: PlanSpace, selection: PlanSelection?) -> Entity {
+    private static func makeWall(_ wall: Wall, line: WallLine, openings: [DoorWindow], miter: WallMiter, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let entity = Entity()
         entity.components.set(PlanWallComponent(wallId: wall.id))
         entity.position = space.world(line.start)
         entity.orientation = PlanSpace.orientation(along: line.direction)
-        let pieces = wallPieces(length: line.length, thickness: wall.thickness, openings: openings)
+        let pieces = wallPieces(miter: miter, openings: openings)
         for piece in pieces {
-            boxes(for: piece, wall: wall, selection: selection).forEach { entity.addChild($0) }
+            boxes(for: piece, wall: wall, miter: miter, selection: selection).forEach { entity.addChild($0) }
         }
         return entity
     }
 
-    /// 벽을 문·창문 자리 기준으로 자른다. 모서리가 비지 않게 양 끝을 두께 절반씩 늘린다
-    private static func wallPieces(length: Double, thickness: Double, openings: [DoorWindow]) -> [WallPiece] {
+    /// 벽을 문·창문 자리 기준으로 자른다. 양 끝은 이웃 벽에 맞춰 늘이거나 줄인 자리(miter)까지 간다
+    private static func wallPieces(miter: WallMiter, openings: [DoorWindow]) -> [WallPiece] {
         var pieces: [WallPiece] = []
-        var cursor = -thickness / 2
-        let end = length + thickness / 2
+        var cursor = min(miter.startLeft, miter.startRight)
+        let end = max(miter.endLeft, miter.endRight)
+        let wallStart = cursor
         for opening in openings.sorted(by: { $0.centerAlongWall < $1.centerAlongWall }) {
             let from = max(opening.centerAlongWall - opening.width / 2, cursor)
             let to = min(opening.centerAlongWall + opening.width / 2, end)
             guard to > from else { continue }
-            pieces.append(WallPiece(from: cursor, to: from, opening: nil))
+            pieces.append(WallPiece(from: cursor, to: from, opening: nil, isFirst: cursor == wallStart))
             pieces.append(WallPiece(from: from, to: to, opening: opening))
             cursor = to
         }
-        pieces.append(WallPiece(from: cursor, to: end, opening: nil))
+        pieces.append(WallPiece(from: cursor, to: end, opening: nil, isFirst: cursor == wallStart, isLast: true))
         return pieces
     }
 
     /// 토막 하나를 상자로. 개구부는 위쪽 벽만, 창문은 위·아래 벽과 유리, 문은 위쪽 벽과 눌러 고를 수 있는 얇은 판
-    private static func boxes(for piece: WallPiece, wall: Wall, selection: PlanSelection?) -> [ModelEntity] {
+    private static func boxes(for piece: WallPiece, wall: Wall, miter: WallMiter, selection: PlanSelection?) -> [ModelEntity] {
         guard let opening = piece.opening else {
-            return [wallBox(piece, bottom: 0, top: wall.height, depth: wall.thickness)].compactMap { $0 }
+            return [wallBox(piece, bottom: 0, top: wall.height, depth: wall.thickness, miter: miter)].compactMap { $0 }
         }
         let top = min(opening.sillHeight + opening.height, wall.height)
-        var result = [wallBox(piece, bottom: top, top: wall.height, depth: wall.thickness)]
+        var result = [wallBox(piece, bottom: top, top: wall.height, depth: wall.thickness, miter: miter)]
         switch opening.kind {
         case .window:
-            result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness))
+            result.append(wallBox(piece, bottom: 0, top: opening.sillHeight, depth: wall.thickness, miter: miter))
             result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
         case .door:
             result.append(openingPanel(piece, bottom: opening.sillHeight, top: top, opening: opening, selection: selection))
@@ -287,9 +333,65 @@ extension FloorPlan3DBuilder {
     }
 
     /// 벽 상자. 벽 충돌 그룹이라 직선이 부딪힌다 (벽 뒤 라벨은 숨고, 벽 뒤 스탬프는 못 고름)
-    private static func wallBox(_ piece: WallPiece, bottom: Double, top: Double, depth: Double) -> ModelEntity? {
+    private static func wallBox(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, miter: WallMiter) -> ModelEntity? {
         let filter = CollisionFilter(group: wallCollisionGroup, mask: .all)
+        // 맨 앞·맨 뒤 토막은 끝을 이웃 벽 면에 맞춰 비스듬히 자른 기둥으로, 나머지는 상자로
+        if piece.isFirst || piece.isLast, let prism = mitredPrism(piece, bottom: bottom, top: top, depth: depth, miter: miter, filter: filter) {
+            return prism
+        }
         return box(piece, bottom: bottom, top: top, depth: depth, material: Materials.wall, filter: filter)
+    }
+
+    /// 벽 끝이 이웃 벽에 맞춰 비스듬한 토막. 위에서 본 모양은 네 점(왼쪽 면 두 점, 오른쪽 면 두 점)이고 위아래로 세운 기둥이다.
+    /// 벽 엔티티 안에서 +x는 벽을 따라간 거리, 왼쪽 면은 z = -두께/2, 오른쪽 면은 z = +두께/2다
+    private static func mitredPrism(_ piece: WallPiece, bottom: Double, top: Double, depth: Double, miter: WallMiter, filter: CollisionFilter) -> ModelEntity? {
+        guard top - bottom > 0.001, piece.to - piece.from > 0.001 else { return nil }
+        let half = Float(depth / 2)
+        let fromLeft = Float(piece.isFirst ? miter.startLeft : piece.from)
+        let fromRight = Float(piece.isFirst ? miter.startRight : piece.from)
+        let toLeft = Float(piece.isLast ? miter.endLeft : piece.to)
+        let toRight = Float(piece.isLast ? miter.endRight : piece.to)
+        let low = Float(bottom)
+        let high = Float(top)
+        let ring: [SIMD2<Float>] = [[fromLeft, -half], [toLeft, -half], [toRight, half], [fromRight, half]]
+
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+        /// 네 점 면 하나를 더한다. 바깥(outward)을 보는 쪽이 앞면이 되게 점 순서를 맞춘다
+        func addFace(_ corners: [SIMD3<Float>], outward: SIMD3<Float>) {
+            var points = corners
+            var normal = simd_normalize(simd_cross(points[1] - points[0], points[2] - points[0]))
+            if simd_dot(normal, outward) < 0 {
+                points.reverse()
+                normal = -normal
+            }
+            let base = UInt32(positions.count)
+            positions += points
+            normals += [normal, normal, normal, normal]
+            indices += [base, base + 1, base + 2, base, base + 2, base + 3]
+        }
+        addFace(ring.map { SIMD3($0.x, high, $0.y) }, outward: [0, 1, 0])
+        addFace(ring.map { SIMD3($0.x, low, $0.y) }, outward: [0, -1, 0])
+        let center = (ring[0] + ring[1] + ring[2] + ring[3]) / 4
+        for index in 0..<4 {
+            let a = ring[index]
+            let b = ring[(index + 1) % 4]
+            let middle = (a + b) / 2 - center
+            addFace(
+                [SIMD3(a.x, low, a.y), SIMD3(b.x, low, b.y), SIMD3(b.x, high, b.y), SIMD3(a.x, high, a.y)],
+                outward: SIMD3(middle.x, 0, middle.y)
+            )
+        }
+
+        var descriptor = MeshDescriptor(name: "wallPrism")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.primitives = .triangles(indices)
+        guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return nil }
+        let entity = ModelEntity(mesh: mesh, materials: [Materials.wall])
+        entity.components.set(CollisionComponent(shapes: [ShapeResource.generateConvex(from: mesh)], filter: filter))
+        return entity
     }
 
     /// 창문 유리·문짝 자리의 얇은 판. 눌러 고를 수 있고, 벽 그룹이 아니라 너머 라벨은 가리지 않는다.
@@ -318,10 +420,11 @@ extension FloorPlan3DBuilder {
 }
 
 // 가구
-// 3D에서는 보기만 해서 충돌 모양을 붙이지 않는다. 그래서 가구를 눌러도 직선이 지나가 그 아래 바닥에 스탬프를 놓을 수 있다
+// 3D에서는 만들 수 없고 눌러 고른 뒤 옮기고 돌리고 크기만 바꾼다. 몸통에만 충돌 모양이 있고(그림자 자리는 없음),
+// 스탬프 도구를 켠 채 누를 때는 가구 충돌 그룹을 빼고 맞혀 가구 아래 바닥에 스탬프를 놓을 수 있다
 extension FloorPlan3DBuilder {
     /// 윗면 모양을 높이만큼 세운 상자(원형은 원기둥). 띄운 가구는 바닥에 옅은 그림자 자리를 함께 그린다
-    private static func makeFurniture(_ furniture: Furniture, space: PlanSpace) -> Entity {
+    private static func makeFurniture(_ furniture: Furniture, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let height = Float(max(FurnitureModel.minHeight, furniture.height))
         let entity = Entity()
         entity.position = space.world(furniture.center)
@@ -329,12 +432,20 @@ extension FloorPlan3DBuilder {
         entity.orientation = simd_quatf(angle: Float(-furniture.rotation), axis: [0, 1, 0])
         let body = ModelEntity(mesh: furnitureMesh(furniture, height: height), materials: [Materials.furniture])
         body.position.y = Float(furniture.elevation) + height / 2
+        body.generateCollisionShapes(recursive: false)
+        if var collision = body.components[CollisionComponent.self] {
+            collision.filter = CollisionFilter(group: furnitureCollisionGroup, mask: .all)
+            body.components.set(collision)
+        }
         entity.addChild(body)
         if furniture.elevation > FurnitureModel.floatingElevation {
             let shadow = ModelEntity(mesh: furnitureMesh(furniture, height: FurnitureModel.shadowHeight), materials: [Materials.furnitureShadow])
             shadow.position.y = FurnitureModel.shadowHeight / 2
             entity.addChild(shadow)
         }
+        let tag = PlanSelection.furniture(furniture.id)
+        entity.components.set(PlanSelectionComponent(selection: tag))
+        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 
@@ -382,10 +493,18 @@ extension FloorPlan3DBuilder {
 // 콘센트와 표시
 // TEMP: 콘센트·사람·발화지점은 RealityKit 기본 도형으로 만든 임시 모양. 디자인의 3D 아이콘 에셋이 생기면 바꿈
 extension FloorPlan3DBuilder {
+    /// 콘센트 판 크기 값 (m)
+    private enum OutletModel {
+        // TEMP: 실제 콘센트(약 0.1m)보다 크게 그려 2D 아이콘과 크기를 맞춘 임시 범위
+        static let minSide: Double = 0.2
+        static let maxSide: Double = 0.6
+        static let thickness: Float = 0.04
+    }
+
     /// 벽 면에 붙은 콘센트
-    private static func makeOutlet(_ fixture: WallFixture, wall: Wall, line: WallLine, space: PlanSpace, selection: PlanSelection?) -> ModelEntity {
+    private static func makeOutlet(_ fixture: WallFixture, wall: Wall, line: WallLine, space: PlanSpace, selection: PlanSelection?, side: Float) -> ModelEntity {
         let tag = PlanSelection.wallFixture(fixture.id)
-        let size = SIMD3<Float>(0.2, 0.2, 0.04)
+        let size = SIMD3<Float>(side, side, OutletModel.thickness)
         let normal = fixture.face == .left ? line.leftNormal : -line.leftNormal
         let offset = wall.thickness / 2 + Double(size.z) / 2
         let point = line.point(along: fixture.positionAlongWall) + normal * offset
@@ -403,8 +522,10 @@ extension FloorPlan3DBuilder {
         let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
-        entity.scale = SIMD3(repeating: Float(marker.drawScale))
+        entity.scale = SIMD3(repeating: Float(marker.modelScale))
         makeSelectable(entity, as: tag)
+        // 테두리 상자는 충돌 모양을 만든 뒤에 붙여, 눌러 고르는 판정에 끼지 않게 한다
+        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 
@@ -456,6 +577,7 @@ private enum Materials {
     // TEMP: 고른 표시 모양은 Figma에서 확인 전이라 임시로 진한 주황
     static let selectedStamp = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     static let selectedGlass = glass(tint: UIColor(resource: .brand500), opacity: 0.6)
+    static let selectionFrame = UnlitMaterial(color: UIColor(resource: .brand500))
     static let windowEdgeHandle = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     // TEMP: 가구 3D 디자인이 정해지기 전이라 2D 가구 채움보다 진한 회색 상자
     static let furniture = SimpleMaterial(color: UIColor(resource: .gray300), roughness: 0.8, isMetallic: false)

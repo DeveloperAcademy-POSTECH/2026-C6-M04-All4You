@@ -1,18 +1,16 @@
-// 사건을 연 뒤의 화면 흐름: 2D 수정 → 3D 변환 로딩 → 3D 수정 → 사건 메인. 메인의 "수정"으로 다시 2D 수정에 들어간다
+// 사건을 연 뒤의 화면 흐름: 도면 수정(2D·3D를 오가며 고침) → 변환 로딩 → 사건 메인. 메인의 "수정"으로 다시 도면 수정에 들어간다
 
 import SwiftData
 import SwiftUI
 
 /// 화면 더미에 쌓을 수 있는 화면 목록
 enum CaseRoute: Hashable {
-    case edit2D
     case conversionLoading
-    case edit3D
 }
 
-/// 2D 수정에서 시작해 화면 더미(path)를 쌓고 빼며 이동한다.
+/// 도면 수정에서 시작해 화면 더미(path)에 변환 로딩을 쌓고 뺀다.
 /// 메인은 더미에 쌓지 않고 더미 대신 바꿔 끼워 보여 준다. 더미 안에 있으면 메인의 탭 막대가 상단 바 아래 줄로 내려가기 때문이다.
-/// 전체 화면으로 덮어 띄우면 저장된 사건을 열 때 2D 수정이 먼저 보였다가 메인이 올라와서, 바꿔 끼우는 방식으로 메인이 바로 보이게 한다
+/// 전체 화면으로 덮어 띄우면 저장된 사건을 열 때 수정 화면이 먼저 보였다가 메인이 올라와서, 바꿔 끼우는 방식으로 메인이 바로 보이게 한다
 struct CaseFlowView: View {
     /// 지금 작업 중인 사건. 도면은 이 사건의 평면도에 저장한다
     let fireCase: FireCase
@@ -21,6 +19,10 @@ struct CaseFlowView: View {
 
     @State private var path: [CaseRoute] = []
     @State private var isCaseMainShown: Bool
+    /// 메인에서 수정 화면으로 넘어가는 중인지. 참이면 흰 막이 서서히 덮여 있는 동안 화면을 바꾼다
+    @State private var isOpeningEdit = false
+    /// 메인의 "수정"으로 들어온 도면 수정인지. 참이면 뒤로 갈 때 목록이 아니라 메인으로 돌아간다
+    @State private var returnsToMain = false
     /// 2D·3D 수정 화면이 함께 보고 고치는 도면. 바뀔 때마다 사건의 평면도에 저장한다
     @State private var planData: PlanData
     /// 메인에서 찍거나 불러온 사진. 사건의 사진 모델에 저장하고, 메인을 닫았다 열어도 같은 것을 본다
@@ -47,14 +49,21 @@ struct CaseFlowView: View {
     var body: some View {
         Group {
             if isCaseMainShown {
-                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, startTab: startTab, onBack: onClose, onEdit: showEdit2D)
+                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, startTab: startTab, onBack: onClose, onEdit: showEdit)
             } else {
                 NavigationStack(path: $path) {
-                    edit2DScreen
+                    editScreen
                         .navigationDestination(for: CaseRoute.self) { route in
                             destination(for: route)
                         }
                 }
+            }
+        }
+        // 메인에서 수정으로 갈 때 예고 없이 바뀌지 않게, 흰 막이 덮였다가 걷히는 사이에 화면을 바꾼다
+        .overlay {
+            if isOpeningEdit {
+                OpeningEditCover()
+                    .transition(.opacity)
             }
         }
         .onChange(of: planData) { old, new in
@@ -79,21 +88,17 @@ struct CaseFlowView: View {
 
 // 서브 뷰
 extension CaseFlowView {
-    /// 처음 시작할 때와 메인의 "수정"으로 들어올 때 함께 쓰는 2D 수정 화면
-    private var edit2DScreen: some View {
-        FloorPlanEdit2DView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading)
+    /// 처음 시작할 때와 메인의 "수정"으로 들어올 때 함께 쓰는 도면 수정 화면
+    private var editScreen: some View {
+        FloorPlanEditView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading)
     }
 
     /// 화면 목록의 값에 맞는 화면을 만든다
     @ViewBuilder
     private func destination(for route: CaseRoute) -> some View {
         switch route {
-        case .edit2D:
-            edit2DScreen
         case .conversionLoading:
-            ConversionLoadingView(planData: planData, onFinished: replaceLoadingWithEdit3D)
-        case .edit3D:
-            FloorPlanEdit3DView(planData: $planData, history: $history, onBack: goBack, onDone: showCaseMain)
+            ConversionLoadingView(planData: planData, onFinished: showCaseMain)
         }
     }
 }
@@ -112,38 +117,79 @@ extension CaseFlowView {
 
 // 화면 이동
 extension CaseFlowView {
-    /// 한 화면 뒤로 돌아간다. 맨 처음 2D 수정에서는 목록으로 돌아간다
+    /// 한 화면 뒤로 돌아간다. 도면 수정에서는 메인에서 들어왔으면 메인으로, 처음 연 것이면 목록으로 돌아간다
     private func goBack() {
-        if path.isEmpty {
+        if !path.isEmpty {
+            path.removeLast()
+        } else if returnsToMain {
+            returnsToMain = false
+            isCaseMainShown = true
+        } else {
             onClose()
-            return
         }
-        path.removeLast()
     }
 
+    /// 완료(✓): 2D·3D 어디서든 변환 로딩을 거친다
     private func showConversionLoading() {
         path.append(.conversionLoading)
     }
 
-    /// 로딩을 3D 수정으로 바꿔 끼운다. 3D에서 뒤로 가면 로딩을 건너뛰고 2D로 돌아가게 하기 위함이다
-    private func replaceLoadingWithEdit3D() {
-        path.removeLast()
-        path.append(.edit3D)
-    }
-
-    /// 메인을 띄우고, 메인 밑의 더미는 처음 3D 수정까지만 남긴다.
-    /// "수정"으로 다시 고치고 돌아올 때마다 2D·3D 수정이 계속 쌓이는 것을 막는다
+    /// 변환 로딩이 끝나면 메인을 띄우고 더미를 비운다
     private func showCaseMain() {
-        if let firstEdit3DIndex = path.firstIndex(of: .edit3D) {
-            path.removeSubrange((firstEdit3DIndex + 1)...)
-        }
+        path = []
+        returnsToMain = false
         isCaseMainShown = true
     }
 
-    /// 메인을 닫고 2D 수정을 더미에 쌓는다
-    private func showEdit2D() {
-        isCaseMainShown = false
-        path.append(.edit2D)
+    /// 메인을 닫고 도면 수정을 처음부터 보여 준다 (2D부터).
+    /// 흰 막을 서서히 덮고 잠시 머문 뒤 화면을 바꾸고 막을 걷는다
+    private func showEdit() {
+        guard !isOpeningEdit else { return }
+        withAnimation(.easeInOut(duration: Layout.coverDuration)) {
+            isOpeningEdit = true
+        }
+        Task {
+            try? await Task.sleep(for: Layout.coverHold)
+            path = []
+            returnsToMain = true
+            isCaseMainShown = false
+            try? await Task.sleep(for: Layout.afterSwitchHold)
+            withAnimation(.easeInOut(duration: Layout.coverDuration)) {
+                isOpeningEdit = false
+            }
+        }
+    }
+}
+
+// 메인 → 수정 전환
+extension CaseFlowView {
+    private enum Layout {
+        /// 흰 막이 덮이고 걷히는 시간 (초)
+        static let coverDuration = 0.5
+        /// 막이 덮인 뒤 화면을 바꾸기까지 머무는 시간. 덮이는 시간까지 합쳐 1.2초쯤 걸린다
+        static let coverHold = Duration.milliseconds(700)
+        /// 화면을 바꾼 뒤 막을 걷기 전에 잠시 머무는 시간 (수정 화면이 자리 잡도록)
+        static let afterSwitchHold = Duration.milliseconds(300)
+    }
+}
+
+/// 메인에서 수정 화면으로 넘어가는 동안 덮는 흰 막과 안내
+private struct OpeningEditCover: View {
+    var body: some View {
+        ZStack {
+            Color.white
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.brand500)
+                // TEMP: Figma에 없는 전환 화면이라 문구를 임의로 정함 — 디자인 확인 필요
+                Text("도면 수정 화면을 여는 중")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .combine)
     }
 }
 
