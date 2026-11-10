@@ -2,10 +2,8 @@ import Foundation
 import UIKit
 
 struct FloorPlanConversion {
-    let preview: UIImage
     let png: Data
     let json: Data
-    let isSegmentationPreview: Bool
 
     static func request(_ image: UIImage) async throws -> Self {
         // 실기기에서도 접근할 수 있는 운영 서버를 기본값으로 사용한다.
@@ -29,13 +27,16 @@ struct FloorPlanConversion {
         }
 
         let boundary = UUID().uuidString
-        var request = URLRequest(url: url.appending(path: "v1/floor-plans"), timeoutInterval: 60)
+        // 서버는 기하 검증에 실패하면 한 번 보정할 수 있다.
+        var request = URLRequest(url: url.appending(path: "v1/floor-plans"), timeoutInterval: 95)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"image\"; filename=\"scan.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".utf8)
         body.append(photo)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
 
+        try Task.checkCancellation()
+        try FloorPlanUploadLimit.recordUpload()
         let (data, response) = try await URLSession.shared.upload(for: request, from: body)
         let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let response = response as? HTTPURLResponse else {
@@ -47,17 +48,12 @@ struct FloorPlanConversion {
         }
         guard let encoded = payload?["png_base64"] as? String,
               let png = Data(base64Encoded: encoded),
-              let preview = UIImage(data: png),
+              UIImage(data: png) != nil,
               let plan = payload?["plan"] as? [String: Any] else {
             throw ConversionError(message: "응답에서 도면 PNG와 좌표 JSON을 읽지 못했습니다.")
         }
         let json = try JSONSerialization.data(withJSONObject: plan, options: [.prettyPrinted, .sortedKeys])
-        return Self(
-            preview: preview,
-            png: png,
-            json: json,
-            isSegmentationPreview: (plan["format"] as? String) == "floorplan_segmentation_preview"
-        )
+        return Self(png: png, json: json)
     }
 
     func save() throws {

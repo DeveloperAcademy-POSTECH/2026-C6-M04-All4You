@@ -106,7 +106,7 @@ struct BookmarkPhotoMarkerLayer: View {
             for marker in markers {
                 guard let yaw = marker.placement.yaw else { continue }
                 let center = marker.placement.position
-                let half = min(marker.placement.fieldOfView, Layout.maxConeAngle) / 2
+                let half = min(marker.placement.fieldOfView ?? PhotoPlacement.defaultFieldOfView, Layout.maxConeAngle) / 2
                 var cone = Path()
                 cone.move(to: screen.point(center))
                 for step in 0...Layout.arcSteps {

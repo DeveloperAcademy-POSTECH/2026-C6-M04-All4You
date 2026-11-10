@@ -82,7 +82,7 @@ nonisolated struct ScanCameraPose: Codable, Hashable, Sendable {
     /// 센서 긴 변 방향 화각 (도)
     var horizontalFieldOfView: Double {
         let fx = Double(intrinsics[0])
-        guard fx > 0 else { return 60 }
+        guard fx > 0 else { return PhotoPlacement.defaultFieldOfView }
         return 2 * atan(Double(imageWidth) / (2 * fx)) * 180 / .pi
     }
 }
@@ -94,12 +94,15 @@ nonisolated struct PhotoPlacement: Codable, Hashable, Sendable {
     /// 바라보는 방향 (도). 도면 위쪽이 0°, 시계 방향 (PlanMarker.yaw와 같은 규칙).
     /// 바닥·천장을 거의 수직으로 찍어 수평 방향이 없으면 nil
     var yaw: Double?
-    /// 위아래 기울기 (도). 수평 0°, 위를 보면 +
-    var pitch: Double
-    /// 바닥에서 카메라 높이 (m)
-    var height: Double
-    /// 화각 (도)
-    var fieldOfView: Double
+    /// 위아래 기울기 (도). 수평 0°, 위를 보면 +. 모르면 nil(수평으로 봄)
+    var pitch: Double?
+    /// 바닥에서 카메라 높이 (m). 카메라 자세가 없으면 nil
+    var height: Double?
+    /// 가로 화각 (도). 모르면 nil(`defaultFieldOfView`로 그림)
+    var fieldOfView: Double?
+
+    /// 화각을 모를 때 부채꼴을 그리는 값 (도)
+    static let defaultFieldOfView = 60.0
 }
 
 /// RoomPlan 월드 좌표 → 도면 좌표 변환. 스캔을 도면으로 바꿀 때(PlanData+Scan) 쓴 회전·이동을 그대로 담는다

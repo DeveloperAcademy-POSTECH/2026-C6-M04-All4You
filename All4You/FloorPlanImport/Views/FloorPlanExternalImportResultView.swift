@@ -5,21 +5,15 @@ struct FloorPlanExternalImportResultView: View {
     let image: UIImage
     let address: String
     let onBack: () -> Void
-    /// 저장을 누르면 변환 결과(서버 도면 JSON 포함)를 넘긴다. 받는 쪽이 평면도로 저장하고, 실패하면 알림 문구를 돌려준다
+    /// 변환이 끝나면 평면도를 저장하고, 실패하면 알림 문구를 돌려준다
     let onSave: (FloorPlanConversion) -> String?
-    @State private var convertedPlan: FloorPlanConversion?
     @State private var isConverting = false
     @State private var errorMessage: String?
 
     var body: some View {
-        let title: String
-        if let convertedPlan {
-            title = convertedPlan.isSegmentationPreview ? "픽셀 예측 미리보기" : "변환 도면 확인"
-        } else {
-            title = "스캔 결과 확인"
-        }
+        let title = "스캔 결과 확인"
 
-        return Image(uiImage: convertedPlan?.preview ?? image)
+        Image(uiImage: image)
             .resizable()
             .scaledToFit()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -37,38 +31,23 @@ struct FloorPlanExternalImportResultView: View {
             .navigationBarTitleDisplayMode(.inline)
             .bothSidesToolbar(
                 leadingTitle: "뒤로 가기",
-                trailingTitle: convertedPlan == nil ? "도면 변환" : "저장",
+                trailingTitle: "도면 변환",
                 isDoneDisabled: isConverting,
                 customLayout: true,
                 barTitle: title,
                 barSubtitle: address,
                 onBack: {
                     isConverting = false
-                    if convertedPlan != nil {
-                        convertedPlan = nil
-                    } else {
-                        onBack()
-                    }
+                    onBack()
                 },
-                onDone: {
-                    if let convertedPlan {
-                        do {
-                            try convertedPlan.save()
-                            errorMessage = onSave(convertedPlan)
-                        } catch {
-                            errorMessage = "도면 파일을 저장하지 못했습니다. 다시 시도해 주세요."
-                        }
-                    } else {
-                        isConverting = true
-                    }
-                }
+                onDone: { isConverting = true }
             )
             .task(id: isConverting) {
                 guard isConverting else { return }
                 do {
                     let plan = try await FloorPlanConversion.request(image)
                     try Task.checkCancellation()
-                    convertedPlan = plan
+                    errorMessage = onSave(plan)
                 } catch {
                     guard !Task.isCancelled else { return }
                     errorMessage = error.localizedDescription
