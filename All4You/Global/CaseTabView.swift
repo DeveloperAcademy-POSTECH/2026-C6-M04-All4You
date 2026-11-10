@@ -34,7 +34,7 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     var albumBadge = 0
     // 사이드바에서 삭제를 확인한 줄. 그 장소의 사진·메모를 비우는 일은 화면이 한다
     let onClearRow: (CaseTabSelection) -> Void
-    /// 사이드바를 접었을 때 탭 왼쪽 위에 겹쳐 그릴 줄 (뒤로가기·사건명 등). 사이드바를 펴면 숨긴다
+    /// 탭 왼쪽 위에 겹쳐 그릴 줄 (뒤로가기·사건명 등). 사이드바를 펴도 그대로 보인다
     var leadingHeader: AnyView? = nil
     @ViewBuilder let floorPlan: FloorPlan
     @ViewBuilder let album: Album
@@ -51,8 +51,8 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
             }
             tabs
                 .overlay(alignment: .topLeading) {
-                    if !isSidebarShown, let leadingHeader {
-                        // 가운데 탭 막대를 덮지 않게, 탭 막대 왼쪽 끝까지만 쓴다
+                    if let leadingHeader {
+                        // 사이드바를 접었을 때는 가운데 탭 막대를 덮지 않게 탭 막대 왼쪽 끝까지만 쓴다
                         GeometryReader { proxy in
                             leadingHeader
                                 .frame(maxWidth: headerMaxWidth(in: proxy.size.width), alignment: .leading)
@@ -92,17 +92,20 @@ extension CaseTabView {
             }
             Tab(value: CaseTabBarItem.floorPlan) {
                 NavigationStack { floorPlan }
+                    .toolbarVisibility(tabBarVisibility, for: .tabBar)
             } label: {
                 Text(CaseTabCopy.floorPlan)
             }
             Tab(value: CaseTabBarItem.album) {
                 NavigationStack { album }
+                    .toolbarVisibility(tabBarVisibility, for: .tabBar)
             } label: {
                 Text(CaseTabCopy.album)
             }
             .badge(albumBadge)
             Tab(value: CaseTabBarItem.memo) {
                 NavigationStack { memo }
+                    .toolbarVisibility(tabBarVisibility, for: .tabBar)
             } label: {
                 Text(CaseTabCopy.memo)
             }
@@ -116,9 +119,20 @@ extension CaseTabView {
 
 // 탭 막대
 extension CaseTabView {
-    /// 왼쪽 위 줄이 쓸 수 있는 너비. 가운데 놓인 탭 막대의 왼쪽 끝에서 여백만큼 앞까지
+    /// 사이드바를 열면 탭 막대를 숨긴다. 탭 막대는 TabView가 아니라 탭 안쪽 화면에 붙여야 숨는다.
+    /// 닫기 버튼은 사이드바 윗줄에 있어서 막다른 길이 되지 않는다
+    private var tabBarVisibility: Visibility {
+        isSidebarShown ? .hidden : .automatic
+    }
+
+    /// 왼쪽 위 줄이 쓸 수 있는 너비.
+    /// 사이드바를 접었을 때는 가운데 놓인 탭 막대의 왼쪽 끝에서 여백만큼 앞까지,
+    /// 열었을 때는 탭 막대가 숨어 있으니 오른쪽 버튼 묶음 앞까지
     private func headerMaxWidth(in width: CGFloat) -> CGFloat {
-        max(0, (width - CaseTabLayout.tabBarWidth) / 2 - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
+        if isSidebarShown {
+            return max(0, width - CaseTabLayout.actionBarWidth - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
+        }
+        return max(0, (width - CaseTabLayout.tabBarWidth) / 2 - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
     }
 
     /// 탭 막대에서 켜지는 탭은 고른 줄이 속한 구역이다.
@@ -176,6 +190,8 @@ private enum CaseTabLayout {
     static let headerTop: CGFloat = 4
     /// 가운데 탭 막대(사이드바·도면·앨범·메모)의 대략 너비
     static let tabBarWidth: CGFloat = 250
+    // TEMP: 실측 전 대략 값. 오른쪽 버튼 묶음(메모·사진 캡슐, 수정, 내보내기)이 차지하는 너비
+    static let actionBarWidth: CGFloat = 280
     /// 왼쪽 위 줄과 탭 막대 사이 여백
     static let headerGap: CGFloat = 16
 }
