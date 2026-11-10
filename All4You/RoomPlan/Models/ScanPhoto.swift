@@ -82,7 +82,7 @@ nonisolated struct ScanCameraPose: Codable, Hashable, Sendable {
     /// 센서 긴 변 방향 화각 (도)
     var horizontalFieldOfView: Double {
         let fx = Double(intrinsics[0])
-        guard fx > 0 else { return 60 }
+        guard fx > 0 else { return PhotoPlacement.defaultFieldOfView }
         return 2 * atan(Double(imageWidth) / (2 * fx)) * 180 / .pi
     }
 }
@@ -100,6 +100,10 @@ nonisolated struct PhotoPlacement: Codable, Hashable, Sendable {
     var height: Double
     /// 화각 (도)
     var fieldOfView: Double
+
+    /// 화각을 모를 때 쓰는 값 (도)
+    // TEMP: 사진의 화각·기울기를 저장할지 ERD 9절 "사진 3D 정보"가 정해지면 바꿈
+    static let defaultFieldOfView = 60.0
 }
 
 /// RoomPlan 월드 좌표 → 도면 좌표 변환. 스캔을 도면으로 바꿀 때(PlanData+Scan) 쓴 회전·이동을 그대로 담는다
