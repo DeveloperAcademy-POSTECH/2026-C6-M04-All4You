@@ -91,8 +91,8 @@ import RoomPlan
         tracking.onRelocalizationTimeout = { [weak self] in
             guard let self else { return }
             self.relocalizationStartedAt = nil
+            self.issue = .relocalizationFailed
             self.isRelocalizing = false
-            self.issue = .captureFailed("이전 스캔 위치를 찾지 못했습니다. 마지막으로 촬영한 공간을 다시 비춰주세요")
         }
         tracking.onSessionFailure = { [weak self] error in
             guard let self else { return }
@@ -375,6 +375,7 @@ import RoomPlan
                 issue = .captureFailed("이전 위치 정보가 없어 연속 스캔을 시작할 수 없습니다")
                 return
             }
+            issue = nil
             isRelocalizing = true
             relocalizationStartedAt = ProcessInfo.processInfo.systemUptime
             captureSession?.delegate = nil

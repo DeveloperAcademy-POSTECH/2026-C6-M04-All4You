@@ -46,6 +46,7 @@ private struct RoomPlanScanSessionView: View {
     @State private var finishedCameraSnapshot: UIImage?
     @State private var isCameraPreviewReady = false
     @State private var isSegmentAlertPresented = false
+    @State private var isRelocalizationAlertPresented = false
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
@@ -268,6 +269,17 @@ private struct RoomPlanScanSessionView: View {
         } message: {
             Text(RoomPlanSegmentDialog.message)
         }
+        .alert("이전 스캔 위치를 찾지 못했어요", isPresented: $isRelocalizationAlertPresented) {
+            Button("스캔 마치기", role: .cancel) {
+                if finishedCameraSnapshot == nil { captureFinishedCameraFrame() }
+                scanService.finish()
+            }
+            Button("다시 시도") {
+                scanService.continueScanning()
+            }
+        } message: {
+            Text("다시 시도를 눌러 마지막으로 스캔한 곳 근처를 비춰주세요")
+        }
         .onChange(of: scanService.phase) { _, phase in
             if phase == .ready { finishedCameraSnapshot = nil }
             if phase == .segmentSaved { presentSegmentAlert() }
@@ -275,6 +287,12 @@ private struct RoomPlanScanSessionView: View {
         .onChange(of: scanService.isRelocalizing) { _, isRelocalizing in
             if !isRelocalizing && scanService.phase == .segmentSaved {
                 presentSegmentAlert()
+            }
+        }
+        .onChange(of: scanService.issue) { _, issue in
+            if issue == .relocalizationFailed {
+                isSegmentAlertPresented = false
+                isRelocalizationAlertPresented = true
             }
         }
         .onAppear { scanService.onAutomaticStop = captureFinishedCameraFrame }
@@ -317,6 +335,7 @@ private struct RoomPlanScanSessionView: View {
     private func presentSegmentAlert() {
         guard !scanService.isRelocalizing else { return }
         guard scanService.isScanLimitReached else { return }
+        guard scanService.issue != .relocalizationFailed else { return }
         isSegmentAlertPresented = true
     }
     
