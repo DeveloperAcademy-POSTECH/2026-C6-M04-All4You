@@ -17,11 +17,11 @@ struct RoomPlanScanView: View {
     /// 스캔 결과: usdz 파일, 여러 구간을 합친 구조(구간이 2개 이상일 때만), 구간별 결과
     /// 마지막 값: 스캔 중 찍은 사진(카메라 자세 포함)
     let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
-
+    
     init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)? = nil) {
         self.onUseResult = onUseResult
     }
-
+    
     var body: some View {
         RoomPlanScanSessionView(
             skipsChecklist: skipChecklistOnRescan,
@@ -46,14 +46,14 @@ private struct RoomPlanScanSessionView: View {
     @State private var finishedCameraSnapshot: UIImage?
     @State private var isCameraPreviewReady = false
     @State private var isSegmentAlertPresented = false
-    @State private var segmentAlertTask: Task<Void, Never>?
+    @State private var isRelocalizationAlertPresented = false
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
     let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
     let onCameraReady: () -> Void
     let onRescan: (UIImage?) -> Void
-
+    
     var body: some View {
         ZStack {
             if scanService.phase == .finished, let finishedCameraSnapshot {
@@ -75,7 +75,7 @@ private struct RoomPlanScanSessionView: View {
             } else {
                 Color(.secondarySystemBackground).ignoresSafeArea()
             }
-
+            
             if scanService.phase == .finished {
                 Color.black.opacity(0.35).ignoresSafeArea()
                 ScanPreviewSheet(
@@ -114,14 +114,14 @@ private struct RoomPlanScanSessionView: View {
                 .id(scanService.segmentID)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
-
+                
                 // 촬영 중에만 기본 RoomPlan 화면 노출 및 중지 화면의 회색 배경 차단
                 RoomPlanCameraSurface(scanService: scanService)
                     .id(scanService.segmentID)
                     .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .opacity(scanService.phase == .scanning ? 1 : 0)
-
+                
                 // 자동 종료 순간의 카메라 프레임을 저장·확인 화면 뒤에 고정
                 if isFrozenLimitBackground, let finishedCameraSnapshot {
                     GeometryReader { geometry in
@@ -135,7 +135,7 @@ private struct RoomPlanScanSessionView: View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
                 }
-
+                
                 if !isCameraPreviewReady {
                     if let initialBackdrop {
                         GeometryReader { geometry in
@@ -151,7 +151,7 @@ private struct RoomPlanScanSessionView: View {
                         Color(.secondarySystemBackground).ignoresSafeArea()
                     }
                 }
-
+                
                 // 일시정지 및 촬영 종료 확인창에서 하단 도면 미리보기 유지
                 if !displayedPreviewRooms.isEmpty {
                     RoomPlanScanThumbnailView(
@@ -165,7 +165,7 @@ private struct RoomPlanScanSessionView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .allowsHitTesting(false)
                 }
-
+                
                 // 촬영 단계별 확인사항·제어·저장·완료 화면 분기
                 switch scanService.phase {
                 case .checklist:
@@ -203,7 +203,7 @@ private struct RoomPlanScanSessionView: View {
                     // TODO: 디자인 나오면 수정해야함
                 case .saving:
                     if isLimitIssue {
-                        RoomPlanLimitGuidance(stage: .saving)
+                        RoomPlanLimitGuidance()
                     } else {
                         ProgressView("스캔 구간 저장 중…")
                             .tint(.white)
@@ -213,13 +213,7 @@ private struct RoomPlanScanSessionView: View {
                     }
                 case .segmentSaved:
                     if scanService.isRelocalizing {
-                        ProgressView("이전 스캔 위치를 찾는 중…")
-                            .tint(.white)
-                            .foregroundStyle(.white)
-                            .padding(24)
-                            .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 16))
-                    } else if isLimitIssue && !isSegmentAlertPresented {
-                        RoomPlanLimitGuidance(stage: .saved)
+                        RoomPlanRelocalizationGuidance()
                     } else if scanService.isMergingPreview && !scanService.isScanLimitReached {
                         ProgressView("도면 정리 중…")
                             .tint(.white)
@@ -275,19 +269,34 @@ private struct RoomPlanScanSessionView: View {
         } message: {
             Text(RoomPlanSegmentDialog.message)
         }
+        .alert("이전 스캔 위치를 찾지 못했어요", isPresented: $isRelocalizationAlertPresented) {
+            Button("스캔 마치기", role: .cancel) {
+                if finishedCameraSnapshot == nil { captureFinishedCameraFrame() }
+                scanService.finish()
+            }
+            Button("다시 시도") {
+                scanService.continueScanning()
+            }
+        } message: {
+            Text("다시 시도를 눌러 마지막으로 스캔한 곳 근처를 비춰주세요")
+        }
         .onChange(of: scanService.phase) { _, phase in
-            segmentAlertTask?.cancel()
             if phase == .ready { finishedCameraSnapshot = nil }
-            if phase == .segmentSaved { scheduleSegmentAlert() }
+            if phase == .segmentSaved { presentSegmentAlert() }
         }
         .onChange(of: scanService.isRelocalizing) { _, isRelocalizing in
             if !isRelocalizing && scanService.phase == .segmentSaved {
-                scheduleSegmentAlert()
+                presentSegmentAlert()
+            }
+        }
+        .onChange(of: scanService.issue) { _, issue in
+            if issue == .relocalizationFailed {
+                isSegmentAlertPresented = false
+                isRelocalizationAlertPresented = true
             }
         }
         .onAppear { scanService.onAutomaticStop = captureFinishedCameraFrame }
         .onDisappear {
-            segmentAlertTask?.cancel()
             scanService.onAutomaticStop = nil
             scanService.detach()
         }
@@ -301,7 +310,7 @@ private struct RoomPlanScanSessionView: View {
             Task { await refreshCameraPermission() }
         }
     }
-
+    
     // 시스템 카메라 권한 확인 및 최초 접근 요청
     private func refreshCameraPermission() async {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
@@ -312,34 +321,24 @@ private struct RoomPlanScanSessionView: View {
             cameraStatus = status
         }
     }
-
+    
     private var isLimitIssue: Bool {
         scanService.issue == .scanTimeLimitReached || scanService.issue == .sceneLimitReached
     }
-
+    
     private var isFrozenLimitBackground: Bool {
         scanService.isScanLimitReached && finishedCameraSnapshot != nil
         && (scanService.phase == .saving || scanService.phase == .segmentSaved)
     }
-
-    // 저장 완료 안내를 읽을 시간을 준 다음 구간 계속 여부를 확인
-    private func scheduleSegmentAlert() {
-        segmentAlertTask?.cancel()
+    
+    // 한도 구간 저장 완료 직후 다음 구간 진행 여부 확인
+    private func presentSegmentAlert() {
         guard !scanService.isRelocalizing else { return }
         guard scanService.isScanLimitReached else { return }
-        guard isLimitIssue else {
-            isSegmentAlertPresented = true
-            return
-        }
-        segmentAlertTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled,
-                  scanService.phase == .segmentSaved,
-                  !scanService.isRelocalizing else { return }
-            isSegmentAlertPresented = true
-        }
+        guard scanService.issue != .relocalizationFailed else { return }
+        isSegmentAlertPresented = true
     }
-
+    
     // 종료 버튼을 누른 시점의 AR 카메라 사진을 저장하여 완료 화면 뒤에 배치
     private func captureFinishedCameraFrame() {
         guard finishedCameraSnapshot == nil else { return }
@@ -348,7 +347,7 @@ private struct RoomPlanScanSessionView: View {
             orientation: currentInterfaceOrientation
         ) ?? finishedCameraSnapshot
     }
-
+    
     // 카메라 픽셀 버퍼를 화면 방향에 맞게 돌릴 때 쓰는 현재 화면 방향
     private var currentInterfaceOrientation: UIInterfaceOrientation {
         UIApplication.shared.connectedScenes
@@ -356,7 +355,7 @@ private struct RoomPlanScanSessionView: View {
             .first { $0.activationState == .foregroundActive }?
             .effectiveGeometry.interfaceOrientation ?? .landscapeRight
     }
-
+    
     // 예외처리 - 일시정지 구간의 저장·병합 진행 상태 문구
     // TODO: 합의 필요
     private var pauseStatus: String? {
@@ -366,7 +365,7 @@ private struct RoomPlanScanSessionView: View {
         if case .saveFailed = scanService.issue { return "스캔 상태를 저장하지 못했습니다" }
         return "스캔 상태 저장됨"
     }
-
+    
     // 스캔 종료 확인 시점에는 최종 스캔된 결과만 전달해 직전 RoomPlan 스캔 결과와 겹치는 현상 방지
     private var displayedPreviewRooms: [CapturedRoom] {
         switch scanService.phase {
@@ -378,5 +377,5 @@ private struct RoomPlanScanSessionView: View {
             []
         }
     }
-
+    
 }

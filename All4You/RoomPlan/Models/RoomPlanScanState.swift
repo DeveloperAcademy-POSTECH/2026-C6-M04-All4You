@@ -22,6 +22,7 @@ enum RoomPlanScanPhase: Equatable {
 enum RoomPlanScanIssue: Equatable {
     case scanTimeLimitReached
     case sceneLimitReached
+    case relocalizationFailed
     case captureFailed(String)
     case saveFailed(String)
 }
