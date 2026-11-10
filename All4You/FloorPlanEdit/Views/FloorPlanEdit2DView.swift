@@ -252,7 +252,9 @@ extension FloorPlanEdit2DView {
                     finishFurnitureEditing()
                     return
                 }
-                handleTap(screen.tap(at: value.location, in: planData))
+                // 발화지점·피해자 도구는 문이 열리는 자리에도 놓을 수 있게, 부채꼴 안을 문으로 치지 않는다
+                let isPlacingOnFloor = selectedTool == .ignitionPoint || selectedTool == .person
+                handleTap(screen.tap(at: value.location, in: planData, includesDoorSwing: !isPlacingOnFloor))
             }
     }
 
@@ -862,7 +864,6 @@ extension FloorPlanEdit2DView {
     private enum Layout {
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
-        /// 펜·지우개일 때 위 도구 막대의 흐린 정도
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기

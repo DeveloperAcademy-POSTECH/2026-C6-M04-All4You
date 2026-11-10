@@ -109,7 +109,17 @@ extension Plan2DView {
         let start = line.point(along: opening.centerAlongWall - opening.width / 2)
         let end = line.point(along: opening.centerAlongWall + opening.width / 2)
         let isSelected = selection == .doorWindow(opening.id)
-        if isSelected {
+        if isSelected && opening.kind == .door {
+            // 문은 문짝이 열리는 자리까지 주황 사각형으로 감싼다 (창문은 아래 띠)
+            var box = Path()
+            let across = line.leftNormal * opening.width
+            let along = line.direction * opening.width
+            let back = line.leftNormal * (-wall.thickness / 2)
+            let corners = [start + back, start + back + along, start + across + along, start + across]
+            box.addLines(corners.map(screen.point))
+            box.closeSubpath()
+            context.stroke(box, with: .color(.brand500), style: StrokeStyle(lineWidth: Layout.selectionLineWidth))
+        } else if isSelected {
             var band = Path()
             band.move(to: screen.point(start))
             band.addLine(to: screen.point(end))
