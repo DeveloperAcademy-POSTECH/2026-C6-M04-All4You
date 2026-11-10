@@ -24,9 +24,12 @@ struct Plan2DView: View {
     /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
     var hiddenLabelRoomIds: Set<String> = []
 
-    /// 사람·발화지점 아이콘 크기 (m). 서 있는 사람 아이콘이라 누운 몸 길이가 아니라 지름(반지름의 두 배)에 크기 배율을 곱한 값이다
+    /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라 2D와 3D 크기가 비슷하다.
+    /// 사람은 몸 길이(누운 몸), 발화지점은 지름이다. 서 있는 사람 아이콘은 이 길이만큼 키로 그린다
     static func iconSize(of marker: PlanMarker) -> Double {
-        marker.footprint.radius * 2
+        let footprint = marker.footprint
+        let delta = footprint.end - footprint.start
+        return max((delta * delta).sum().squareRoot(), footprint.radius * 2)
     }
     /// 아이콘에서 고른 테두리까지 (pt). 손잡이도 이 테두리 모서리에 붙는다
     static let selectionPadding: CGFloat = 6

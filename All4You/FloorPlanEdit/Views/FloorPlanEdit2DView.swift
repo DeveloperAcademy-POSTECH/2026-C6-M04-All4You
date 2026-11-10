@@ -522,12 +522,15 @@ extension FloorPlanEdit2DView {
                 showFurnitureBlocked(furniture(of: selection, in: preview).map { $0.center != point } ?? false)
             }
             .onEnded { _ in
+                // 끄는 동안 띄운 막힘 이유는 손을 떼도 잠깐 남겨 읽을 수 있게 한다. 벽 그리기 실패 안내는 그 뒤에 띄워 바로 지워지지 않게 한다
+                let blockedWhileDragging = wallBlockedReason
+                wallBlockedReason = nil
                 commitPreview()
                 finishPenStroke()
                 isErasing = false
                 stampDragStart = nil
                 wallDragBase = nil
-                wallBlockedReason = nil
+                if let blockedWhileDragging, wallBlockedReason == nil { showNotice(blockedWhileDragging) }
             }
     }
 
@@ -684,12 +687,16 @@ extension FloorPlanEdit2DView {
     @ViewBuilder
     private var wallBlockedNotice: some View {
         if let wallBlockedReason {
+            // 안내가 길어도 화면 가로로 늘어지지 않게 폭을 제한하고 두 줄까지 줄바꿈한다
             Text(wallBlockedReason)
                 .font(AppTypography.subheadline)
                 .foregroundStyle(.white)
-                .padding(.horizontal, Layout.labelHorizontalPadding)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Layout.noticeHorizontalPadding)
                 .padding(.vertical, Layout.labelVerticalPadding)
-                .background(Color.gray900, in: .capsule)
+                .frame(maxWidth: Layout.noticeMaxWidth)
+                .background(Color.gray900, in: .rect(cornerRadius: Layout.noticeCornerRadius))
                 .padding(.top, Layout.noticeTopPadding)
         }
     }
@@ -912,6 +919,10 @@ extension FloorPlanEdit2DView {
         static let noticeTopPadding: CGFloat = 16 + 54 + 44
         /// 처음 시야로 되돌리는 애니메이션 시간 (초)
         static let resetDuration = 0.35
+        /// 안내 캡슐의 최대 폭과 둥근 정도, 좌우 여백 (pt)
+        static let noticeMaxWidth: CGFloat = 560
+        static let noticeCornerRadius: CGFloat = 22
+        static let noticeHorizontalPadding: CGFloat = 20
         /// 안내 캡슐이 떠 있는 시간
         static let noticeDuration = Duration.seconds(2)
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)

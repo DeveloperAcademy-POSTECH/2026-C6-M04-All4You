@@ -25,9 +25,11 @@ enum FloorPlan3DBuilder {
         for furniture in plan.furniture ?? [] {
             root.addChild(makeFurniture(furniture, space: space, selection: selection))
         }
+        // 콘센트 판 크기는 2D 아이콘(40pt)과 비슷하게 보이도록 도면 크기로 정한다. 너무 작거나 크지 않게 제한
+        let outletSide = Float(min(max(StampDefaults.reference(for: plan).iconMeters, OutletModel.minSide), OutletModel.maxSide))
         for fixture in plan.wallFixtures {
             guard let wall = plan.wall(id: fixture.wallId), let line = plan.line(of: wall) else { continue }
-            root.addChild(makeOutlet(fixture, wall: wall, line: line, space: space, selection: selection))
+            root.addChild(makeOutlet(fixture, wall: wall, line: line, space: space, selection: selection, side: outletSide))
         }
         for marker in plan.markers {
             root.addChild(makeMarker(marker, space: space, selection: selection))
@@ -431,10 +433,18 @@ extension FloorPlan3DBuilder {
 // 콘센트와 표시
 // TEMP: 콘센트·사람·발화지점은 RealityKit 기본 도형으로 만든 임시 모양. 디자인의 3D 아이콘 에셋이 생기면 바꿈
 extension FloorPlan3DBuilder {
+    /// 콘센트 판 크기 값 (m)
+    private enum OutletModel {
+        // TEMP: 실제 콘센트(약 0.1m)보다 크게 그려 2D 아이콘과 크기를 맞춘 임시 범위
+        static let minSide: Double = 0.2
+        static let maxSide: Double = 0.6
+        static let thickness: Float = 0.04
+    }
+
     /// 벽 면에 붙은 콘센트
-    private static func makeOutlet(_ fixture: WallFixture, wall: Wall, line: WallLine, space: PlanSpace, selection: PlanSelection?) -> ModelEntity {
+    private static func makeOutlet(_ fixture: WallFixture, wall: Wall, line: WallLine, space: PlanSpace, selection: PlanSelection?, side: Float) -> ModelEntity {
         let tag = PlanSelection.wallFixture(fixture.id)
-        let size = SIMD3<Float>(0.2, 0.2, 0.04)
+        let size = SIMD3<Float>(side, side, OutletModel.thickness)
         let normal = fixture.face == .left ? line.leftNormal : -line.leftNormal
         let offset = wall.thickness / 2 + Double(size.z) / 2
         let point = line.point(along: fixture.positionAlongWall) + normal * offset

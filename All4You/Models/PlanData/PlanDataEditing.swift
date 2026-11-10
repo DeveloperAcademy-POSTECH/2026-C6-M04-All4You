@@ -96,8 +96,8 @@ extension PlanData {
     }
 
     /// 사람·발화지점 크기 배율의 범위
-    /// TEMP: 디자인 확인 전이라 임시로 정한 값 (기본의 절반 ~ 2.5배)
-    static let markerScaleRange = 0.5...2.5
+    /// TEMP: 디자인 확인 전이라 임시로 정한 값 (기본의 0.2배 ~ 2.5배). 스탬프 기본 크기(StampDefaults)에 맞추면 사람이 0.5배보다 작아져서 하한을 낮췄다
+    static let markerScaleRange = 0.2...2.5
 
     mutating func removeMarker(id: String) {
         markers.removeAll { $0.id == id }
