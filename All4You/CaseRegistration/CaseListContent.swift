@@ -64,7 +64,7 @@ struct CaseListContent: View {
     private var selectedCase: FireCase? {
         allCases.first { $0.id == selectedCaseID }
     }
-
+    
     /// 전체 사건이 존재하지만 현재 선택한 목록만 비어 있을 때 표시할 문구.
     /// 전체 사건이 0개인 경우에는 기존 emptyView의 "등록된 사건이 없어요"를 유지한다.
     private var emptyListTitle: String {
@@ -79,7 +79,7 @@ struct CaseListContent: View {
             return "해당 사건이 없어요"
         }
     }
-
+    
     private var emptyListDescription: String {
         switch selection {
         case .filter(.recent):
@@ -112,16 +112,16 @@ struct CaseListContent: View {
                             let availableWidth = max(0, geometry.size.width - Layout.dividerWidth)
                             let listWidth = boundedListWidth(availableWidth: availableWidth)
                             let previewWidth = max(0, availableWidth - listWidth)
-
+                            
                             ZStack(alignment: .topLeading) {
                                 caseList
                                     .frame(width: listWidth, height: geometry.size.height)
                                     .clipped()
-
+                                
                                 CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
                                     .frame(width: previewWidth, height: geometry.size.height)
                                     .offset(x: listWidth + Layout.dividerWidth)
-
+                                
                                 resizeDivider(availableWidth: availableWidth, currentWidth: listWidth)
                                     .frame(height: geometry.size.height)
                                     .offset(x: listWidth)
@@ -220,21 +220,21 @@ extension CaseListContent {
         // 왼쪽 사건 목록은 390pt를 확보한다. 화면이 더 좁을 때만 예외적으로 축소한다.
         let minList = min(Layout.minimumListWidth, max(0, availableWidth - Layout.minimumPreviewWidth))
         let titleWidth = selectedCase.map { CasePreviewView.minimumWidthForTwoLineTitle($0.title) }
-            ?? Layout.minimumPreviewWidth
+        ?? Layout.minimumPreviewWidth
         let requiredPreview = max(Layout.minimumPreviewWidth, titleWidth)
         // 제목이 길더라도 왼쪽 최소 폭이 우선이다. 양쪽 조건을 모두
         // 충족할 수 없는 화면 크기에서는 오른쪽에 가능한 공간을 남긴다.
         let maxList = max(minList, availableWidth - requiredPreview)
         return (minList, maxList)
     }
-
+    
     /// 메모처럼 드래그 도중 화면에 이동량을 반영하고 손을 떼면 비율을 저장한다.
     private func boundedListWidth(availableWidth: CGFloat) -> CGFloat {
         let limits = splitWidthLimits(availableWidth: availableWidth)
         let proposed = (dragStartListWidth ?? availableWidth * listWidthFraction) + splitDragOffset
         return min(max(proposed, limits.minList), limits.maxList)
     }
-
+    
     private func resizeDivider(availableWidth: CGFloat, currentWidth: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
@@ -261,7 +261,7 @@ extension CaseListContent {
             )
             .accessibilityLabel("사건 목록 너비 조절")
     }
-
+    
     @ViewBuilder
     private var caseList: some View {
         // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
@@ -302,6 +302,12 @@ extension CaseListContent {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.12)
+                .onEnded { _ in
+                    selectedCaseID = fireCase.id
+                }
+        )
         .listRowBackground(
             RoundedRectangle(cornerRadius: 12)
                 .fill(
