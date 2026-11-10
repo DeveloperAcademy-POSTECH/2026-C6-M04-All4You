@@ -229,6 +229,12 @@ extension CaseListView {
             .opacity(isEditing && filter != .recent ? Layout.dimmedOpacity : 1)
             .selectionDisabled(isEditing)
             .tag(CaseListSelection.filter(filter))
+            .dropDestination(for: String.self) { items, _ in
+                guard filter != .recent, let caseID = items.first else {
+                    return false
+                }
+                return moveCaseToStatus(caseID: caseID, status: filter)
+            }
     }
     
     /// 사용자가 만든 목록. 드래그한 사건을 놓으면 해당 목록으로 이동한다.
@@ -260,9 +266,6 @@ extension CaseListView {
                 caseID: caseID,
                 folder: folder
             )
-        } isTargeted: { isTargeted in
-            // 드래그한 사건이 폴더 위에 올라오면 강조
-            // 상태 변경 없이 기본 드롭 동작을 사용
         }
     }
     
@@ -488,6 +491,43 @@ extension CaseListView {
         )
     }
     
+    /// 기본 목록에 드롭하면 사용자 폴더 소속을 해제하고 조사 상태를 갱신한다.
+    private func moveCaseToStatus(caseID: String, status: CaseFilter) -> Bool {
+        guard let fireCase = allCases.first(where: { $0.id.uuidString == caseID }) else {
+            return false
+        }
+
+        let targetStatus: FireCase.Status
+        switch status {
+        case .inProgress:
+            targetStatus = .inProgress
+        case .closed:
+            targetStatus = .closed
+        case .recent:
+            return false
+        }
+
+        if fireCase.folder == nil && fireCase.status == targetStatus {
+            return true
+        }
+
+        let previousFolder = fireCase.folder
+        let previousStatus = fireCase.status
+        fireCase.folder = nil
+        fireCase.status = targetStatus
+
+        do {
+            try modelContext.save()
+            return true
+        } catch {
+            fireCase.folder = previousFolder
+            fireCase.status = previousStatus
+            saveErrorMessage = "사건 이동 실패: \(error.localizedDescription)"
+            showsSaveError = true
+            return false
+        }
+    }
+
     /// 드래그한 사건을 사용자 폴더로 이동하고 저장한다.
     private func moveCaseToFolder(
         caseID: String,

@@ -26,6 +26,9 @@ struct CaseListContent: View {
     @State private var dragStartListWidth: CGFloat?
     /// 길게 눌러 "사건 삭제"를 고른 사건. 값이 있으면 확인 창이 뜬다
     @State private var deletingCase: FireCase?
+    /// 이름을 변경할 사건과 입력 중인 이름
+    @State private var renamingCase: FireCase?
+    @State private var caseNameInput = ""
     let onRegister: () -> Void
     /// 미리보기의 "사건 열기"를 누르면 그 사건을 연다
     let onOpen: (FireCase, CaseStartTab) -> Void
@@ -98,6 +101,22 @@ struct CaseListContent: View {
         }
         .navigationTitle(allCases.isEmpty ? "" : title)
         .navigationBarTitleDisplayMode(allCases.isEmpty ? .inline : .large)
+        .alert(Copy.renameCase, isPresented: Binding(
+            get: { renamingCase != nil },
+            set: { if !$0 { renamingCase = nil } }
+        )) {
+            TextField(Copy.caseNamePlaceholder, text: $caseNameInput)
+            
+            Button(Copy.cancel, role: .cancel) {
+                renamingCase = nil
+            }
+            Button(Copy.save) {
+                renameCase()
+            }
+            .disabled(caseNameInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text(Copy.renameCaseDescription)
+        }
         .alert(
             Copy.deleteTitle(deletingCase?.title ?? ""),
             isPresented: Binding(get: { deletingCase != nil }, set: { if !$0 { deletingCase = nil } }),
@@ -224,14 +243,21 @@ extension CaseListContent {
         )
         // 꾸욱 눌렀을 때 모양 및 효과
         .contextMenu {
+            Button(Copy.renameCase, systemImage: "pencil") {
+                caseNameInput = fireCase.title
+                renamingCase = fireCase
+            }
+            
             moveMenu(fireCase)
             
-            Button(
-                Copy.deleteCase,
-                systemImage: "trash",
-                role: .destructive
-            ) {
+            Button(role: .destructive) {
                 deletingCase = fireCase
+            } label: {
+                Label {
+                    Text(Copy.deleteCase)
+                } icon: {
+                    Image(uiImage: Self.destructiveTrashImage)
+                }
             }
         } preview: {
             Text(fireCase.title)
@@ -264,12 +290,38 @@ extension CaseListContent {
         }
     }
     
-    /// 길게 눌러 사건을 사용자 목록에 넣거나 옮기거나 뺀다. 사건은 목록 하나에만 들어간다
-    // TEMP: Figma에 사건을 목록에 넣는 화면이 없어 길게 누르기 메뉴로 임의 구현 — 팀 확인 필요
+    /// 메뉴 안에서도 빨간색이 유지되는 쓰레기통 아이콘
+    private static let destructiveTrashImage: UIImage = {
+        let image = UIImage(systemName: "trash") ?? UIImage()
+        return image.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
+    }()
+    
+    /// 조사 상태별 기본 목록과 사용자 목록으로 사건을 이동한다.
     @ViewBuilder
     private func moveMenu(_ fireCase: FireCase) -> some View {
-        if !folders.isEmpty {
-            Menu(Copy.moveToFolder, systemImage: "folder") {
+        Menu(Copy.moveToFolder, systemImage: "folder") {
+            Button {
+                move(fireCase, to: .inProgress)
+            } label: {
+                if fireCase.folder == nil && fireCase.status == .inProgress {
+                    Label(CaseFilter.inProgress.title, systemImage: "checkmark")
+                } else {
+                    Text(CaseFilter.inProgress.title)
+                }
+            }
+            
+            Button {
+                move(fireCase, to: .closed)
+            } label: {
+                if fireCase.folder == nil && fireCase.status == .closed {
+                    Label(CaseFilter.closed.title, systemImage: "checkmark")
+                } else {
+                    Text(CaseFilter.closed.title)
+                }
+            }
+            
+            if !folders.isEmpty {
+                Divider()
                 ForEach(folders) { folder in
                     Button {
                         move(fireCase, to: folder)
@@ -283,10 +335,23 @@ extension CaseListContent {
                 }
             }
         }
-        if fireCase.folder != nil {
-            Button(Copy.removeFromFolder, systemImage: "folder.badge.minus") {
-                move(fireCase, to: nil)
-            }
+    }
+    
+    /// 사건명만 수정한다. 주소 등 원래 출동 정보는 변경하지 않는다.
+    private func renameCase() {
+        guard let renamingCase else { return }
+        let newName = caseNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newName.isEmpty else { return }
+        
+        let previousName = renamingCase.caseName
+        renamingCase.caseName = newName
+        do {
+            try modelContext.save()
+            self.renamingCase = nil
+        } catch {
+            renamingCase.caseName = previousName
+            self.renamingCase = nil
+            // 저장 실패 UI는 기존 프로젝트의 공통 오류 처리에 연결 가능
         }
     }
     
@@ -299,10 +364,29 @@ extension CaseListContent {
         try? modelContext.save()
     }
     
-    /// nil이면 목록에서 빼서 상태에 따라 조사 중·조사 종결에 보이게 한다
-    private func move(_ fireCase: FireCase, to folder: CaseFolder?) {
+    /// 사용자 폴더로 이동할 때는 현재 조사 상태를 유지한다.
+    private func move(_ fireCase: FireCase, to folder: CaseFolder) {
+        let previousFolder = fireCase.folder
         fireCase.folder = folder
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            fireCase.folder = previousFolder
+        }
+    }
+    
+    /// 기본 목록으로 이동할 때는 사용자 폴더를 해제하고 조사 상태를 변경한다.
+    private func move(_ fireCase: FireCase, to status: FireCase.Status) {
+        let previousFolder = fireCase.folder
+        let previousStatus = fireCase.status
+        fireCase.folder = nil
+        fireCase.status = status
+        do {
+            try modelContext.save()
+        } catch {
+            fireCase.folder = previousFolder
+            fireCase.status = previousStatus
+        }
     }
     
     private func monthTitle(_ month: Date) -> String {
@@ -365,6 +449,10 @@ extension CaseListContent {
         static let emptyTitle = "등록된 사건이 없어요"
         static let emptyDescription = "새로운 사건을 등록하면 이곳에서 확인할 수 있어요"
         static let register = "새로운 사건 등록하기"
+        static let renameCase = "사건 이름 변경"
+        static let caseNamePlaceholder = "사건 이름"
+        static let renameCaseDescription = "변경할 사건 이름을 입력해 주세요"
+        static let save = "저장"
         static let moveToFolder = "목록으로 이동"
         static let removeFromFolder = "목록에서 빼기"
         // TEMP: Figma에 사건 삭제 화면이 없어 사이드바 목록 삭제와 같은 형식으로 작성 — 디자인 확인 필요
