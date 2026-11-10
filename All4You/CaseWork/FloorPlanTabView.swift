@@ -423,7 +423,8 @@ extension FloorPlanTabView {
         static let overlayInset: CGFloat = 80
         /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
         static let filterLeading: CGFloat = 32
-        static let filterTop: CGFloat = 48
+        // 도면 수정 화면의 위 도구 막대(바깥 여백 16 + 높이 54) 윗줄과 맞춰 그 막대와 같은 높이에 놓는다
+        static let filterTop: CGFloat = 42
         static let openPanelSpacing: CGFloat = 8
         static let openPanelPadding: CGFloat = 16
         static let openPanelHeight: CGFloat = 48

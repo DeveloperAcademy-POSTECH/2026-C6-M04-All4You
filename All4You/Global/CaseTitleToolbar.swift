@@ -12,6 +12,13 @@ struct CaseTitleHeader: View {
     let onSelectSession: (Int) -> Void
     let onAddSession: () -> Void
     let onBack: () -> Void
+    /// 사건명을 눌러 고친 이름을 알린다. 비우거나 그대로면 알리지 않는다
+    var onRename: (String) -> Void = { _ in }
+
+    /// 사건명을 고치는 중인지
+    @State private var isRenaming = false
+    @State private var draft = ""
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         HStack(spacing: HeaderLayout.spacing) {
@@ -26,11 +33,7 @@ struct CaseTitleHeader: View {
             .glassEffect(.regular.interactive(), in: .circle)
             .accessibilityLabel(HeaderCopy.back)
             // 자리가 모자라면 사건명만 줄여 "청암로…"처럼 끝을 자른다. 뒤로가기·차수 메뉴는 줄이지 않는다
-            Text(title)
-                .font(.largeTitle.bold())
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(-1)
+            titleView
             SessionMenuButton(
                 sessionNumber: sessionNumber,
                 sessionNumbers: sessionNumbers,
@@ -40,7 +43,52 @@ struct CaseTitleHeader: View {
         }
     }
 
+    /// 사건명. 누르면 그 자리에서 키보드로 고치고, 완료를 누르거나 다른 곳을 누르면 끝난다
+    @ViewBuilder
+    private var titleView: some View {
+        if isRenaming {
+            TextField(title, text: $draft)
+                .font(.largeTitle.bold())
+                .tint(.brand500)
+                .lineLimit(1)
+                .focused($isFocused)
+                .submitLabel(.done)
+                .onSubmit(finishRenaming)
+                .onChange(of: isFocused) {
+                    if !isFocused { finishRenaming() }
+                }
+                .frame(maxWidth: HeaderLayout.renameMaxWidth)
+                .fixedSize(horizontal: true, vertical: false)
+        } else {
+            Text(title)
+                .font(.largeTitle.bold())
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(-1)
+                .contentShape(.rect)
+                .onTapGesture {
+                    draft = title
+                    isRenaming = true
+                    isFocused = true
+                }
+                .accessibilityHint(HeaderCopy.renameHint)
+        }
+    }
+
+    /// 고친 이름을 알리고 입력을 끝낸다. 비워 두면 원래 이름이 남는다
+    private func finishRenaming() {
+        guard isRenaming else { return }
+        isRenaming = false
+        isFocused = false
+        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, trimmed != title {
+            onRename(trimmed)
+        }
+    }
+
     private enum HeaderLayout {
+        /// 이름을 고칠 때 입력칸이 넓어질 수 있는 한계 (pt)
+        static let renameMaxWidth: CGFloat = 420
         static let spacing: CGFloat = 12
         /// 공용 상단 바(customTopBar)의 뒤로가기와 같은 크기
         static let backSize: CGFloat = 44
@@ -49,6 +97,7 @@ struct CaseTitleHeader: View {
 
     private enum HeaderCopy {
         static let back = "뒤로"
+        static let renameHint = "눌러서 사건명을 고칩니다"
     }
 }
 

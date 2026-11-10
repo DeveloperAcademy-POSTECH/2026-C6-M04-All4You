@@ -29,11 +29,20 @@ struct PhotoFilterMenu: View {
     @Binding var filter: PhotoFilter
 
     @State private var isOpen = false
+    /// 버튼과 패널이 같은 유리 모양으로 이어져 바뀌게 하는 이름 공간
+    @Namespace private var glassNamespace
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: Layout.chipSpacing) {
-                filterButton
+        // 시스템 리퀴드 버튼(메뉴)처럼, 누르면 버튼이 그 자리에서 패널로 펼쳐지고 닫으면 다시 버튼으로 접힌다
+        GlassEffectContainer(spacing: Layout.chipSpacing) {
+            HStack(alignment: .top, spacing: Layout.chipSpacing) {
+                if isOpen {
+                    filterPanel
+                        .glassEffectID(Layout.glassID, in: glassNamespace)
+                } else {
+                    filterButton
+                        .glassEffectID(Layout.glassID, in: glassNamespace)
+                }
                 // 지금 적용 중인 필터를 버튼 옆에 칩으로 보여 준다
                 // TEMP: Figma에 사진 표시를 끈 상태의 칩이 없어, 사진 표시가 켜져 있을 때만 보여 줌
                 if filter.isPhotoVisible && filter.scope == .bookmarked {
@@ -47,9 +56,22 @@ struct PhotoFilterMenu: View {
                     }
                 }
             }
+        }
+        // 패널이 열려 있는 동안 패널 밖을 누르면 닫는다 (시스템 메뉴와 같다)
+        .background(alignment: .topLeading) {
             if isOpen {
-                filterPanel
+                Color.clear
+                    .frame(width: Layout.dismissAreaSize, height: Layout.dismissAreaSize)
+                    .contentShape(.rect)
+                    .onTapGesture { setOpen(false) }
             }
+        }
+    }
+
+    /// 버튼과 패널이 서로 변하도록 애니메이션과 함께 열고 닫는다
+    private func setOpen(_ open: Bool) {
+        withAnimation(.smooth(duration: Layout.morphDuration)) {
+            isOpen = open
         }
     }
 }
@@ -59,7 +81,7 @@ extension PhotoFilterMenu {
     /// 펼치면 ⌃, 접으면 ⌄가 보이는 필터 버튼
     private var filterButton: some View {
         Button {
-            isOpen.toggle()
+            setOpen(true)
         } label: {
             HStack(spacing: Layout.buttonLabelSpacing) {
                 Image(systemName: "line.3.horizontal.decrease")
@@ -75,11 +97,11 @@ extension PhotoFilterMenu {
             .foregroundStyle(.primary)
             .padding(.horizontal, Layout.buttonPadding)
             .frame(height: Layout.buttonHeight)
-            // 크기와 간격은 직접 정하고 배경만 리퀴드 글래스를 쓴다. 누르면 유리가 반응한다
-            .glassEffect(.regular.interactive(), in: .capsule)
             .contentShape(.capsule)
         }
         .buttonStyle(.plain)
+        // 크기와 간격은 직접 정하고 배경만 리퀴드 글래스를 쓴다. 누르면 유리가 반응한다
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     private var filterPanel: some View {
@@ -192,6 +214,11 @@ extension PhotoFilterMenu {
 // 크기
 extension PhotoFilterMenu {
     private enum Layout {
+        /// 버튼 ↔ 패널이 바뀌는 시간 (초)
+        static let morphDuration = 0.4
+        static let glassID = "filter"
+        /// 패널 밖을 눌러 닫을 수 있는 영역 크기. 화면보다 크기만 하면 된다
+        static let dismissAreaSize: CGFloat = 4000
         static let buttonHeight: CGFloat = 40
         static let buttonPadding: CGFloat = 8
         static let buttonIconWidth: CGFloat = 28

@@ -25,7 +25,7 @@ struct DimensionPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .controlSize(.extraLarge)
+        .controlSize(.large)
         .frame(width: Layout.width)
     }
 }
@@ -33,7 +33,8 @@ struct DimensionPicker: View {
 // 크기
 extension DimensionPicker {
     private enum Layout {
-        static let width: CGFloat = 370
+        // 글자에 비해 막대가 커 보여 줄임. 메인 도면 탭과 도면 수정 화면이 이 크기를 함께 쓴다
+        static let width: CGFloat = 240
     }
 }
 

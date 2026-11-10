@@ -316,7 +316,12 @@ extension FloorPlanEdit2DView {
                 startFurnitureEditing(newId)
             }
         case (let tool?, _):
-            selection = planData.place(tool, at: tap, defaults: stampDefaults) ?? selection
+            if let placed = planData.place(tool, at: tap, defaults: stampDefaults) {
+                selection = placed
+            } else {
+                // 벽에 닿거나 방 밖이거나 도구와 맞지 않는 자리면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
+                showNotice(Copy.cannotPlace)
+            }
         }
     }
 }
@@ -896,8 +901,8 @@ extension FloorPlanEdit2DView {
         /// 키보드가 올라와도 가리지 않는 위쪽 몫. 이름 캡슐이 이보다 아래면 도면을 올린다
         static let keyboardFreeShare = 0.4
         /// 벽이 막힌 이유를 도면 영역 위 끝에서 얼마나 내려 보여 줄지 (pt)
-        /// 안내 캡슐을 위 도구 막대(바깥 여백 16 + 높이 54) 아래에 띄우는 위쪽 여백. 막대와 겹치지 않게
-        static let noticeTopPadding: CGFloat = 16 + 54 + 12
+        /// 안내 캡슐을 위 도구 막대(바깥 여백 16 + 높이 54) 아래로 넉넉히(44pt) 띄우는 위쪽 여백. 스탬프와 가깝지 않게
+        static let noticeTopPadding: CGFloat = 16 + 54 + 44
         /// 처음 시야로 되돌리는 애니메이션 시간 (초)
         static let resetDuration = 0.35
         /// 안내 캡슐이 떠 있는 시간
@@ -917,6 +922,7 @@ extension FloorPlanEdit2DView {
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
         static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
+        static let cannotPlace = "이 자리에는 놓을 수 없어요"
     }
 }
 

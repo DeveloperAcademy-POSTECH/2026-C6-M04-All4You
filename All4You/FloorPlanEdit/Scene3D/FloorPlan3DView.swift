@@ -506,9 +506,9 @@ extension FloorPlan3DView {
         return (max(furniture.width * ratio, Furniture.minSize), max(furniture.depth * ratio, Furniture.minSize))
     }
 
-    /// 가구 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽(도면 y가 작은 쪽) 오른쪽 모서리, 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
-    /// 모서리는 가구 모양에 둘러싼 테두리 상자 기준이라 가구와 살짝 떨어지고, 화면에서 가구 가운데 반대쪽으로 조금 더 민다
-    private func furnitureHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
+    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
+    /// 손잡이가 모서리를 가리지 않도록 화면에서 가운데 반대쪽으로 cornerHandleGap만큼 더 민다
+    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
         let bounds = entity.visualBounds(relativeTo: entity)
         func screenPoint(z: Float) -> CGPoint? {
             let corner = entity.convert(position: SIMD3(bounds.max.x, bounds.max.y, z), to: nil)
@@ -551,9 +551,16 @@ extension FloorPlan3DView {
                 let resizeHandle = CGPoint(x: screenCenter.x + reach, y: screenCenter.y + reach / 2)
                 points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: resizeHandle)
                 // 가구는 2D처럼 윗면 모서리에 손잡이를 붙인다. 가구를 돌리면 모서리와 함께 따라 돈다
-                if case .furniture? = entity.components[PlanSelectionComponent.self]?.selection,
-                   let corners = furnitureHandlePoints(of: entity, center: screenCenter, using: content) {
-                    points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                if let corners = cornerHandlePoints(of: entity, center: screenCenter, using: content) {
+                    switch entity.components[PlanSelectionComponent.self]?.selection {
+                    case .furniture?:
+                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                    case .marker?:
+                        // 사람·발화지점도 크기 손잡이를 모서리에 붙여 돌리면 함께 돌게 한다. 회전 손잡이는 그대로
+                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: corners.resize)
+                    default:
+                        break
+                    }
                 }
             }
         }

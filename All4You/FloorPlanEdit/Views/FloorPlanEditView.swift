@@ -34,7 +34,8 @@ struct FloorPlanEditView: View {
         .animation(.easeInOut(duration: Layout.fadeDuration), value: dimension)
         // 위 바 아래 도면 영역 크기로 스탬프 기본 크기를 정한다. 2D 수정 화면이 처음 도면을 맞추는 것과 같은 식이다
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-            guard stampDefaults == nil, size.width > 0 else { return }
+            // 화면이 막 생길 때는 높이가 0에 가까운 값이 먼저 오므로, 위·아래 막대를 뺀 높이가 충분해진 뒤의 값만 쓴다
+            guard stampDefaults == nil, size.width > Layout.minimumFitSide, size.height > Layout.fitBarInset * 2 + Layout.minimumFitSide else { return }
             let inner = CGSize(width: size.width, height: max(size.height - Layout.fitBarInset * 2, 1))
             stampDefaults = StampDefaults(pointsPerMeter: PlanScreen(plan: planData, in: inner, fill: Layout.planFill).fitScale)
         }
@@ -88,9 +89,12 @@ extension FloorPlanEditView {
         static let fadeDuration = 0.3
         /// 3D 화면을 미리 만들어 두기까지 기다리는 시간
         static let threeDWarmUp = Duration.seconds(1)
-        /// 2D 수정 화면이 처음 도면을 맞출 때 도구 막대를 피해 위·아래로 남기는 높이 (pt)와 도면이 차지하는 몫
+        /// 2D 수정 화면이 처음 도면을 맞출 때 도구 막대를 피해 위·아래로 남기는 높이 (pt). FloorPlanEdit2DView의 toolBarInset과 같은 값
         static let fitBarInset: CGFloat = 90
+        /// 맞출 때 도면이 영역에서 차지하는 몫. FloorPlanEdit2DView의 planFill과 같은 값
         static let planFill = 0.85
+        /// 이보다 작은 크기는 아직 자리를 잡는 중인 값으로 보고 무시한다 (pt)
+        static let minimumFitSide: CGFloat = 200
     }
 }
 

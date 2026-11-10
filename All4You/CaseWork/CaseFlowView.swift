@@ -19,6 +19,8 @@ struct CaseFlowView: View {
 
     @State private var path: [CaseRoute] = []
     @State private var isCaseMainShown: Bool
+    /// 메인에서 수정 화면으로 넘어가는 중인지. 참이면 흰 막이 서서히 덮여 있는 동안 화면을 바꾼다
+    @State private var isOpeningEdit = false
     /// 메인의 "수정"으로 들어온 도면 수정인지. 참이면 뒤로 갈 때 목록이 아니라 메인으로 돌아간다
     @State private var returnsToMain = false
     /// 2D·3D 수정 화면이 함께 보고 고치는 도면. 바뀔 때마다 사건의 평면도에 저장한다
@@ -55,6 +57,13 @@ struct CaseFlowView: View {
                             destination(for: route)
                         }
                 }
+            }
+        }
+        // 메인에서 수정으로 갈 때 예고 없이 바뀌지 않게, 흰 막이 덮였다가 걷히는 사이에 화면을 바꾼다
+        .overlay {
+            if isOpeningEdit {
+                OpeningEditCover()
+                    .transition(.opacity)
             }
         }
         .onChange(of: planData) { old, new in
@@ -132,11 +141,55 @@ extension CaseFlowView {
         isCaseMainShown = true
     }
 
-    /// 메인을 닫고 도면 수정을 처음부터 보여 준다 (2D부터)
+    /// 메인을 닫고 도면 수정을 처음부터 보여 준다 (2D부터).
+    /// 흰 막을 서서히 덮고 잠시 머문 뒤 화면을 바꾸고 막을 걷는다
     private func showEdit() {
-        path = []
-        returnsToMain = true
-        isCaseMainShown = false
+        guard !isOpeningEdit else { return }
+        withAnimation(.easeInOut(duration: Layout.coverDuration)) {
+            isOpeningEdit = true
+        }
+        Task {
+            try? await Task.sleep(for: Layout.coverHold)
+            path = []
+            returnsToMain = true
+            isCaseMainShown = false
+            try? await Task.sleep(for: Layout.afterSwitchHold)
+            withAnimation(.easeInOut(duration: Layout.coverDuration)) {
+                isOpeningEdit = false
+            }
+        }
+    }
+}
+
+// 메인 → 수정 전환
+extension CaseFlowView {
+    private enum Layout {
+        /// 흰 막이 덮이고 걷히는 시간 (초)
+        static let coverDuration = 0.5
+        /// 막이 덮인 뒤 화면을 바꾸기까지 머무는 시간. 덮이는 시간까지 합쳐 1.5초쯤 걸린다
+        static let coverHold = Duration.seconds(1.0)
+        /// 화면을 바꾼 뒤 막을 걷기 전에 잠시 머무는 시간 (수정 화면이 자리 잡도록)
+        static let afterSwitchHold = Duration.milliseconds(300)
+    }
+}
+
+/// 메인에서 수정 화면으로 넘어가는 동안 덮는 흰 막과 안내
+private struct OpeningEditCover: View {
+    var body: some View {
+        ZStack {
+            Color.white
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.brand500)
+                // TEMP: Figma에 없는 전환 화면이라 문구를 임의로 정함 — 디자인 확인 필요
+                Text("도면 수정 화면을 여는 중")
+                    .font(AppTypography.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .combine)
     }
 }
 
