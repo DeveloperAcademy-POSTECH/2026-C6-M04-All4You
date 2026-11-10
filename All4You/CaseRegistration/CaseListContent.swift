@@ -22,8 +22,9 @@ struct CaseListContent: View {
     let searchText: String
     @Binding var selectedCaseID: FireCase.ID?
     /// 사건 목록과 미리보기 사이의 사용자 지정 폭
-    @State private var preferredListWidth: CGFloat = 380
+    @State private var listWidthFraction: CGFloat = 0.55
     @State private var dragStartListWidth: CGFloat?
+    @State private var splitDragOffset: CGFloat = 0
     /// 길게 눌러 "사건 삭제"를 고른 사건. 값이 있으면 확인 창이 뜬다
     @State private var deletingCase: FireCase?
     /// 이름을 변경할 사건과 입력 중인 이름
@@ -80,23 +81,40 @@ struct CaseListContent: View {
                 Group {
                     if let selectedCase {
                         GeometryReader { geometry in
-                            let listWidth = boundedListWidth(availableWidth: geometry.size.width)
-                            HStack(spacing: 0) {
+                            let availableWidth = max(0, geometry.size.width - Layout.dividerWidth)
+                            let listWidth = boundedListWidth(availableWidth: availableWidth)
+                            let previewWidth = max(0, availableWidth - listWidth)
+
+                            ZStack(alignment: .topLeading) {
                                 caseList
-                                    .frame(width: listWidth)
-                                
-                                // 목록과 미리보기 사이를 손가락/포인터로 드래그하여 너비 변경
-                                resizeDivider(availableWidth: geometry.size.width, currentWidth: listWidth)
-                                
+                                    .frame(width: listWidth, height: geometry.size.height)
+                                    .clipped()
+
                                 CasePreviewView(fireCase: selectedCase, onOpen: { onOpen(selectedCase, $0) })
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .frame(width: previewWidth, height: geometry.size.height)
+                                    .offset(x: listWidth + Layout.dividerWidth)
+
+                                resizeDivider(availableWidth: availableWidth, currentWidth: listWidth)
+                                    .frame(height: geometry.size.height)
+                                    .offset(x: listWidth)
+                            }
+                            // 움직이지 않는 부모 좌표계를 기준으로 구분선 드래그 계산
+                            .coordinateSpace(name: "caseSplitArea")
+                            .overlay(alignment: .topLeading) {
+                                Rectangle()
+                                    .fill(Color(uiColor: .separator))
+                                    .frame(width: 1, height: geometry.size.height + 140)
+                                    .offset(x: listWidth + Layout.dividerWidth / 2 - 0.5, y: -140)
+                                    .allowsHitTesting(false)
+                            }
+                            .transaction {
+                                if dragStartListWidth != nil { $0.animation = nil }
                             }
                         }
                     } else {
                         caseList
                     }
                 }
-                .animation(.default, value: selectedCaseID)
             }
         }
         .navigationTitle(allCases.isEmpty ? "" : title)
@@ -168,35 +186,42 @@ extension CaseListContent {
         .ignoresSafeArea(.container, edges: .top)
     }
     
-    /// 사용 가능한 공간 안에서 미리보기의 최소 폭을 확보한다.
+    /// 메모 화면과 같이 드래그 중 이동량만 변경하고, 종료 시 최종 비율을 저장한다.
     private func boundedListWidth(availableWidth: CGFloat) -> CGFloat {
-        let maximum = max(Layout.minimumListWidth, availableWidth - Layout.dividerWidth - Layout.minimumPreviewWidth)
-        return min(max(preferredListWidth, Layout.minimumListWidth), maximum)
+        let minimumListWidth = min(Layout.minimumListWidth, availableWidth * 0.45)
+        let minimumPreviewWidth = min(Layout.minimumPreviewWidth, availableWidth * 0.45)
+        let proposedWidth = (dragStartListWidth ?? availableWidth * listWidthFraction) + splitDragOffset
+        return min(max(proposedWidth, minimumListWidth), max(minimumListWidth, availableWidth - minimumPreviewWidth))
     }
-    
+
     private func resizeDivider(availableWidth: CGFloat, currentWidth: CGFloat) -> some View {
         Rectangle()
             .fill(Color.clear)
             .frame(width: Layout.dividerWidth)
-            .overlay {
-                Rectangle()
-                    .fill(Color(uiColor: .separator))
-                    .frame(width: 1)
-            }
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 2)
+                DragGesture(minimumDistance: 1, coordinateSpace: .named("caseSplitArea"))
                     .onChanged { value in
-                        if dragStartListWidth == nil { dragStartListWidth = currentWidth }
-                        let candidate = (dragStartListWidth ?? currentWidth) + value.translation.width
-                        let maxWidth = max(Layout.minimumListWidth, availableWidth - Layout.dividerWidth - Layout.minimumPreviewWidth)
-                        preferredListWidth = min(max(candidate, Layout.minimumListWidth), maxWidth)
+                        if dragStartListWidth == nil {
+                            dragStartListWidth = currentWidth
+                        }
+                        splitDragOffset = value.translation.width
                     }
-                    .onEnded { _ in dragStartListWidth = nil }
+                    .onEnded { value in
+                        if availableWidth > 0 {
+                            let minimumListWidth = min(Layout.minimumListWidth, availableWidth * 0.45)
+                            let minimumPreviewWidth = min(Layout.minimumPreviewWidth, availableWidth * 0.45)
+                            let proposedWidth = (dragStartListWidth ?? currentWidth) + value.translation.width
+                            let finalWidth = min(max(proposedWidth, minimumListWidth), max(minimumListWidth, availableWidth - minimumPreviewWidth))
+                            listWidthFraction = finalWidth / availableWidth
+                        }
+                        dragStartListWidth = nil
+                        splitDragOffset = 0
+                    }
             )
             .accessibilityLabel("사건 목록 너비 조절")
     }
-    
+
     @ViewBuilder
     private var caseList: some View {
         // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
@@ -239,7 +264,7 @@ extension CaseListContent {
                     selectedCaseID == fireCase.id
                     ? Color.gray200
                     : Color.clear
-                )
+                ) .padding(.leading, 7)
         )
         // 꾸욱 눌렀을 때 모양 및 효과
         .contextMenu {
