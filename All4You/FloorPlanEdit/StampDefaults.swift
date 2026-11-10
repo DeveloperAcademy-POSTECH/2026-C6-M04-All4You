@@ -6,8 +6,8 @@ struct StampDefaults: Equatable {
     /// 1m가 화면에서 몇 pt인지
     let pointsPerMeter: Double
 
-    /// 발화지점·전기·피해자의 기본 크기 (pt). 32pt에서 36pt로 키움 (사용자 요청 2026-11-11)
-    static let iconPoints = 36.0
+    /// 발화지점·전기·피해자의 기본 크기 (pt)
+    static let iconPoints = 40.0
     /// 문의 기본 크기 (pt). Figma 61:29608의 48×48 칸 안 아이콘 32pt
     static let doorPoints = 32.0
     /// 창문의 기본 폭 (pt). Figma 100×24

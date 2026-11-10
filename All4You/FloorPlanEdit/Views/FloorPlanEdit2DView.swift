@@ -314,6 +314,8 @@ extension FloorPlanEdit2DView {
                 selectOrEditFurniture(furniture.id)
             } else if let newId = planData.addFurniture(at: point) {
                 startFurnitureEditing(newId)
+            } else {
+                showNotice(planData.furniturePlacementHint(at: point))
             }
         case (let tool?, _):
             if let placed = planData.place(tool, at: tap, defaults: stampDefaults) {

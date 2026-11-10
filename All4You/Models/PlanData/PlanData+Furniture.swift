@@ -9,7 +9,7 @@ extension PlanData {
         furniture?.last { $0.contains(point) }
     }
 
-    /// 바닥 위 point(도면 좌표, m)에 새 가구를 놓고 새 id를 돌려준다. 벽과 겹치는 자리면 놓지 않고 nil
+    /// 바닥 위 point(도면 좌표, m)에 새 가구를 놓고 새 id를 돌려준다. 방 밖으로 나가거나 벽과 겹치는 자리면 놓지 않고 nil
     /// TEMP: 새 가구의 크기·높이·이름은 디자인 확인 전이라 임시 값 (0.8×0.8m 사각형, 높이 0.75m, "가구")
     mutating func addFurniture(at point: SIMD2<Double>) -> String? {
         let new = Furniture(
@@ -24,9 +24,39 @@ extension PlanData {
             height: FurnitureRule.newHeight,
             elevation: 0
         )
-        guard wallOverlap(of: new) == 0 else { return nil }
+        guard isInsideRooms(new), wallOverlap(of: new) == 0 else { return nil }
         furniture = (furniture ?? []) + [new]
         return new.id
+    }
+
+    /// 새 가구를 point에 놓지 못하는 이유를 어떻게 하면 되는지와 함께 알려 주는 문장
+    func furniturePlacementHint(at point: SIMD2<Double>) -> String {
+        let center = Furniture(
+            id: "", label: "", category: nil, shape: .rectangle, center: point,
+            width: FurnitureRule.newSize, depth: FurnitureRule.newSize, rotation: 0, height: FurnitureRule.newHeight, elevation: 0
+        )
+        if !isInsideRooms(center) {
+            return "가구는 방 안쪽에만 놓을 수 있어요. 벽으로 둘러싸인 방 안에서, 가구가 벽 밖으로 나가지 않을 만큼 안쪽을 눌러 주세요"
+        }
+        return "가구가 벽에 걸려요. 벽에서 조금 떨어진 방 안쪽 빈 바닥을 눌러 주세요"
+    }
+
+    /// 가구 윗면 전체(모서리와 가운데)가 방 안인지. 방 경계는 벽 가운데 선이라 벽에 붙여 놓은 가구는 들어간다
+    func isInsideRooms(_ furniture: Furniture) -> Bool {
+        let points: [SIMD2<Double>]
+        switch furniture.shape {
+        case .rectangle:
+            points = furniture.corners + [furniture.center]
+        case .circle:
+            let radius = furniture.width / 2
+            points = (0..<8).map { index in
+                let angle = Double(index) * .pi / 4
+                return furniture.center + SIMD2(cos(angle), sin(angle)) * radius
+            } + [furniture.center]
+        }
+        return points.allSatisfy { point in
+            rooms.contains { Self.polygon(polygon(of: $0), contains: point) }
+        }
     }
 
     /// 가구 가운데를 도면 점 point로 옮긴다
@@ -58,12 +88,14 @@ extension PlanData {
         furniture?.removeAll { $0.id == id }
     }
 
-    /// 가구 하나를 change대로 바꿔 보고, 벽과 겹침이 늘지 않을 때만 반영한다
+    /// 가구 하나를 change대로 바꿔 보고, 벽과 겹침이 늘지 않고 방 밖으로 나가지 않을 때만 반영한다
+    /// (이미 방 밖에 있던 가구는 방 안으로 돌아오게 옮길 수 있게 안쪽 검사를 하지 않는다)
     private mutating func updateFurniture(id: String, _ change: (inout Furniture) -> Void) {
         guard let index = furniture?.firstIndex(where: { $0.id == id }), let current = furniture?[index] else { return }
         var changed = current
         change(&changed)
         guard wallOverlap(of: changed) <= wallOverlap(of: current) else { return }
+        guard isInsideRooms(changed) || !isInsideRooms(current) else { return }
         furniture?[index] = changed
     }
 

@@ -36,7 +36,7 @@ enum WallDrawingFailure: Error {
     var message: String {
         switch self {
         case .strokeTooShort: "선이 너무 짧아요. 벽 사이를 가로질러 길게 그어 주세요"
-        case .noWallToAttach: "붙을 벽이 없어요. 선 양쪽 끝이 기존 벽에 닿도록, 벽과 벽 사이를 가로질러 그어 주세요"
+        case .noWallToAttach: "새 벽은 양쪽 끝이 다른 벽과 붙어야 해요. 한쪽 끝에 붙을 벽이 없어요. 선을 양쪽으로 늘렸을 때 벽에 닿도록, 두 벽 사이를 가로질러 그어 주세요"
         case .wallTooShort: "벽이 너무 짧아요(0.3m 미만). 맞은편 벽과 더 멀리 떨어진 곳에 그어 주세요"
         case .doorInTheWay: "문이 있는 자리에는 벽을 붙일 수 없어요. 문에서 떨어진 벽 자리에서 시작하거나 끝나게 그어 주세요"
         case .wallAlreadyThere: "그 자리에는 이미 벽이 있어요. 벽이 없는 다른 자리에 그어 주세요"

@@ -70,18 +70,6 @@ struct FloorPlanEditView: View {
     }
 }
 
-/// 전환 중인 화면 하나. 보이지 않는 화면은 투명하고 눌리지 않는다
-private struct DimensionLayer: ViewModifier {
-    let isShown: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isShown ? 1 : 0)
-            .allowsHitTesting(isShown)
-            .accessibilityHidden(!isShown)
-    }
-}
-
 // 레이아웃 값
 extension FloorPlanEditView {
     private enum Layout {
