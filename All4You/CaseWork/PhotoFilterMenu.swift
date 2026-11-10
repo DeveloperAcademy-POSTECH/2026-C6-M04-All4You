@@ -32,7 +32,21 @@ struct PhotoFilterMenu: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            filterButton
+            HStack(spacing: Layout.chipSpacing) {
+                filterButton
+                // 지금 적용 중인 필터를 버튼 옆에 칩으로 보여 준다
+                // TEMP: Figma에 사진 표시를 끈 상태의 칩이 없어, 사진 표시가 켜져 있을 때만 보여 줌
+                if filter.isPhotoVisible && filter.scope == .bookmarked {
+                    chip(Copy.bookmarked, systemImage: "bookmark.fill") {
+                        filter.scope = .all
+                    }
+                }
+                if filter.isPhotoVisible && filter.showsDirection {
+                    chip(Copy.directionChip, systemImage: "camera.viewfinder") {
+                        filter.showsDirection = false
+                    }
+                }
+            }
             if isOpen {
                 filterPanel
             }
@@ -49,91 +63,163 @@ extension PhotoFilterMenu {
         } label: {
             HStack(spacing: Layout.buttonLabelSpacing) {
                 Image(systemName: "line.3.horizontal.decrease")
-                Text(Copy.filter)
-                Image(systemName: isOpen ? "chevron.up" : "chevron.down")
-                    .font(AppTypography.label.bold())
+                    .font(AppTypography.headline)
+                    .frame(width: Layout.buttonIconWidth)
+                HStack(spacing: Layout.buttonTextSpacing) {
+                    Text(Copy.filter)
+                        .font(AppTypography.headline)
+                    Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                        .font(AppTypography.subheadline.bold())
+                }
             }
-            // 유리 버튼은 기본으로 파란 글자라, Figma처럼 애플 기본 글자색으로 바꾼다
             .foregroundStyle(.primary)
+            .padding(.horizontal, Layout.buttonPadding)
+            .frame(height: Layout.buttonHeight)
+            // 크기와 간격은 직접 정하고 배경만 리퀴드 글래스를 쓴다. 누르면 유리가 반응한다
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
     }
 
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            panelHeader
-            // 사진 표시를 끄면 도면만 보이므로 아래 항목을 고를 수 없게 한다
-            Group {
+            sectionTitle(Copy.showPhotos, isOn: $filter.isPhotoVisible)
+            // 사진 표시를 끄면 도면만 보이므로 "사진 표시" 줄만 남기고 아래 항목은 감춘다
+            if filter.isPhotoVisible {
                 optionRow(Copy.allPhotos, isChecked: filter.scope == .all) {
                     filter.scope = .all
                 }
                 optionRow(Copy.bookmarked, isChecked: filter.scope == .bookmarked) {
                     filter.scope = .bookmarked
                 }
-                // 촬영 방향은 북마크한 사진에만 보여 주므로 전체 사진일 때는 고를 수 없게 한다
-                optionRow(Copy.direction, isChecked: filter.showsDirection) {
-                    filter.showsDirection.toggle()
+                // 촬영 방향은 북마크한 사진에만 보여 주므로 북마크를 골랐을 때만 구역이 나온다
+                if filter.scope == .bookmarked {
+                    Divider()
+                        .padding(.horizontal, Layout.sectionHorizontalPadding)
+                        .padding(.top, Layout.separatorTopPadding)
+                        .padding(.bottom, Layout.separatorBottomPadding)
+                    sectionTitle(Copy.direction, isOn: $filter.showsDirection)
                 }
-                .disabled(filter.scope != .bookmarked)
             }
-            .disabled(!filter.isPhotoVisible)
         }
-        .padding(Layout.panelPadding)
+        .padding(.vertical, Layout.panelVerticalPadding)
+        .padding(.horizontal, Layout.panelHorizontalPadding)
         .frame(width: Layout.panelWidth)
         .glassEffect(in: .rect(cornerRadius: Layout.panelCornerRadius))
     }
 
-    /// 작은 회색 "사진 표시" 글자와 오른쪽 스위치
-    private var panelHeader: some View {
+    /// 작은 구역 제목 글자와 오른쪽 스위치 ("사진 표시", "촬영 방향")
+    private func sectionTitle(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack {
-            Text(Copy.showPhotos)
-                .font(AppTypography.label)
-                .foregroundStyle(.tertiary)
+            Text(title)
+                .font(AppTypography.label.weight(.medium))
             Spacer()
-            Toggle(Copy.showPhotos, isOn: $filter.isPhotoVisible)
-                .labelsHidden()
-                .tint(.brand500)
-                // 기본 스위치는 Figma보다 커서 그림만 줄이고, 줄인 크기만큼만 자리를 차지하게 한다
-                .scaleEffect(Layout.switchScale)
-                .frame(width: Layout.switchWidth, height: Layout.switchHeight)
+            // 줄인 스위치는 누를 곳이 작아서, 자리는 그대로 두고 누르는 영역만 사방으로 넓힌다.
+            // 눌림은 바깥 버튼이 받아 값을 바꾸고, 안쪽 스위치는 모양만 보여 준다
+            Button {
+                withAnimation {
+                    isOn.wrappedValue.toggle()
+                }
+            } label: {
+                Toggle(title, isOn: isOn)
+                    .labelsHidden()
+                    .tint(.brand500)
+                    // 기본 스위치는 Figma보다 커서 그림만 줄이고, 줄인 크기만큼만 자리를 차지하게 한다
+                    .scaleEffect(Layout.switchScale)
+                    .frame(width: Layout.switchWidth, height: Layout.switchHeight)
+                    .allowsHitTesting(false)
+                    .padding(.horizontal, Layout.switchTapExtraWidth)
+                    .padding(.vertical, Layout.switchTapExtraHeight)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, -Layout.switchTapExtraWidth)
+            .padding(.vertical, -Layout.switchTapExtraHeight)
         }
-        .padding(.horizontal, Layout.rowPadding)
-        .padding(.vertical, Layout.headerVerticalPadding)
+        .padding(.horizontal, Layout.sectionHorizontalPadding)
+        .padding(.top, Layout.sectionTopPadding)
+        .padding(.bottom, Layout.sectionBottomPadding)
     }
 
-    /// 체크 동그라미와 글자로 된 한 줄. 고른 줄은 색이 채워지고, 고르지 않은 줄은 흐리게 보인다
+    /// 고른 줄은 주황 체크 동그라미가 앞에 붙고, 고르지 않은 줄은 체크 없이 글자만 같은 자리에 놓인다
     private func optionRow(_ title: String, isChecked: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: Layout.rowLabelSpacing) {
-                Image(systemName: isChecked ? "checkmark.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(isChecked ? AnyShapeStyle(.brand500) : AnyShapeStyle(.tertiary))
+                ZStack {
+                    if isChecked {
+                        Circle()
+                            .fill(.brand500)
+                        Image(systemName: "checkmark")
+                            // TEMP: 디자인 글자 크기에 맞는 AppTypography가 없어 가장 가까운 label을 씀
+                            .font(AppTypography.label.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: Layout.checkSize, height: Layout.checkSize)
                 Text(title)
-                    .foregroundStyle(isChecked ? .primary : HierarchicalShapeStyle.tertiary)
+                    .font(AppTypography.subheadline)
+                    .padding(.leading, Layout.rowLabelLeading)
                 Spacer()
             }
-            .padding(.horizontal, Layout.rowPadding)
+            .padding(.leading, Layout.rowLeadingPadding)
+            .padding(.trailing, Layout.rowTrailingPadding)
             .frame(height: Layout.rowHeight)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isChecked ? .isSelected : [])
     }
+
+    /// 글자는 배경색을 그대로 써서 다크 모드에서도 뒤집힌다
+    private func chip(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: Layout.chipIconSpacing) {
+                Image(systemName: systemImage)
+                Text(title)
+            }
+            .font(AppTypography.headline)
+            .foregroundStyle(.background)
+            .padding(.horizontal, Layout.buttonPadding)
+            .frame(height: Layout.buttonHeight)
+            .background(.primary, in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 // 크기
 extension PhotoFilterMenu {
     private enum Layout {
-        static let buttonLabelSpacing: CGFloat = 6
+        static let buttonHeight: CGFloat = 40
+        static let buttonPadding: CGFloat = 8
+        static let buttonIconWidth: CGFloat = 28
+        static let buttonLabelSpacing: CGFloat = 8
+        static let buttonTextSpacing: CGFloat = 6
+        static let chipSpacing: CGFloat = 8
+        static let chipIconSpacing: CGFloat = 4
         static let panelWidth: CGFloat = 238
-        static let panelPadding: CGFloat = 8
+        static let panelVerticalPadding: CGFloat = 10
+        static let panelHorizontalPadding: CGFloat = 8
         static let panelCornerRadius: CGFloat = 34
+        static let sectionHorizontalPadding: CGFloat = 8
+        static let sectionTopPadding: CGFloat = 5
+        static let sectionBottomPadding: CGFloat = 7
+        static let separatorTopPadding: CGFloat = 8
+        static let separatorBottomPadding: CGFloat = 9
         static let rowHeight: CGFloat = 40
-        static let rowPadding: CGFloat = 8
+        static let rowLeadingPadding: CGFloat = 6
+        static let rowTrailingPadding: CGFloat = 8
         static let rowLabelSpacing: CGFloat = 8
-        static let headerVerticalPadding: CGFloat = 4
+        static let rowLabelLeading: CGFloat = 4
+        static let checkSize: CGFloat = 16
         static let switchScale: CGFloat = 0.6
-        static let switchWidth: CGFloat = 38
-        static let switchHeight: CGFloat = 20
+        static let switchWidth: CGFloat = 32
+        static let switchHeight: CGFloat = 14
+        /// 스위치 둘레로 누르는 영역을 넓히는 길이 (왼쪽·오른쪽 각각, 위·아래 각각)
+        static let switchTapExtraWidth: CGFloat = 8
+        static let switchTapExtraHeight: CGFloat = 10
     }
 }
 
@@ -145,6 +231,8 @@ extension PhotoFilterMenu {
         static let allPhotos = "전체 사진"
         static let bookmarked = "북마크"
         static let direction = "촬영 방향"
+        // 촬영 방향을 켰을 때 버튼 옆에 붙는 칩 글자 (패널 안 "촬영 방향"과 Figma 글자가 다르다)
+        static let directionChip = "사진 방향"
     }
 }
 
