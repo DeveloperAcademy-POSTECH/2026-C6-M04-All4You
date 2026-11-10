@@ -10,13 +10,6 @@ import Foundation
 import SwiftUI
 
 struct RoomPlanLimitGuidance: View {
-    enum Stage {
-        case saving
-        case saved
-    }
-    
-    var stage: Stage = .saving
-    
     var body: some View {
         ZStack {
             Color.black.opacity(0.68)
@@ -24,9 +17,7 @@ struct RoomPlanLimitGuidance: View {
             
             VStack(spacing: 30) {
                 dotGraphic
-                Text(stage == .saving
-                     ? "저장 중..."
-                     : "최대 스캔량에 도달해 스캔이 종료되었어요")
+                Text("최대 스캔량에 도달했어요. 스캔 내용을 저장하고 있어요.")
                 .font(.system(size: 20, weight: .medium))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)

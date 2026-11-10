@@ -125,10 +125,10 @@ import RoomPlan
     private let torch = RoomPlanTorchService()
     // 스캔과 같은 ARSession에서 찍은 사진과 카메라 자세
     private let photoService = RoomPlanPhotoService()
-
+    
     /// 스캔 중 찍은 사진. 스캔을 마친 뒤(finish) 읽으면 ARKit이 다듬은 마지막 자세가 담겨 있다
     var scanPhotos: [ScanPhoto] { photoService.photos }
-
+    
     /// 사진 위치가 스캔 좌표계에 맞게 남는 단계에서만 촬영 허용.
     /// 준비(.ready) 단계는 RoomCaptureSession.run이 추적을 다시 시작할 수 있어 막는다
     var canCapturePhoto: Bool {
@@ -149,6 +149,7 @@ import RoomPlan
     private var cameraNeedsReset = false
     private var isDetached = false
     private let minimumProgressDuration: TimeInterval = 0.5
+    private let minimumLimitSavingDuration: TimeInterval = 3
     private var relocalizationStartedAt: TimeInterval?
     
     // 완료 구간과 일시정지 순간의 방을 중복 없이 결합한 미리보기 입력
@@ -279,7 +280,7 @@ import RoomPlan
             }
         }
     }
-
+    
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
         do {
@@ -452,8 +453,11 @@ import RoomPlan
             let result = await self.saveSegment(data, fallbackRoom: fallbackRoom)
             guard self.captureSession === session else { return }
             if !wasPaused {
-                // 저장 결과와 관계없이 진행 화면의 최소 표시 시간 확보
-                await self.waitForMinimumProgressDuration(since: savingStartedAt)
+                // 한도 도달 시 저장 안내를 최소 3초 표시한 뒤 다음 선택지로 전환
+                await self.waitForMinimumProgressDuration(
+                    since: savingStartedAt,
+                    duration: self.isScanLimitReached ? self.minimumLimitSavingDuration : nil
+                )
                 guard self.captureSession === session else { return }
             }
             switch result {
@@ -657,10 +661,13 @@ import RoomPlan
     }
     
     // 작업이 빨리 끝나도 사용자가 진행 상태를 인지할 수 있도록 최소 노출 시간 보장
-    private func waitForMinimumProgressDuration(since startedAt: TimeInterval?) async {
+    private func waitForMinimumProgressDuration(
+        since startedAt: TimeInterval?,
+        duration: TimeInterval? = nil
+    ) async {
         guard let startedAt else { return }
         let elapsed = ProcessInfo.processInfo.systemUptime - startedAt
-        let remaining = max(0, minimumProgressDuration - elapsed)
+        let remaining = max(0, (duration ?? minimumProgressDuration) - elapsed)
         if remaining > 0 { try? await Task.sleep(for: .seconds(remaining)) }
     }
     
