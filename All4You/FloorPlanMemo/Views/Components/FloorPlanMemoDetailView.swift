@@ -15,12 +15,14 @@ struct FloorPlanMemoDetailView: View {
     
     let memo: FloorPlanMemo
     let presentation: Presentation
+    let bookmarkedPhotos: [LoadedPhoto]
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     
     @State private var isEditing = false
     @State private var editedContent = ""
     @State private var isEditorFocused = false
     @State private var selectedPhotoIndex = 0
+    @State private var photoNavigationRequest = 0
     
     var body: some View {
         GeometryReader { proxy in
@@ -44,42 +46,54 @@ struct FloorPlanMemoDetailView: View {
     private func splitLayout(width: CGFloat) -> some View {
         let photoWidth = min(476, max(0, width - 62))
         
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                title
-                
-                if !memo.taggedPhotos.isEmpty {
-                    photoGallery(width: photoWidth, height: photoWidth * 511 / 476)
+        return ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    title
+                    
+                    if !memo.taggedPhotos.isEmpty {
+                        photoGallery(width: photoWidth, height: photoWidth * 511 / 476)
+                            .id("memo-photo-gallery")
+                    }
+                    
+                    content
+                        .padding(.horizontal, 13)
                 }
-                
-                content
-                    .padding(.horizontal, 13)
+                .padding(.horizontal, 31)
+                .padding(.top, 18)
+                .frame(width: width)
             }
-            .padding(.horizontal, 31)
-            .padding(.top, 18)
-            .frame(width: width)
+            .onChange(of: photoNavigationRequest) { _, _ in
+                withAnimation { scrollProxy.scrollTo("memo-photo-gallery", anchor: .top) }
+            }
         }
     }
     
     private func expandedLayout(width: CGFloat) -> some View {
         let photoWidth = min(540, max(0, (width - 88) * 540 / 1284))
         
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                title
-                
-                HStack(alignment: .top, spacing: 24) {
-                    if !memo.taggedPhotos.isEmpty {
-                        photoGallery(width: photoWidth, height: photoWidth * 580 / 540)
-                    }
+        return ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    title
                     
-                    content
-                        .padding(.leading, memo.taggedPhotos.isEmpty ? 0 : 32)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(alignment: .top, spacing: 24) {
+                        if !memo.taggedPhotos.isEmpty {
+                            photoGallery(width: photoWidth, height: photoWidth * 580 / 540)
+                                .id("memo-photo-gallery")
+                        }
+                        
+                        content
+                            .padding(.leading, memo.taggedPhotos.isEmpty ? 0 : 32)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
+                .padding(.horizontal, 32)
+                .padding(.top, 47)
             }
-            .padding(.horizontal, 32)
-            .padding(.top, 47)
+            .onChange(of: photoNavigationRequest) { _, _ in
+                withAnimation { scrollProxy.scrollTo("memo-photo-gallery", anchor: .top) }
+            }
         }
     }
     
@@ -142,15 +156,14 @@ struct FloorPlanMemoDetailView: View {
                 if wasFocused && !isFocused { finishEditing() }
             }
         } else {
-            Text(memo.content)
-                .font(AppTypography.headline)
-                .foregroundStyle(.primary)
-                .lineSpacing(7)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: beginEditing)
-                .accessibilityHint("두 번 탭하면 메모를 수정할 수 있습니다")
+            FloorPlanMemoInteractiveContent(
+                memo: memo,
+                bookmarkedPhotos: bookmarkedPhotos,
+                onPhotoTap: showPhoto,
+                onBodyTap: beginEditing
+            )
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+            .accessibilityHint("태그를 누르면 해당 사진을 보고, 다른 부분을 두 번 탭하면 메모를 수정할 수 있습니다")
         }
     }
     
@@ -161,6 +174,12 @@ struct FloorPlanMemoDetailView: View {
             guard isEditing else { return }
             isEditorFocused = true
         }
+    }
+    
+    private func showPhoto(_ photo: LoadedPhoto) {
+        guard let index = memo.taggedPhotos.firstIndex(where: { $0.id == photo.id }) else { return }
+        selectedPhotoIndex = index
+        photoNavigationRequest += 1
     }
     
     private func finishEditing() {

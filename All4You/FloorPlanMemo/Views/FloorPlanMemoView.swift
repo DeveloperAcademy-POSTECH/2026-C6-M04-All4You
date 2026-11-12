@@ -9,6 +9,7 @@ import SwiftUI
 
 struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
+    let bookmarkedPhotos: [LoadedPhoto]
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     
@@ -26,10 +27,12 @@ struct FloorPlanMemoView: View {
     
     init(
         sections: [FloorPlanMemoSection] = [],
+        bookmarkedPhotos: [LoadedPhoto] = [],
         onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in },
         onUpdateMemo: @escaping (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     ) {
         self.sections = sections
+        self.bookmarkedPhotos = bookmarkedPhotos
         self.onDeleteMemo = onDeleteMemo
         self.onUpdateMemo = onUpdateMemo
     }
@@ -40,6 +43,7 @@ struct FloorPlanMemoView: View {
         isDetailExpanded: Bool
     ) {
         self.sections = sections
+        self.bookmarkedPhotos = []
         self.onDeleteMemo = { _ in }
         self.onUpdateMemo = { _, _ in }
         _selectedMemoID = State(initialValue: selectedMemoID)
@@ -300,6 +304,7 @@ struct FloorPlanMemoView: View {
         FloorPlanMemoDetailView(
             memo: memo,
             presentation: presentation,
+            bookmarkedPhotos: bookmarkedPhotos,
             onUpdateMemo: onUpdateMemo
         )
         .id(memo.id)

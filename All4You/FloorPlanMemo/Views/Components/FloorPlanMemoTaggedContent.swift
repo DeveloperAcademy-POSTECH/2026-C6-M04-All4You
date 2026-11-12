@@ -31,35 +31,21 @@ struct FloorPlanMemoTaggedContent: View {
     
     private var linkedContent: AttributedString {
         let source = memo.content as NSString
-        let matches = (try? NSRegularExpression(pattern: "#[1-9][0-9]*"))?
-            .matches(in: memo.content, range: NSRange(location: 0, length: source.length)) ?? []
-        let numberedPhotos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
-        let distinctTokens = matches.map { source.substring(with: $0.range) }.reduce(into: [String]()) { tokens, token in
-            if !tokens.contains(token) { tokens.append(token) }
-        }
-        // 저장된 UUID 순서와 태그 순서가 일치하면 이후 북마크 번호가 바뀌어도 같은 사진을 연결
-        let savedPhotosByToken: [String: LoadedPhoto] = distinctTokens.count == memo.taggedPhotos.count
-        ? Dictionary(uniqueKeysWithValues: zip(distinctTokens, memo.taggedPhotos))
-        : [:]
+        let matches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
         var result = AttributedString()
         var cursor = 0
-        var linkedTokens = Set<String>()
         
         for match in matches {
             result += AttributedString(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))
             let token = source.substring(with: match.range)
-            let number = Int(token.dropFirst()) ?? 0
-            let photo = savedPhotosByToken[token]
-            ?? linkedPhoto(number: number, numberedPhotos: numberedPhotos)
             
-            if !linkedTokens.contains(token),
-               let photo, let url = URL(string: "memo-photo://\(photo.id.uuidString)") {
+            if let photo = match.photo,
+               let url = URL(string: "memo-photo://\(photo.id.uuidString)") {
                 var linkedToken = AttributedString(token)
                 linkedToken.foregroundColor = Color.brand500
                 linkedToken.underlineStyle = .single
                 linkedToken.link = url
                 result += linkedToken
-                linkedTokens.insert(token)
             } else {
                 result += AttributedString(token)
             }
@@ -69,13 +55,41 @@ struct FloorPlanMemoTaggedContent: View {
         result += AttributedString(source.substring(from: cursor))
         return result
     }
+}
+
+/// 저장된 사진 UUID와 메모의 #번호를 연결해 두 화면에서 같은 태그를 표시
+enum FloorPlanMemoPhotoTags {
+    struct Match {
+        let range: NSRange
+        let photo: LoadedPhoto?
+    }
     
-    private func linkedPhoto(number: Int, numberedPhotos: [LoadedPhoto]) -> LoadedPhoto? {
-        if number > 0, numberedPhotos.indices.contains(number - 1) {
-            let numberedPhoto = numberedPhotos[number - 1]
-            return memo.taggedPhotos.first(where: { $0.id == numberedPhoto.id })
+    static func matches(in memo: FloorPlanMemo, bookmarkedPhotos: [LoadedPhoto]) -> [Match] {
+        let source = memo.content as NSString
+        let matches = (try? NSRegularExpression(pattern: "#[1-9][0-9]*"))?
+            .matches(in: memo.content, range: NSRange(location: 0, length: source.length)) ?? []
+        let numberedPhotos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+        let distinctTokens = matches.map { source.substring(with: $0.range) }.reduce(into: [String]()) { tokens, token in
+            if !tokens.contains(token) { tokens.append(token) }
         }
-        return nil
+        let savedPhotosByToken: [String: LoadedPhoto] = distinctTokens.count == memo.taggedPhotos.count
+        ? Dictionary(uniqueKeysWithValues: zip(distinctTokens, memo.taggedPhotos))
+        : [:]
+        var linkedTokens = Set<String>()
+        
+        return matches.map { match in
+            let token = source.substring(with: match.range)
+            let number = Int(token.dropFirst()) ?? 0
+            let fallbackPhoto: LoadedPhoto? = if number > 0, numberedPhotos.indices.contains(number - 1) {
+                memo.taggedPhotos.first(where: { $0.id == numberedPhotos[number - 1].id })
+            } else {
+                nil
+            }
+            let photo = linkedTokens.insert(token).inserted
+            ? (savedPhotosByToken[token] ?? fallbackPhoto)
+            : nil
+            return Match(range: match.range, photo: photo)
+        }
     }
 }
 

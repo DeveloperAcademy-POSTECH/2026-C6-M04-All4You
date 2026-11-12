@@ -80,9 +80,14 @@ struct CaseMainView: View {
         } album: {
             albumTab
         } memo: {
-            FloorPlanMemoView(sections: memoSections, onDeleteMemo: deleteMemo, onUpdateMemo: updateMemo)
-                .id(sessionNumber)
-                .navigationBarTitleDisplayMode(.inline)
+            FloorPlanMemoView(
+                sections: memoSections,
+                bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
+                onDeleteMemo: deleteMemo,
+                onUpdateMemo: updateMemo
+            )
+            .id(sessionNumber)
+            .navigationBarTitleDisplayMode(.inline)
         }
         // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
         .onChange(of: sessionNumber, initial: true) {
