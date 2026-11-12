@@ -235,13 +235,8 @@ struct FloorPlanMemoView: View {
         }
         .pickerStyle(.segmented)
         .controlSize(.large)
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(minWidth: 180, minHeight: 50)
-        .background {
-            Capsule()
-                .fill(Color.gray100)
-                .padding(.top, 1)
-        }
+        .frame(width: min(700, max(240, CGFloat(sections.count + 1) * 92)))
+        .background(Color(.separator).opacity(0.6), in: Capsule())
     }
     
     private func expandedDetail(for memo: FloorPlanMemo, in size: CGSize) -> some View {
