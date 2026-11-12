@@ -161,6 +161,7 @@ extension FloorPlanTabView {
                             onSave: { _ in },
                             onCancel: {},
                             highlightedMemoID: highlightedMemoID,
+                            bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                             screen: screen
                         )
                     }

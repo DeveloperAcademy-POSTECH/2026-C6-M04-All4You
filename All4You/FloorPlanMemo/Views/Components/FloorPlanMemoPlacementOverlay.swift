@@ -24,6 +24,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     
     @State private var isTextFieldFocused = false
     @State private var selectedMemoID: FloorPlanMemo.ID?
+    @State private var previewPhoto: LoadedPhoto?
     @State private var isTagPickerPresented = false
     @State private var keyboardFrame: CGRect = .null
     @State private var taggedPhotoTokens: [UUID: String] = [:]
@@ -82,6 +83,9 @@ struct FloorPlanMemoPlacementOverlay: View {
             Task { @MainActor in
                 isTextFieldFocused = true
             }
+        }
+        .sheet(item: $previewPhoto) { photo in
+            FloorPlanMemoPhotoPreview(photo: photo)
         }
     }
 }
@@ -150,9 +154,10 @@ private extension FloorPlanMemoPlacementOverlay {
                 .accessibilityLabel("메모 닫기")
             }
             
-            Text(memo.content)
-                .font(AppTypography.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            FloorPlanMemoTaggedContent(memo: memo, bookmarkedPhotos: bookmarkedPhotos) { photo in
+                previewPhoto = photo
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(20)
         .frame(width: Layout.cardWidth, alignment: .leading)
