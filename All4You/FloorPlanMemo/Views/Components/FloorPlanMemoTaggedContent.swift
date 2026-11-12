@@ -43,6 +43,7 @@ struct FloorPlanMemoTaggedContent: View {
         : [:]
         var result = AttributedString()
         var cursor = 0
+        var linkedTokens = Set<String>()
         
         for match in matches {
             result += AttributedString(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))
@@ -51,12 +52,14 @@ struct FloorPlanMemoTaggedContent: View {
             let photo = savedPhotosByToken[token]
             ?? linkedPhoto(number: number, numberedPhotos: numberedPhotos)
             
-            if let photo, let url = URL(string: "memo-photo://\(photo.id.uuidString)") {
+            if !linkedTokens.contains(token),
+               let photo, let url = URL(string: "memo-photo://\(photo.id.uuidString)") {
                 var linkedToken = AttributedString(token)
                 linkedToken.foregroundColor = Color.brand500
                 linkedToken.underlineStyle = .single
                 linkedToken.link = url
                 result += linkedToken
+                linkedTokens.insert(token)
             } else {
                 result += AttributedString(token)
             }

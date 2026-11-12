@@ -300,9 +300,8 @@ private extension FloorPlanMemoPlacementOverlay {
             let token = source.substring(with: match.range)
             guard let number = Int(token.dropFirst()), photos.indices.contains(number - 1) else { continue }
             let photo = photos[number - 1]
-            if !draft.taggedPhotoIDs.contains(photo.id) {
-                draft.taggedPhotoIDs.append(photo.id)
-            }
+            guard !draft.taggedPhotoIDs.contains(photo.id) else { continue }
+            draft.taggedPhotoIDs.append(photo.id)
             taggedPhotoTokens[photo.id] = token
         }
     }
@@ -311,9 +310,8 @@ private extension FloorPlanMemoPlacementOverlay {
         let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
         let markers = planData.markers.filter { $0.kind == .ignitionPoint }
         let activePhotoID = draft.flatMap { pendingPhoto(in: $0.content)?.photo.id }
-        let availablePhotos = Array(photos.enumerated()).filter {
-            !(draft?.taggedPhotoIDs.contains($0.element.id) ?? false) || $0.element.id == activePhotoID
-        }
+        // 같은 메모에 이미 태그한 사진은 선택할 수 없도록 표시
+        let availablePhotos = Array(photos.enumerated())
         let availableMarkers = Array(markers.enumerated()).filter { !(draft?.taggedMarkerIDs.contains($0.element.id) ?? false) }
         
         return Group {
@@ -348,6 +346,7 @@ private extension FloorPlanMemoPlacementOverlay {
                             ForEach(availablePhotos.indices, id: \.self) { index in
                                 let photo = availablePhotos[index].element
                                 let number = availablePhotos[index].offset + 1
+                                let isTagged = draft?.taggedPhotoIDs.contains(photo.id) ?? false
                                 Button {
                                     tagPhoto(photo, number: number)
                                 } label: {
@@ -358,7 +357,7 @@ private extension FloorPlanMemoPlacementOverlay {
                                             .frame(width: Layout.tagTileSize, height: Layout.tagTileSize)
                                             .clipped()
                                             .overlay {
-                                                if photo.id == activePhotoID {
+                                                if photo.id == activePhotoID && !isTagged {
                                                     RoundedRectangle(cornerRadius: 8)
                                                         .strokeBorder(Color.brand500, lineWidth: 3)
                                                 }
@@ -366,8 +365,10 @@ private extension FloorPlanMemoPlacementOverlay {
                                     }
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(isTagged)
+                                .opacity(isTagged ? 0.45 : 1)
                                 .id(photo.id)
-                                .accessibilityLabel("북마크 사진 \(number) 태그")
+                                .accessibilityLabel(isTagged ? "북마크 사진 \(number), 이미 태그됨" : "북마크 사진 \(number) 태그")
                             }
                         }
                         .padding(16)
@@ -403,7 +404,7 @@ private extension FloorPlanMemoPlacementOverlay {
     }
     
     func tagPhoto(_ photo: LoadedPhoto, number: Int) {
-        guard var updated = draft else { return }
+        guard var updated = draft, !updated.taggedPhotoIDs.contains(photo.id) else { return }
         let token = "#\(number)"
         if let hashIndex = updated.content.lastIndex(of: "#"),
            pendingTagNumber(in: updated.content) != nil {
@@ -413,9 +414,7 @@ private extension FloorPlanMemoPlacementOverlay {
             appendTag(token, to: &updated)
         }
         reconcileTags(in: &updated)
-        if !updated.taggedPhotoIDs.contains(photo.id) {
-            updated.taggedPhotoIDs.append(photo.id)
-        }
+        updated.taggedPhotoIDs.append(photo.id)
         taggedPhotoTokens[photo.id] = token
         draft = updated
         isTagPickerPresented = false

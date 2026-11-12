@@ -47,7 +47,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
                 let pattern = NSRegularExpression.escapedPattern(for: token) + "(?![0-9])"
                 let matches = (try? NSRegularExpression(pattern: pattern))?
                     .matches(in: text, range: fullRange) ?? []
-                for match in matches {
+                if let match = matches.first {
                     view.textStorage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: match.range)
                 }
             }
@@ -62,7 +62,10 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
                 view.becomeFirstResponder()
             }
         } else if !isFocused && view.isFirstResponder {
-            view.resignFirstResponder()
+            DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
+                guard let view, view.isFirstResponder, coordinator?.parent.isFocused == false else { return }
+                view.resignFirstResponder()
+            }
         }
     }
     
