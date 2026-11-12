@@ -198,7 +198,7 @@ struct FloorPlanMemoView: View {
         ContentUnavailableView {
             Label("작성된 메모가 없어요", systemImage: "bubble.left")
         } description: {
-            Text("상단의 메모 추가 버튼을 누르고\n도면에서 위치를 선택해주세요.")
+            Text("도면에서 \(Image(systemName: "plus.bubble"))버튼을 눌러 메모를 작성해 주세요")
         }
     }
     
