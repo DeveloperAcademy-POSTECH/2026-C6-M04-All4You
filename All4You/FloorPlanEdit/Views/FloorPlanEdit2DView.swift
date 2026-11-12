@@ -162,6 +162,9 @@ extension FloorPlanEdit2DView {
                     openingControls(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
+                    vertexControls(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
@@ -325,7 +328,12 @@ extension FloorPlanEdit2DView {
         selectedRoomId = nil
         // 펜·지우개이고 위 도구도 꺼져 있으면 스탬프·라벨·창문·문·가구를 고르지 않는다 (지우개로 누르면 tapGesture가 바로 지운다)
         guard canUseStamps else {
-            selection = nil
+            // 펜은 이미 있는 벽을 누르면 손 도구처럼 벽을 고른다. 고른 벽은 보여 주기만 하고, 끌기는 새 벽을 긋는다 (벽 옮기기는 손 도구로)
+            if drawingTool == .pen, case .wall = tap {
+                handleHandTap(tap)
+            } else {
+                selection = nil
+            }
             return
         }
         // 획 선택에서 위 도구를 고르지 않았으면 벽·스탬프·가구를 고른다
@@ -519,6 +527,8 @@ extension FloorPlanEdit2DView {
         DragGesture(minimumDistance: Layout.dragStartDistance)
             .onChanged { value in
                 guard let screen else { return }
+                // 꼭짓점 손잡이 위에서 시작한 끌기는 손잡이가 처리한다 (벽 줄 끌기와 다투지 않게)
+                if isOnVertexHandle(value.startLocation, screen: screen) { return }
                 if drawOrErase(value, screen: screen) { return }
                 guard let selection else { return }
                 if dragWall(value, screen: screen) { return }
@@ -579,8 +589,11 @@ extension FloorPlanEdit2DView {
         let isNewStroke = penStroke == nil && !isErasing
         if isNewStroke {
             // 고른 스탬프·벽 위에서 시작했거나 공간 이름을 끄는 중이면 그것을 옮긴다
+            // 펜은 고른 벽 위에서도 새 벽을 그을 수 있다 (고른 벽 끝에서 이어 그리기)
+            var isPenOnSelectedWall = false
+            if drawingTool == .pen, case .wall? = selection { isPenOnSelectedWall = true }
             guard drawingTool != .hand, !isStampActive, stampDragStart == nil, wallDragBase == nil, labelDragStart == nil,
-                  selection == nil || !startsOnSelection(value.startLocation, screen: screen) else { return false }
+                  selection == nil || isPenOnSelectedWall || !startsOnSelection(value.startLocation, screen: screen) else { return false }
             selection = nil
             menuTarget = nil
         }
@@ -627,7 +640,7 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 그은 선을 양쪽으로 늘여 처음 닿는 벽 사이에 벽을 넣는다. 넣을 수 없는 자리면 아무것도 바꾸지 않는다
+    /// 그은 선을 벽으로 넣는다. 양 끝은 가까우면 붙고 멀면 그은 자리에서 끝난다. 넣을 수 없는 자리면 아무것도 바꾸지 않는다
     private func finishPenStroke() {
         guard let penStroke, let screen else { return }
         self.penStroke = nil
@@ -657,17 +670,39 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 펜으로 긋는 중인 선. 손을 떼기 전까지는 손가락이 그은 그대로 보여 준다
+    /// 펜으로 긋는 중인 선. 손을 떼면 벽이 될 자리(양 끝이 붙을 곳)를 보여 준다: 붙는 끝은 주황 점, 떠 있는 끝은 속이 빈 점.
+    /// 붙을 자리를 정하지 못하면(너무 짧음 등) 손가락이 그은 그대로 보여 준다
     @ViewBuilder
     private var penStrokeLine: some View {
-        if let penStroke {
-            Path { path in
-                path.move(to: penStroke.start)
-                path.addLine(to: penStroke.end)
+        if let penStroke, let screen {
+            let ends = planData.wallEndPreviews(
+                from: screen.plan(penStroke.start),
+                to: screen.plan(penStroke.end),
+                snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
+            )
+            let start = ends.map { screen.point($0.start.point) } ?? penStroke.start
+            let end = ends.map { screen.point($0.end.point) } ?? penStroke.end
+            ZStack {
+                Path { path in
+                    path.move(to: start)
+                    path.addLine(to: end)
+                }
+                .stroke(Color.brand500, style: StrokeStyle(lineWidth: Layout.penLineWidth, lineCap: .round, dash: Layout.penDash))
+                if let ends {
+                    penEndMark(at: start, isAttached: ends.start.isAttached)
+                    penEndMark(at: end, isAttached: ends.end.isAttached)
+                }
             }
-            .stroke(Color.brand500, style: StrokeStyle(lineWidth: Layout.penLineWidth, lineCap: .round, dash: Layout.penDash))
             .allowsHitTesting(false)
         }
+    }
+
+    private func penEndMark(at point: CGPoint, isAttached: Bool) -> some View {
+        Circle()
+            .fill(isAttached ? Color.brand500 : Color.white)
+            .overlay { Circle().stroke(Color.brand500, lineWidth: Layout.penLineWidth) }
+            .frame(width: Layout.penEndMarkSize, height: Layout.penEndMarkSize)
+            .position(point)
     }
 }
 
@@ -899,6 +934,62 @@ extension FloorPlanEdit2DView {
         }
     }
 
+    /// 고른 벽의 양 끝 꼭짓점 손잡이. 손 도구로 고른 벽(펜·지우개·위 도구가 아닐 때)에만 나온다
+    @ViewBuilder
+    private func vertexControls(screen: PlanScreen) -> some View {
+        let handles = vertexHandles(screen: screen)
+        if !handles.isEmpty, menuTarget == nil {
+            VertexHandles2DView(
+                handles: handles,
+                coordinateSpace: Layout.planSpace,
+                onDrag: { vertexId, location in previewVertex(vertexId, at: location) },
+                onDragEnded: endVertexDrag
+            )
+        }
+    }
+
+    /// 손잡이를 놓을 꼭짓점과 화면 점
+    private func vertexHandles(screen: PlanScreen) -> [(vertexId: String, point: CGPoint)] {
+        let plan = dragPreview ?? planData
+        guard isHandTool, !isStampActive, case .wall(let id)? = selection, let wall = plan.wall(id: id) else { return [] }
+        let points = plan.vertexPoints
+        return [wall.startVertex, wall.endVertex].compactMap { vertexId in
+            points[vertexId].map { (vertexId, screen.point($0)) }
+        }
+    }
+
+    /// 화면 점이 꼭짓점 손잡이 위인지
+    private func isOnVertexHandle(_ location: CGPoint, screen: PlanScreen) -> Bool {
+        vertexHandles(screen: screen).contains { hypot($0.point.x - location.x, $0.point.y - location.y) <= VertexHandles2DView.handleSize / 2 }
+    }
+
+    /// 끄는 동안은 미리 보기 도면에서만 꼭짓점을 손가락 자리로 옮긴다 (축 자석·떠 있는 끝 붙이기 포함).
+    /// 옮길 수 없는 자리면 마지막으로 맞는 미리 보기를 두고 이유를 띄운다. 계산은 늘 처음 도면에서 해서, 끄는 동안 맞춤이 쌓이지 않는다
+    private func previewVertex(_ vertexId: String, at location: CGPoint) {
+        guard let screen else { return }
+        menuTarget = nil
+        switch planData.movingVertex(
+            vertexId,
+            to: screen.plan(location),
+            snapRadius: Double(Layout.magnetDistance) / Double(screen.length(1))
+        ) {
+        case .success(let moved):
+            dragPreview = moved
+            wallBlockedReason = nil
+        case .failure(let failure):
+            wallBlockedReason = failure.message
+        }
+    }
+
+    /// 손을 떼면 미리 보기를 한 번 반영한다. 막혔으면 이유를 잠깐 남긴다
+    private func endVertexDrag() {
+        let blocked = wallBlockedReason
+        wallBlockedReason = nil
+        commitPreview()
+        if case .wall(let id)? = selection { wallSelection = planData.wallLine(containing: id) }
+        if let blocked { showNotice(blocked) }
+    }
+
     /// 끄는 동안은 미리 보기 도면에서만 그 끝을 손가락이 있는 벽 위 자리로 옮긴다. 높이는 그대로 둔다
     private func previewOpeningEdge(_ id: String, edge: WindowEdge, at location: CGPoint) {
         guard let screen, let opening = planData.doorWindows.first(where: { $0.id == id }),
@@ -962,9 +1053,14 @@ extension FloorPlanEdit2DView {
         static let noticeDuration = Duration.seconds(2)
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
+        /// 꼭짓점을 끌 때 붙은 벽이 가로·세로가 되는 자리에서 딱 붙는 화면 거리 (pt)
+        // TEMP: 축 자석 거리는 실기기에서 써 보고 정함
+        static let magnetDistance: CGFloat = 16
         /// 긋는 중인 펜 점선
         static let penLineWidth: CGFloat = 2
         static let penDash: [CGFloat] = [6, 4]
+        /// 긋는 중에 벽 끝이 붙을 자리에 찍는 점 지름 (pt)
+        static let penEndMarkSize: CGFloat = 12
     }
 }
 

@@ -69,6 +69,18 @@ extension PlanData {
         return true
     }
 
+    /// 방 밖에서 새로 그린 벽(wallIds)이 닫은 칸마다 "새 공간" 방을 만든다. 새 벽의 면이 든 고리만 보므로, 이름을 지워 둔 기존 이름 없는 칸은 건드리지 않는다.
+    /// 이름 자리는 아직 없어, 이어서 부르는 refreshRoomLabels가 방 가운데에 놓는다
+    mutating func addRoomsClosed(by wallIds: Set<String>) {
+        guard let loops = faceLoops() else { return }
+        let takenSides = Set(rooms.flatMap(\.boundary).map { "\($0.wallId)/\($0.forward)" })
+        for loop in loops where loop.area > WallMoveRules.eps
+            && loop.edges.contains(where: { wallIds.contains($0.wallId) })
+            && !loop.edges.contains(where: { takenSides.contains("\($0.wallId)/\($0.forward)") }) {
+            rooms.append(Room(id: UUID().uuidString, name: RoomCopy.newRoomName, boundary: loop.edges, labelX: .infinity, labelY: .infinity))
+        }
+    }
+
     /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 방은 넓이 +, 건물 바깥은 넓이 −. 꼭짓점을 못 찾는 벽이 있으면 nil
     func faceLoops() -> [(edges: [RoomEdge], area: Double)]? {
         let pos = vertexPoints

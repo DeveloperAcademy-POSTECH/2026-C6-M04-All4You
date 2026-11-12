@@ -207,6 +207,8 @@ extension PlanData {
     /// 그 방에 놓였던 사진·메모는 장소가 없어진다
     mutating func removeRoom(id: String) {
         rooms.removeAll { $0.id == id }
+        // 방이 없어져 주인 없는 가상 경계선이 되었으면 정리한다
+        cleanUpVirtualWalls()
     }
 
     /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
