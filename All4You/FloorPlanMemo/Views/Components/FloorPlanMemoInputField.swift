@@ -14,18 +14,21 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
     @Binding var isFocused: Bool
     let taggedTokens: Set<String>
     let onSubmit: (String) -> Void
+    var textColor: UIColor = .white
     
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
         view.delegate = context.coordinator
         view.backgroundColor = .clear
-        view.textColor = .white
+        view.textColor = textColor
+        view.tintColor = UIColor(Color.brand500)
         view.font = .preferredFont(forTextStyle: .headline)
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.returnKeyType = .done
         view.isScrollEnabled = true
         view.text = text
+        view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         return view
     }
     
@@ -42,7 +45,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
             let fullRange = NSRange(location: 0, length: (text as NSString).length)
             let baseAttributes: [NSAttributedString.Key: Any] = [
                 .font: view.font ?? UIFont.preferredFont(forTextStyle: .headline),
-                .foregroundColor: UIColor.white
+                .foregroundColor: textColor
             ]
             view.textStorage.beginEditing()
             view.textStorage.setAttributes(baseAttributes, range: fullRange)
@@ -63,6 +66,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
             DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
                 guard let view, view.window != nil, coordinator?.parent.isFocused == true else { return }
                 view.becomeFirstResponder()
+                view.selectedRange = NSRange(location: (view.text as NSString).length, length: 0)
             }
         } else if !isFocused && view.isFirstResponder {
             DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in

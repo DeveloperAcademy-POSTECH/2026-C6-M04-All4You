@@ -152,7 +152,8 @@ extension CaseMainView {
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
             memos: isAddingMemo ? [] : memoSections.allMemos,
             highlightedMemoID: justAddedMemoID,
-            onDeleteMemo: deleteMemo
+            onDeleteMemo: deleteMemo,
+            onUpdateMemo: updateMemo
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -165,6 +166,7 @@ extension CaseMainView {
                 onSave: addMemo,
                 onCancel: cancelAddingMemo,
                 onDeleteMemo: deleteMemo,
+                onUpdateMemo: updateMemo,
                 highlightedMemoID: justAddedMemoID,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
@@ -294,6 +296,12 @@ extension CaseMainView {
         if justAddedMemoID == id { justAddedMemoID = nil }
     }
     
+    /// 미리보기에서 수정한 본문을 기존 사건 메모에 반영
+    private func updateMemo(_ id: FloorPlanMemo.ID, content: String) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.content = content
+    }
+
     /// 현재 조사 차수에 저장된 메모
     private var currentSessionMemos: [Memo] {
         let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1
