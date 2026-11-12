@@ -236,7 +236,7 @@ struct FloorPlanMemoView: View {
         .pickerStyle(.segmented)
         .controlSize(.large)
         .frame(width: min(700, max(240, CGFloat(sections.count + 1) * 92)))
-        .background(Color(.separator).opacity(0.6), in: Capsule())
+        .background(Color(uiColor: .systemGray6), in: Capsule())
     }
     
     private func expandedDetail(for memo: FloorPlanMemo, in size: CGSize) -> some View {
@@ -313,7 +313,7 @@ struct FloorPlanMemoView: View {
             }
         } label: {
             Image(systemName: isDetailExpanded
-                  ? "arrow.down.right.and.arrow.up.left"
+                  ? "arrow.up.right.and.arrow.down.left"
                   : "arrow.down.left.and.arrow.up.right")
             .font(.system(size: 20, weight: .semibold))
             .foregroundStyle(.primary)
