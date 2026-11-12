@@ -107,8 +107,8 @@ struct CaseListView: View {
                     // 2. 다음 화면에 전달할 사건 보관
                     pendingFloorPlan = newCase
                     
-                    // 3. 조사 중 목록으로 이동
-                    selection = .filter(.inProgress)
+                    // 3. 최근 열람 목록으로 이동
+                    selection = .filter(.recent)
                     
                     // 4. 사건 등록 시트 닫기
                     isPresentingRegistration = false
@@ -120,7 +120,8 @@ struct CaseListView: View {
                     showsSaveError = true
                 }
             }
-            .presentationDragIndicator(.visible)
+            // 작성 중에 바깥을 누르거나 아래로 쓸어도 닫히지 않는다. 닫기는 왼쪽 위 X 버튼으로만 한다
+            .interactiveDismissDisabled()
             .alert("저장 실패", isPresented: $showsSaveError) {
                 Button("확인", role: .cancel) { }
             } message: {
@@ -161,7 +162,7 @@ private struct OpenedCase: Identifiable {
     let startsAtMain: Bool
     /// 메인에서 처음 보여 줄 탭 (미리보기의 앨범·메모 버튼으로 열면 그 탭)
     let startTab: CaseStartTab
-
+    
     var id: UUID { fireCase.id }
 }
 
@@ -241,10 +242,10 @@ extension CaseListView {
     private func folderRow(_ folder: CaseFolder) -> some View {
         HStack {
             Label(folder.name, systemImage: "folder")
-
+            
             if isEditing {
                 Spacer()
-
+                
                 Menu {
                     folderActions(folder)
                 } label: {
@@ -261,7 +262,7 @@ extension CaseListView {
                   let caseID = items.first else {
                 return false
             }
-
+            
             return moveCaseToFolder(
                 caseID: caseID,
                 folder: folder
@@ -496,7 +497,7 @@ extension CaseListView {
         guard let fireCase = allCases.first(where: { $0.id.uuidString == caseID }) else {
             return false
         }
-
+        
         let targetStatus: FireCase.Status
         switch status {
         case .inProgress:
@@ -506,16 +507,16 @@ extension CaseListView {
         case .recent:
             return false
         }
-
+        
         if fireCase.folder == nil && fireCase.status == targetStatus {
             return true
         }
-
+        
         let previousFolder = fireCase.folder
         let previousStatus = fireCase.status
         fireCase.folder = nil
         fireCase.status = targetStatus
-
+        
         do {
             try modelContext.save()
             return true
@@ -527,7 +528,7 @@ extension CaseListView {
             return false
         }
     }
-
+    
     /// 드래그한 사건을 사용자 폴더로 이동하고 저장한다.
     private func moveCaseToFolder(
         caseID: String,
@@ -538,16 +539,16 @@ extension CaseListView {
         }) else {
             return false
         }
-
+        
         // 이미 같은 폴더에 있으면 이동할 필요 없음
         if fireCase.folder?.id == folder.id {
             return true
         }
-
+        
         let previousFolder = fireCase.folder
-
+        
         fireCase.folder = folder
-
+        
         do {
             try modelContext.save()
             return true
