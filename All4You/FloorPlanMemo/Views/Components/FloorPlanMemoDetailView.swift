@@ -30,7 +30,7 @@ struct FloorPlanMemoDetailView: View {
             case .split:
                 splitLayout(width: proxy.size.width)
             case .expanded:
-                expandedLayout(width: proxy.size.width)
+                expandedLayout(size: proxy.size)
             }
         }
         .background(Color(.systemBackground))
@@ -57,7 +57,6 @@ struct FloorPlanMemoDetailView: View {
                     }
                     
                     content
-                        .padding(.horizontal, 13)
                 }
                 .padding(.horizontal, 31)
                 .padding(.top, 18)
@@ -69,27 +68,36 @@ struct FloorPlanMemoDetailView: View {
         }
     }
     
-    private func expandedLayout(width: CGFloat) -> some View {
-        let photoWidth = min(540, max(0, (width - 88) * 540 / 1284))
+    private func expandedLayout(size: CGSize) -> some View {
+        let sidePadding: CGFloat = 32
+        let topPadding: CGFloat = 47
+        let photoWidth = max(0, size.width - sidePadding * 3) * 0.6
+        let photoHeight = max(0, size.height - topPadding - sidePadding)
         
         return ScrollViewReader { scrollProxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    title
-                    
-                    HStack(alignment: .top, spacing: 24) {
-                        if !memo.taggedPhotos.isEmpty {
-                            photoGallery(width: photoWidth, height: photoWidth * 580 / 540)
-                                .id("memo-photo-gallery")
+                Group {
+                    if memo.taggedPhotos.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            title
+                            content
                         }
-                        
-                        content
-                            .padding(.leading, memo.taggedPhotos.isEmpty ? 0 : 32)
+                    } else {
+                        HStack(alignment: .top, spacing: sidePadding) {
+                            photoGallery(width: photoWidth, height: photoHeight)
+                                .id("memo-photo-gallery")
+                                .offset(y: -4)
+                            
+                            VStack(alignment: .leading, spacing: 16) {
+                                title
+                                content
+                            }
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 47)
+                .padding(.horizontal, sidePadding)
+                .padding(.top, topPadding)
             }
             .onChange(of: photoNavigationRequest) { _, _ in
                 withAnimation { scrollProxy.scrollTo("memo-photo-gallery", anchor: .top) }
