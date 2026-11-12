@@ -235,7 +235,7 @@ private struct RoomPlanScanSessionView: View {
                                       ? "카메라 권한을 확인하고 있습니다."
                                       : "설정 → 앱 → FireLine에서 카메라 접근을 허용해 주세요.")
                 )
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
