@@ -16,10 +16,11 @@ struct FloorPlanMemoDetailView: View {
     let memo: FloorPlanMemo
     let presentation: Presentation
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
-
+    
     @State private var isEditing = false
     @State private var editedContent = ""
     @State private var isEditorFocused = false
+    @State private var selectedPhotoIndex = 0
     
     var body: some View {
         GeometryReader { proxy in
@@ -46,7 +47,7 @@ struct FloorPlanMemoDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 title
-
+                
                 if !memo.taggedPhotos.isEmpty {
                     photoGallery(width: photoWidth, height: photoWidth * 511 / 476)
                 }
@@ -66,12 +67,12 @@ struct FloorPlanMemoDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 title
-
+                
                 HStack(alignment: .top, spacing: 24) {
                     if !memo.taggedPhotos.isEmpty {
                         photoGallery(width: photoWidth, height: photoWidth * 580 / 540)
                     }
-
+                    
                     content
                         .padding(.leading, memo.taggedPhotos.isEmpty ? 0 : 32)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -83,27 +84,46 @@ struct FloorPlanMemoDetailView: View {
     }
     
     private func photoGallery(width: CGFloat, height: CGFloat) -> some View {
-        TabView {
-            ForEach(memo.taggedPhotos) { photo in
+        TabView(selection: $selectedPhotoIndex) {
+            ForEach(memo.taggedPhotos.indices, id: \.self) { index in
+                let photo = memo.taggedPhotos[index]
                 Image(uiImage: photo.image)
                     .resizable()
                     .scaledToFill()
                     .frame(width: width, height: height)
                     .clipped()
                     .accessibilityLabel("메모에 태그한 사진")
+                    .tag(index)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: memo.taggedPhotos.count > 1 ? .automatic : .never))
+        .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 41, style: .continuous))
+        .clipped()
+        .overlay(alignment: .bottom) {
+            if memo.taggedPhotos.count > 1 {
+                HStack(spacing: 8) {
+                    ForEach(memo.taggedPhotos.indices, id: \.self) { index in
+                        Circle()
+                            .fill(.white.opacity(selectedPhotoIndex == index ? 1 : 0.45))
+                            .frame(width: 7, height: 7)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(.black.opacity(0.6), in: Capsule())
+                .padding(.bottom, 16)
+                .allowsHitTesting(false)
+                .accessibilityLabel("사진 \(selectedPhotoIndex + 1) / \(memo.taggedPhotos.count)")
+            }
+        }
     }
-
+    
     private var title: some View {
         Text(memo.detailTitle)
             .font(AppTypography.title2Emphasized)
             .foregroundStyle(.primary)
     }
-
+    
     @ViewBuilder
     private var content: some View {
         if isEditing {
@@ -133,7 +153,7 @@ struct FloorPlanMemoDetailView: View {
                 .accessibilityHint("두 번 탭하면 메모를 수정할 수 있습니다")
         }
     }
-
+    
     private func beginEditing() {
         editedContent = memo.content
         isEditing = true
@@ -142,7 +162,7 @@ struct FloorPlanMemoDetailView: View {
             isEditorFocused = true
         }
     }
-
+    
     private func finishEditing() {
         guard isEditing else { return }
         let content = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
