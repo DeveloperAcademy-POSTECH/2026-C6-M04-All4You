@@ -26,6 +26,7 @@ extension PlanData {
         )
         guard isInsideRooms(new), wallOverlap(of: new) == 0 else { return nil }
         furniture = (furniture ?? []) + [new]
+        reseatMarkers()
         return new.id
     }
 
@@ -86,6 +87,7 @@ extension PlanData {
 
     mutating func removeFurniture(id: String) {
         furniture?.removeAll { $0.id == id }
+        reseatMarkers()
     }
 
     /// 가구 하나를 change대로 바꿔 보고, 벽과 겹침이 늘지 않고 방 밖으로 나가지 않을 때만 반영한다
@@ -97,6 +99,7 @@ extension PlanData {
         guard wallOverlap(of: changed) <= wallOverlap(of: current) else { return }
         guard isInsideRooms(changed) || !isInsideRooms(current) else { return }
         furniture?[index] = changed
+        reseatMarkers()
     }
 
     /// 가구와 벽이 겹친 정도. 벽 가운데 선을 일정 간격 점으로 나눠, 가구를 벽 두께 절반만큼 넓힌 안에 든 점 수를 센다. 가상 경계선은 보지 않는다

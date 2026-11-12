@@ -1,4 +1,4 @@
-// 도면 위에 놓는 사람·발화지점 표시 planData.markers 스탬프. 벽에 붙는 콘센트와 성격이 달라 둘이 묶어 분리.
+// 도면 위에 놓는 사람·발화지점·바닥 전기요소 표시 planData.markers 스탬프. 벽에 붙는 콘센트(WallFixture)와 성격이 달라 분리.
 
 /// 바닥 위 위치·높이와 바라보는 방향을 가진 표시. 2D에서는 기호, 3D에서는 모델로 그린다
 struct PlanMarker: Codable, Hashable, Identifiable {
@@ -41,4 +41,9 @@ enum MarkerKind: String, Codable {
     case person
     /// 발화지점
     case ignitionPoint
+    /// 바닥에 놓인 전기요소 (멀티탭·바닥 콘센트 등, 화면 글자 "전기"). 벽에 붙은 콘센트는 `WallFixture`
+    case outlet
+
+    /// 가구 위에 놓이면 가구 윗면 위로 올라오는지. 전기는 가구 밑에 있을 수 있어 가구와 상관없이 바닥에 둔다
+    var sitsOnFurniture: Bool { self != .outlet }
 }

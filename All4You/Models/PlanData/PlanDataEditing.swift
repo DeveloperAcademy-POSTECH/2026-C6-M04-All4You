@@ -19,7 +19,7 @@ extension PlanData {
             id: UUID().uuidString,
             kind: kind,
             position: point,
-            height: 0,
+            height: kind.sitsOnFurniture ? surfaceHeight(at: point) : 0,
             yaw: 0,
             lying: kind == .person ? true : nil,
             scale: scale
@@ -51,7 +51,7 @@ extension PlanData {
                 id: UUID().uuidString,
                 kind: original.kind,
                 position: original.position + offset,
-                height: original.height,
+                height: original.kind.sitsOnFurniture ? surfaceHeight(at: original.position + offset) : original.height,
                 yaw: original.yaw,
                 lying: original.lying,
                 scale: original.scale
@@ -92,7 +92,22 @@ extension PlanData {
         var changed = markers[index]
         change(&changed)
         guard fits(changed) else { return }
+        // 가구 위로 옮기면 가구 윗면 위로 올라오고, 바닥으로 옮기면 내려온다
+        if changed.kind.sitsOnFurniture { changed.height = surfaceHeight(at: changed.position) }
         markers[index] = changed
+    }
+
+    /// 점 point 아래 가구 윗면의 바닥에서 높이 (m). 가구 위가 아니면 0, 가구가 겹쳐 있으면 가장 높은 것.
+    /// 사람·발화지점이 가구 안에 묻히지 않고 가구 위에 올라오게 하는 높이다
+    func surfaceHeight(at point: SIMD2<Double>) -> Double {
+        (furniture ?? []).filter { $0.contains(point) }.map { $0.elevation + $0.height }.max() ?? 0
+    }
+
+    /// 가구를 놓거나 옮기거나 키우거나 지운 뒤, 가구 위에 놓인 사람·발화지점의 높이를 다시 맞춘다
+    mutating func reseatMarkers() {
+        for index in markers.indices where markers[index].kind.sitsOnFurniture {
+            markers[index].height = surfaceHeight(at: markers[index].position)
+        }
     }
 
     /// 사람·발화지점 크기 배율의 범위

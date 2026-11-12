@@ -109,6 +109,9 @@ extension PlanData {
             return addMarker(.person, at: point, scale: defaults?.markerScale(.person)).map(PlanSelection.marker)
         case (.outlet, .wall(let wallId, let point, let height)):
             return addWallFixture(.outlet, wallId: wallId, at: point, height: height).map(PlanSelection.wallFixture)
+        case (.outlet, .floor(let point)):
+            // 전기는 벽 외에 바닥에도 놓을 수 있다 (멀티탭·바닥 콘센트). 바닥에 놓은 것은 사람·발화지점처럼 markers에 넣는다
+            return addMarker(.outlet, at: point, scale: defaults?.markerScale(.outlet)).map(PlanSelection.marker)
         case (.window, .wall(let wallId, let point, _)):
             return addOpening(.window, wallId: wallId, at: point, width: defaults?.windowWidth).map(PlanSelection.doorWindow)
         case (.door, .wall(let wallId, let point, _)):
@@ -125,7 +128,7 @@ extension PlanData {
     /// 눌렀다가 놓이지 않은 자리만 다룬다 (place가 nil을 돌려준 경우)
     func placementHint(for tool: EditTool, at tap: PlanTap) -> String {
         switch (tool, tap) {
-        case (.ignitionPoint, .floor(let point)), (.person, .floor(let point)):
+        case (.ignitionPoint, .floor(let point)), (.person, .floor(let point)), (.outlet, .floor(let point)):
             if !isInsideRoom(point) {
                 return "\(tool.title)는 방 안쪽 바닥에만 놓을 수 있어요. 벽으로 둘러싸인 방 안을 눌러 주세요"
             }
@@ -135,8 +138,6 @@ extension PlanData {
             return "벽에 너무 가까워요. 벽에서 조금 떨어진 방 안쪽 바닥을 눌러 주세요"
         case (.ignitionPoint, _), (.person, _):
             return "\(tool.title)는 벽이 아니라 바닥에 놓아요. 방 안쪽 바닥을 눌러 주세요"
-        case (.outlet, .floor):
-            return "전기는 벽에만 붙일 수 있어요. 방 안쪽을 향한 벽을 눌러 주세요"
         case (.outlet, _):
             return "전기는 방 안쪽을 향한 벽 면에만 붙일 수 있어요. 건물 바깥쪽이 아니라 방 안쪽에서 벽을 눌러 주세요"
         case (.window, .wall), (.door, .wall):

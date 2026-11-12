@@ -519,7 +519,12 @@ extension FloorPlan3DBuilder {
     private static func makeMarker(_ marker: PlanMarker, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let tag = PlanSelection.marker(marker.id)
         let material = stampMaterial(tag, selection: selection)
-        let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
+        let entity: Entity
+        switch marker.kind {
+        case .person: entity = personModel(lying: marker.lying ?? false, material: material)
+        case .ignitionPoint: entity = flameModel(material: material)
+        case .outlet: entity = floorOutletModel(material: material)
+        }
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
         entity.scale = SIMD3(repeating: Float(marker.modelScale))
@@ -554,6 +559,16 @@ extension FloorPlan3DBuilder {
         }
         let wrapper = Entity()
         wrapper.addChild(body)
+        return wrapper
+    }
+
+    /// 바닥에 놓인 전기요소. 바닥에 납작하게 놓인 둥근 상자. 눌러 고를 수 있게 너무 얇지 않게 한다
+    // TEMP: 바닥 전기요소 3D 모양이 디자인에 없어 임의로 정한 크기
+    private static func floorOutletModel(material: SimpleMaterial) -> Entity {
+        let plate = ModelEntity(mesh: .generateBox(width: 0.36, height: 0.08, depth: 0.36, cornerRadius: 0.03), materials: [material])
+        plate.position = [0, 0.04, 0]
+        let wrapper = Entity()
+        wrapper.addChild(plate)
         return wrapper
     }
 
