@@ -22,6 +22,7 @@ struct CaseMainView: View {
     // 메모 추가 버튼을 누른 뒤 도면에서 위치를 고르고 있는지와 작성 중인 내용
     @State private var isAddingMemo = false
     @State private var memoDraft: FloorPlanMemoDraft?
+    @State private var justAddedMemoID: UUID?
     // 메모 작성을 시작할 때 도면의 확대·이동을 초기화해 메모 핀과 도면 좌표를 맞춘다
     @State private var floorPlanPresentationID = UUID()
     // 거절된 권한. 값이 있으면 설정 앱으로 안내하는 알림이 뜬다
@@ -149,7 +150,8 @@ extension CaseMainView {
             photoStore: photoStore,
             isPlacingPhotos: $isPlacingPhotos,
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
-            memos: isAddingMemo ? [] : memoSections.allMemos
+            memos: isAddingMemo ? [] : memoSections.allMemos,
+            highlightedMemoID: justAddedMemoID
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -161,6 +163,7 @@ extension CaseMainView {
                 draft: $memoDraft,
                 onSave: addMemo,
                 onCancel: cancelAddingMemo,
+                highlightedMemoID: justAddedMemoID,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
         }
@@ -248,6 +251,7 @@ extension CaseMainView {
         selection = .floorPlan2D
         isPlacingPhotos = false
         memoDraft = nil
+        justAddedMemoID = nil
         floorPlanPresentationID = UUID()
         withAnimation {
             isAddingMemo = true
@@ -264,7 +268,7 @@ extension CaseMainView {
     
     // 작성을 완료한 메모를 사건에 저장하고 현재 도면을 유지한다.
     private func addMemo(_ draft: FloorPlanMemoDraft) {
-        fireCase.memos.append(Memo(
+        let memo = Memo(
             title: "메모 #\(currentSessionMemos.count + 1)",
             content: draft.content,
             sessionNumber: sessionNumber,
@@ -274,7 +278,9 @@ extension CaseMainView {
             anchorY: draft.anchor.y,
             taggedPhotoIDs: draft.taggedPhotoIDs,
             taggedMarkerIDs: draft.taggedMarkerIDs
-        ))
+        )
+        fireCase.memos.append(memo)
+        justAddedMemoID = memo.id
         isAddingMemo = false
         memoDraft = nil
     }

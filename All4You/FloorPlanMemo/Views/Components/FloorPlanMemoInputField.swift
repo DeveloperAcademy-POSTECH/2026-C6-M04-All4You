@@ -5,14 +5,14 @@
 //  Created by 채유성 on 11/12/26.
 //
 
-//  메모 입력시 키보드 Enter 키를 줄바꿈 대신 저장 동작으로 수행하도록 하는 로직
+//  메모 입력시 키보드 Enter 키를 줄바꿈 대신 태그 확정 또는 저장 동작으로 전달하는 입력 컴포넌트
 import SwiftUI
 import UIKit
 
 struct FloorPlanMemoInputField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
-    let onSubmit: () -> Void
+    let onSubmit: (String) -> Void
     
     func makeUIView(context: Context) -> UITextView {
         let view = UITextView()
@@ -30,7 +30,10 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
     
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
-        if view.text != text { view.text = text }
+        if view.text != text {
+            view.text = text
+            view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+        }
         if isFocused && !view.isFirstResponder {
             DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
                 guard let view, view.window != nil, coordinator?.parent.isFocused == true else { return }
@@ -62,7 +65,9 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
         
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
             guard text == "\n" else { return true }
-            DispatchQueue.main.async { self.parent.onSubmit() }
+            // SwiftUI 상태 갱신보다 Return 이벤트가 먼저 도착해도 마지막 입력 문자를 잃지 않도록 원문 전달
+            let currentText = textView.text ?? ""
+            DispatchQueue.main.async { self.parent.onSubmit(currentText) }
             return false
         }
     }
