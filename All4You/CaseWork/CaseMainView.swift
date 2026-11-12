@@ -54,7 +54,10 @@ struct CaseMainView: View {
         case .album:
             return .albumOverview
         case .memo:
+            let latestSession = fireCase.sessions.map(\.sessionNumber).max() ?? 1
+            let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1
             let firstMemoRoom = fireCase.memos
+                .filter { $0.sessionNumber == latestSession || ($0.sessionNumber == nil && latestSession == firstSession) }
                 .sorted { $0.createdAt < $1.createdAt }
                 .compactMap { memo in planData.rooms.first { $0.id == memo.targetKey }?.name }
                 .first
@@ -77,6 +80,7 @@ struct CaseMainView: View {
             albumTab
         } memo: {
             FloorPlanMemoView(sections: memoSections)
+                .id(sessionNumber)
                 .navigationBarTitleDisplayMode(.inline)
         }
         // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
@@ -156,7 +160,8 @@ extension CaseMainView {
                 isPresented: $isAddingMemo,
                 draft: $memoDraft,
                 onSave: addMemo,
-                onCancel: cancelAddingMemo
+                onCancel: cancelAddingMemo,
+                bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
         }
     }
@@ -260,22 +265,34 @@ extension CaseMainView {
     // 작성을 완료한 메모를 사건에 저장하고 현재 도면을 유지한다.
     private func addMemo(_ draft: FloorPlanMemoDraft) {
         fireCase.memos.append(Memo(
-            title: "메모 #\(fireCase.memos.count + 1)",
+            title: "메모 #\(currentSessionMemos.count + 1)",
             content: draft.content,
+            sessionNumber: sessionNumber,
             targetKey: draft.locationID,
             locationName: draft.locationName,
             anchorX: draft.anchor.x,
-            anchorY: draft.anchor.y
+            anchorY: draft.anchor.y,
+            taggedPhotoIDs: draft.taggedPhotoIDs,
+            taggedMarkerIDs: draft.taggedMarkerIDs
         ))
         isAddingMemo = false
         memoDraft = nil
     }
     
-    /// 이 사건에 저장된 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
+    /// 현재 조사 차수에 저장된 메모
+    private var currentSessionMemos: [Memo] {
+        let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1
+        return fireCase.memos.filter {
+            $0.sessionNumber == sessionNumber || ($0.sessionNumber == nil && sessionNumber == firstSession)
+        }
+    }
+    
+    /// 현재 차수의 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
     /// 장소 이름은 지금 도면의 이름을 쓴다 (메모를 쓴 뒤 장소 이름을 고쳐도 따라온다)
     private var memoSections: [FloorPlanMemoSection] {
         var sections: [FloorPlanMemoSection] = []
-        for memo in fireCase.memos.sorted(by: { $0.createdAt < $1.createdAt }) {
+        let photosByID = Dictionary(uniqueKeysWithValues: photoStore.photos.map { ($0.id, $0) })
+        for memo in currentSessionMemos.sorted(by: { $0.createdAt < $1.createdAt }) {
             sections.append(FloorPlanMemo(
                 id: memo.id,
                 title: memo.title,
@@ -283,7 +300,8 @@ extension CaseMainView {
                 content: memo.content,
                 locationID: memo.targetKey,
                 locationName: planData.rooms.first { $0.id == memo.targetKey }?.name ?? memo.locationName,
-                anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY)
+                anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY),
+                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] }
             ))
         }
         return sections

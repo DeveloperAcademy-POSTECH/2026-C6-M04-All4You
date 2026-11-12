@@ -33,8 +33,9 @@ struct FloorPlanMemoDetailView: View {
         
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                FloorPlanMemoPhotoPlaceholder()
-                    .frame(width: photoWidth, height: photoWidth * 511 / 476)
+                if !memo.taggedPhotos.isEmpty {
+                    photoGallery(width: photoWidth, height: photoWidth * 511 / 476)
+                }
                 
                 FloorPlanMemoDetailText(memo: memo)
                     .padding(.horizontal, 13)
@@ -50,31 +51,34 @@ struct FloorPlanMemoDetailView: View {
         
         return ScrollView {
             HStack(alignment: .top, spacing: 24) {
-                FloorPlanMemoPhotoPlaceholder()
-                    .frame(width: photoWidth, height: photoWidth * 580 / 540)
+                if !memo.taggedPhotos.isEmpty {
+                    photoGallery(width: photoWidth, height: photoWidth * 580 / 540)
+                }
                 
                 FloorPlanMemoDetailText(memo: memo)
                     .padding(.horizontal, 32)
-                    .padding(.top, 10)
+                    .padding(.top, memo.taggedPhotos.isEmpty ? 0 : 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 32)
             .padding(.top, 47)
         }
     }
-}
-
-private struct FloorPlanMemoPhotoPlaceholder: View {
-    var body: some View {
-        ZStack {
-            Color(.secondarySystemBackground)
-            Text("사진 영역")
-                .font(AppTypography.headlineEmphasized)
-                .foregroundStyle(.secondary)
+    
+    private func photoGallery(width: CGFloat, height: CGFloat) -> some View {
+        TabView {
+            ForEach(memo.taggedPhotos) { photo in
+                Image(uiImage: photo.image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .accessibilityLabel("메모에 태그한 사진")
+            }
         }
+        .tabViewStyle(.page(indexDisplayMode: memo.taggedPhotos.count > 1 ? .automatic : .never))
+        .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 41, style: .continuous))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("메모 사진 영역")
     }
 }
 

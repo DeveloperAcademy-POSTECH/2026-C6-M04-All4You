@@ -21,6 +21,8 @@ struct FloorPlanMemoDraft: Equatable {
     let locationID: String?
     let locationName: String
     var content = ""
+    var taggedPhotoIDs: [UUID] = []
+    var taggedMarkerIDs: [String] = []
 }
 
 struct FloorPlanMemoSection: Identifiable {
@@ -38,6 +40,8 @@ struct FloorPlanMemo: Identifiable {
     let locationID: String?
     let locationName: String
     let anchor: FloorPlanMemoAnchor
+    /// 메모에 태그된 사진
+    let taggedPhotos: [LoadedPhoto]
     
     init(
         id: UUID = UUID(),
@@ -46,7 +50,8 @@ struct FloorPlanMemo: Identifiable {
         content: String,
         locationID: String?,
         locationName: String,
-        anchor: FloorPlanMemoAnchor
+        anchor: FloorPlanMemoAnchor,
+        taggedPhotos: [LoadedPhoto] = []
     ) {
         self.id = id
         self.title = title
@@ -55,6 +60,7 @@ struct FloorPlanMemo: Identifiable {
         self.locationID = locationID
         self.locationName = locationName
         self.anchor = anchor
+        self.taggedPhotos = taggedPhotos
     }
     
     var detailTitle: String { title }

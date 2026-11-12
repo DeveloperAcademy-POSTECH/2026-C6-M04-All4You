@@ -15,12 +15,18 @@ struct FloorPlanMemoPlacementOverlay: View {
     @Binding var draft: FloorPlanMemoDraft?
     let onSave: (FloorPlanMemoDraft) -> Void
     let onCancel: () -> Void
+    /// 현재 조사 차수의 북마크 사진
+    var bookmarkedPhotos: [LoadedPhoto] = []
     /// 도면이 실제로 놓인 화면 자리. 주면 저장된 메모 핀을 이 자리에 맞춰 그려서, 도면을 확대·이동하거나 옆에 사진 모음이 열려 도면이 좁아져도 핀이 따라간다.
     /// nil이면 이 오버레이 크기에 도면을 맞춘 자리로 그린다 (메모 위치를 고를 때)
     var screen: PlanScreen? = nil
     
-    @FocusState private var isTextFieldFocused: Bool
+    @State private var isTextFieldFocused = false
     @State private var selectedMemoID: FloorPlanMemo.ID?
+    @State private var isTagPickerPresented = false
+    @State private var keyboardFrame: CGRect = .null
+    @State private var taggedPhotoTokens: [UUID: String] = [:]
+    @State private var taggedMarkerTokens: [String: String] = [:]
     
     var body: some View {
         GeometryReader { proxy in
@@ -35,7 +41,11 @@ struct FloorPlanMemoPlacementOverlay: View {
                 
                 if isPresented {
                     if let draft {
-                        draftEditor(for: draft, in: proxy.size)
+                        draftEditor(
+                            for: draft,
+                            in: proxy.size,
+                            keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                        )
                     } else {
                         instruction
                             .position(x: proxy.size.width / 2, y: Layout.instructionTop)
@@ -48,8 +58,23 @@ struct FloorPlanMemoPlacementOverlay: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isPresented)
-        .onChange(of: draft) { _, newDraft in
-            guard newDraft != nil else { return }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+            keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .null
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardFrame = .null
+        }
+        .onChange(of: draft) { oldDraft, newDraft in
+            guard let newDraft else {
+                isTagPickerPresented = false
+                taggedPhotoTokens = [:]
+                taggedMarkerTokens = [:]
+                return
+            }
+            guard oldDraft?.anchor != newDraft.anchor else { return }
+            isTagPickerPresented = false
+            taggedPhotoTokens = [:]
+            taggedMarkerTokens = [:]
             Task { @MainActor in
                 isTextFieldFocused = true
             }
@@ -147,53 +172,55 @@ private extension FloorPlanMemoPlacementOverlay {
         .position(position)
     }
     
-    func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize) -> some View {
+    func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
         let anchorPoint = screenPoint(for: draft.anchor, in: size)
-        let editorPosition = editorPosition(around: anchorPoint, in: size)
+        let editorWidth = min(Layout.editorWidth, size.width - Layout.edgePadding * 2)
+        let editorPosition = editorPosition(
+            around: anchorPoint,
+            in: size,
+            editorWidth: editorWidth,
+            keyboardTop: keyboardTop
+        )
         
         return ZStack(alignment: .topLeading) {
-            Image("memoBubble")
-                .resizable()
-                .frame(width: Layout.draftPinSize, height: Layout.draftPinSize * 37 / 40)
-                .position(anchorPoint)
-            
-            HStack(alignment: .bottom, spacing: Layout.editorSpacing) {
-                TextField(
+            ZStack(alignment: .topLeading) {
+                FloorPlanMemoInputField(
                     text: draftContent,
-                    prompt: Text(Copy.placeholder).foregroundStyle(.white.opacity(0.7)),
-                    axis: .vertical
-                ) {
+                    isFocused: $isTextFieldFocused,
+                    onSubmit: saveDraft
+                )
+                if draft.content.isEmpty {
                     Text(Copy.placeholder)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .allowsHitTesting(false)
                 }
-                .lineLimit(1...Layout.maximumLines)
-                .textFieldStyle(.plain)
-                .font(AppTypography.headline)
-                .foregroundStyle(.white)
-                .submitLabel(.done)
-                .focused($isTextFieldFocused)
-                .onSubmit(saveDraft)
-                
-                Button(action: saveDraft) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: Layout.sendIconSize, weight: .bold))
-                        .foregroundStyle(.black)
-                        .frame(width: Layout.sendButtonSize, height: Layout.sendButtonSize)
-                        .background(Color.brand500, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(trimmedContent.isEmpty)
-                .opacity(trimmedContent.isEmpty ? Layout.disabledOpacity : 1)
-                .accessibilityLabel(Copy.complete)
             }
+            .frame(
+                width: editorWidth - Layout.editorHorizontalPadding * 2,
+                height: Layout.editorHeight - Layout.editorVerticalPadding * 2,
+                alignment: .topLeading
+            )
             .padding(.horizontal, Layout.editorHorizontalPadding)
             .padding(.vertical, Layout.editorVerticalPadding)
-            .frame(width: Layout.editorWidth, alignment: .leading)
+            .frame(width: editorWidth, height: Layout.editorHeight, alignment: .leading)
             .background(.black, in: RoundedRectangle(cornerRadius: Layout.editorCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Layout.editorCornerRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: Layout.editorCornerRadius)
                     .strokeBorder(Color.brand500, lineWidth: Layout.editorBorderWidth)
             }
             .position(editorPosition)
+            
+            if isTagPickerPresented {
+                tagPicker
+                    .frame(width: min(Layout.tagPickerWidth, size.width - Layout.edgePadding * 2), height: Layout.tagPickerHeight)
+                    .position(
+                        x: editorPosition.x,
+                        y: editorPosition.y + Layout.editorHeight / 2 + Layout.tagPickerGap + Layout.tagPickerHeight / 2
+                    )
+            }
         }
     }
     
@@ -203,9 +230,148 @@ private extension FloorPlanMemoPlacementOverlay {
             set: { newValue in
                 guard var updated = draft else { return }
                 updated.content = newValue
+                reconcileTags(in: &updated)
+                
+                // #3처럼 번호를 직접 입력하면 북마크 목록의 세 번째 사진 UUID를 연결
+                if let hashIndex = newValue.lastIndex(of: "#") {
+                    let suffix = newValue[newValue.index(after: hashIndex)...]
+                    if !suffix.isEmpty, suffix.allSatisfy(\.isNumber),
+                       let number = Int(suffix), number > 0 {
+                        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+                        if photos.indices.contains(number - 1) {
+                            let photo = photos[number - 1]
+                            // 입력 문자열을 바꾸지 않아야 UITextView가 숫자 키 입력과 커서를 유지함
+                            // #1 다음에 0을 입력하면 기존 태그가 해제되고 #10으로 다시 연결됨
+                            let token = "#\(number)"
+                            if !updated.taggedPhotoIDs.contains(photo.id) {
+                                updated.taggedPhotoIDs.append(photo.id)
+                            }
+                            taggedPhotoTokens[photo.id] = token
+                            draft = updated
+                            isTagPickerPresented = false
+                            return
+                        }
+                    }
+                }
+                
                 draft = updated
+                let pendingTag = newValue.split(separator: "#", omittingEmptySubsequences: false).last ?? ""
+                isTagPickerPresented = newValue.contains("#") && (pendingTag.isEmpty || pendingTag.allSatisfy(\.isNumber))
             }
         )
+    }
+    
+    func reconcileTags(in draft: inout FloorPlanMemoDraft) {
+        taggedPhotoTokens = taggedPhotoTokens.filter { _, token in
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+        }
+        taggedMarkerTokens = taggedMarkerTokens.filter { _, token in
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+        }
+        draft.taggedPhotoIDs.removeAll { taggedPhotoTokens[$0] == nil }
+        draft.taggedMarkerIDs.removeAll { taggedMarkerTokens[$0] == nil }
+    }
+    
+    var tagPicker: some View {
+        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+        let markers = planData.markers.filter { $0.kind == .ignitionPoint }
+        let availablePhotos = Array(photos.enumerated()).filter { !(draft?.taggedPhotoIDs.contains($0.element.id) ?? false) }
+        let availableMarkers = Array(markers.enumerated()).filter { !(draft?.taggedMarkerIDs.contains($0.element.id) ?? false) }
+        
+        return Group {
+            if availablePhotos.isEmpty && availableMarkers.isEmpty {
+                Text(photos.isEmpty && markers.isEmpty
+                     ? "발화지점이나 북마크한 사진이 없어요"
+                     : "모든 발화지점과 북마크한 사진을 태그했어요")
+                .foregroundStyle(.secondary)
+                .padding(20)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 16) {
+                        ForEach(availableMarkers.indices, id: \.self) { index in
+                            let marker = availableMarkers[index].element
+                            let number = availableMarkers[index].offset + 1
+                            Button {
+                                tagMarker(marker, number: number)
+                            } label: {
+                                tagTile(number: number) {
+                                    Image(systemName: "flame.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundStyle(.orange)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(Color(uiColor: .systemGray4))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("발화지점 \(number) 태그")
+                        }
+                        
+                        ForEach(availablePhotos.indices, id: \.self) { index in
+                            let photo = availablePhotos[index].element
+                            let number = availablePhotos[index].offset + 1
+                            Button {
+                                tagPhoto(photo, number: number)
+                            } label: {
+                                tagTile(number: number) {
+                                    Image(uiImage: photo.thumbnail)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: Layout.tagTileSize, height: Layout.tagTileSize)
+                                        .clipped()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("북마크 사진 \(number) 태그")
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGray5), in: RoundedRectangle(cornerRadius: 16))
+    }
+    
+    func tagTile<Content: View>(number: Int, @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 4) {
+            content()
+                .frame(width: Layout.tagTileSize, height: Layout.tagTileSize)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            Text("#\(number)")
+                .font(AppTypography.headlineEmphasized)
+                .foregroundStyle(.primary)
+        }
+        .frame(width: Layout.tagTileSize)
+    }
+    
+    func tagPhoto(_ photo: LoadedPhoto, number: Int) {
+        guard var updated = draft else { return }
+        guard !updated.taggedPhotoIDs.contains(photo.id) else { return }
+        updated.taggedPhotoIDs.append(photo.id)
+        let token = "사진#\(number)"
+        appendTag(token, to: &updated)
+        taggedPhotoTokens[photo.id] = token
+        draft = updated
+        isTagPickerPresented = false
+        Task { @MainActor in isTextFieldFocused = true }
+    }
+    
+    func tagMarker(_ marker: PlanMarker, number: Int) {
+        guard var updated = draft else { return }
+        guard !updated.taggedMarkerIDs.contains(marker.id) else { return }
+        updated.taggedMarkerIDs.append(marker.id)
+        let token = "#발화지점\(number)"
+        appendTag(token, to: &updated)
+        taggedMarkerTokens[marker.id] = token
+        draft = updated
+        isTagPickerPresented = false
+        Task { @MainActor in isTextFieldFocused = true }
+    }
+    
+    func appendTag(_ tag: String, to draft: inout FloorPlanMemoDraft) {
+        if draft.content.hasSuffix("#") { draft.content.removeLast() }
+        if !draft.content.isEmpty && !draft.content.hasSuffix(" ") { draft.content += " " }
+        draft.content += tag
     }
     
     var trimmedContent: String {
@@ -235,12 +401,21 @@ private extension FloorPlanMemoPlacementOverlay {
         return CGPoint(x: point.x, y: point.y + Layout.floorPlanVerticalInset)
     }
     
-    func editorPosition(around anchor: CGPoint, in size: CGSize) -> CGPoint {
-        let preferredX = anchor.x + Layout.editorWidth / 2 + Layout.editorOffset
+    func editorPosition(
+        around anchor: CGPoint,
+        in size: CGSize,
+        editorWidth: CGFloat,
+        keyboardTop: CGFloat?
+    ) -> CGPoint {
+        let preferredX = anchor.x + editorWidth / 2 + Layout.editorOffset
         let preferredY = anchor.y - Layout.editorHeight / 2
+        let visibleBottom = min(size.height, keyboardTop ?? size.height) - Layout.edgePadding
+        let pickerSpace = isTagPickerPresented ? Layout.tagPickerHeight + Layout.tagPickerGap : 0
+        let highestCenter = Layout.editorHeight / 2 + Layout.edgePadding
+        let lowestCenter = max(highestCenter, visibleBottom - pickerSpace - Layout.editorHeight / 2)
         return CGPoint(
-            x: min(max(preferredX, Layout.editorWidth / 2 + Layout.edgePadding), size.width - Layout.editorWidth / 2 - Layout.edgePadding),
-            y: min(max(preferredY, Layout.editorHeight / 2 + Layout.edgePadding), size.height - Layout.editorHeight / 2 - Layout.edgePadding)
+            x: min(max(preferredX, editorWidth / 2 + Layout.edgePadding), size.width - editorWidth / 2 - Layout.edgePadding),
+            y: min(max(preferredY, highestCenter), lowestCenter)
         )
     }
     
@@ -267,26 +442,24 @@ private extension FloorPlanMemoPlacementOverlay {
         static let cancelPadding: CGFloat = 16
         static let pinSize: CGFloat = 38
         static let pinHitSize: CGFloat = 48
-        static let draftPinSize: CGFloat = 28
         static let cardWidth: CGFloat = 320
         static let cardHeight: CGFloat = 140
-        static let editorWidth: CGFloat = 360
-        static let editorHeight: CGFloat = 88
+        static let editorWidth: CGFloat = 464
+        static let editorHeight: CGFloat = 70
         static let editorOffset: CGFloat = 16
-        static let editorSpacing: CGFloat = 12
         static let editorHorizontalPadding: CGFloat = 16
         static let editorVerticalPadding: CGFloat = 14
         static let editorCornerRadius: CGFloat = 12
         static let editorBorderWidth: CGFloat = 1.5
-        static let sendButtonSize: CGFloat = 32
-        static let sendIconSize: CGFloat = 14
-        static let maximumLines = 3
-        static let disabledOpacity = 0.45
+        static let tagPickerWidth: CGFloat = 464
+        static let tagTileSize: CGFloat = 116
+        static let tagPickerHeight: CGFloat = 184
+        static let tagPickerGap: CGFloat = 8
         static let edgePadding: CGFloat = 16
     }
     
     enum Copy {
-        static let placeholder = "메모를 입력하세요."
+        static let placeholder = "메모를 입력하세요.\n#을 입력하면 발화지점이나 북마크한 사진을 태그할 수 있어요."
         static let complete = "메모 작성 완료"
         static let cancel = "메모 작성 취소"
         static let otherLocation = "기타"
