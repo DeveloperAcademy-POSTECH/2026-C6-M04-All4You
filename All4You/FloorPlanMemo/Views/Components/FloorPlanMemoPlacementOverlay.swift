@@ -37,6 +37,10 @@ struct FloorPlanMemoPlacementOverlay: View {
             ZStack(alignment: .topLeading) {
                 if isPresented {
                     placementSurface(in: proxy.size)
+                } else if selectedMemoID != nil {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedMemoID = nil }
                 }
                 
                 ForEach(memos) { memo in
@@ -101,6 +105,7 @@ private extension FloorPlanMemoPlacementOverlay {
     }
     
     func placeDraft(at location: CGPoint, in size: CGSize) {
+        selectedMemoID = nil
         // 입력된 초안이 있으면 도면의 다른 위치를 눌러도 작성 중인 메모를 유지
         guard draft?.content.isEmpty ?? true else { return }
         let canvasSize = drawingSize(in: size)
@@ -114,7 +119,6 @@ private extension FloorPlanMemoPlacementOverlay {
         let planPoint = screen.plan(canvasPoint)
         let room = planData.room(containing: planPoint)
         
-        selectedMemoID = nil
         draft = FloorPlanMemoDraft(
             anchor: FloorPlanMemoAnchor(x: planPoint.x, y: planPoint.y),
             locationID: room?.id,
