@@ -237,7 +237,7 @@ private extension FloorPlanMemoPlacementOverlay {
             isEditingFocused = true
         }
     }
-
+    
     func finishEditingMemo() {
         guard let id = editingMemoID else { return }
         let content = editingContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -246,7 +246,7 @@ private extension FloorPlanMemoPlacementOverlay {
         guard !content.isEmpty, content != memos.first(where: { $0.id == id })?.content else { return }
         onUpdateMemo(id, content)
     }
-
+    
     func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
         let anchorPoint = screenPoint(for: draft.anchor, in: size)
         let editorWidth = min(Layout.editorWidth, size.width - Layout.edgePadding * 2)
@@ -309,8 +309,10 @@ private extension FloorPlanMemoPlacementOverlay {
                         x: editorPosition.x,
                         y: editorPosition.y + Layout.editorHeight / 2 + Layout.tagPickerGap + Layout.tagPickerHeight / 2
                     )
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
             }
         }
+        .animation(.easeOut(duration: 0.22), value: isTagPickerPresented)
     }
     
     var draftContent: Binding<String> {
