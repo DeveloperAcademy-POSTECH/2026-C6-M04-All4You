@@ -80,7 +80,7 @@ struct CaseMainView: View {
         } album: {
             albumTab
         } memo: {
-            FloorPlanMemoView(sections: memoSections, onDeleteMemo: deleteMemo)
+            FloorPlanMemoView(sections: memoSections, onDeleteMemo: deleteMemo, onUpdateMemo: updateMemo)
                 .id(sessionNumber)
                 .navigationBarTitleDisplayMode(.inline)
         }
@@ -301,7 +301,7 @@ extension CaseMainView {
         guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
         memo.content = content
     }
-
+    
     /// 현재 조사 차수에 저장된 메모
     private var currentSessionMemos: [Memo] {
         let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1

@@ -208,7 +208,9 @@ private extension FloorPlanMemoPlacementOverlay {
                 }
                 .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
                 .contentShape(Rectangle())
-                .onTapGesture { beginEditingMemo(memo) }
+                .onLongPressGesture(minimumDuration: 0.5) { beginEditingMemo(memo) }
+                .accessibilityHint("길게 눌러 메모를 수정할 수 있습니다")
+                .accessibilityAction(named: "메모 수정") { beginEditingMemo(memo) }
             }
         }
         .padding(20)

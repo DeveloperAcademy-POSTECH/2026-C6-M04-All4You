@@ -10,6 +10,7 @@ import SwiftUI
 struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     
     // nil이면 전체, 값이 있으면 Room.id에 해당하는 메모만 보여줌
     @State private var selectedLocationID: String?
@@ -25,10 +26,12 @@ struct FloorPlanMemoView: View {
     
     init(
         sections: [FloorPlanMemoSection] = [],
-        onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in }
+        onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in },
+        onUpdateMemo: @escaping (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     ) {
         self.sections = sections
         self.onDeleteMemo = onDeleteMemo
+        self.onUpdateMemo = onUpdateMemo
     }
     
     init(
@@ -38,6 +41,7 @@ struct FloorPlanMemoView: View {
     ) {
         self.sections = sections
         self.onDeleteMemo = { _ in }
+        self.onUpdateMemo = { _, _ in }
         _selectedMemoID = State(initialValue: selectedMemoID)
         _isDetailExpanded = State(initialValue: isDetailExpanded)
     }
@@ -295,8 +299,10 @@ struct FloorPlanMemoView: View {
     ) -> some View {
         FloorPlanMemoDetailView(
             memo: memo,
-            presentation: presentation
+            presentation: presentation,
+            onUpdateMemo: onUpdateMemo
         )
+        .id(memo.id)
     }
     
     private var expansionButton: some View {
