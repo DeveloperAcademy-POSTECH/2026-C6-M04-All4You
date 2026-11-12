@@ -34,7 +34,7 @@ struct FloorPlanMemoSection: Identifiable {
 
 struct FloorPlanMemo: Identifiable {
     let id: UUID
-    let title: String
+    var title: String
     let createdAt: Date
     let content: String
     let locationID: String?

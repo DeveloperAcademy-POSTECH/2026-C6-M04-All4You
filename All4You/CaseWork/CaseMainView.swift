@@ -327,6 +327,15 @@ extension CaseMainView {
                 taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] }
             ))
         }
+        
+        // 도면 핀이 쓰는 섹션별 목록 순서로 표시 제목도 매번 계산해 삭제 후 번호를 맞춤
+        var displayNumber = 0
+        for sectionIndex in sections.indices {
+            for memoIndex in sections[sectionIndex].memos.indices {
+                displayNumber += 1
+                sections[sectionIndex].memos[memoIndex].title = "메모 #\(displayNumber)"
+            }
+        }
         return sections
     }
     
