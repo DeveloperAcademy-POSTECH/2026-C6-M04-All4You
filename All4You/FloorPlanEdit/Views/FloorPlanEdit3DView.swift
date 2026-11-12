@@ -22,11 +22,23 @@ struct FloorPlanEdit3DView: View {
     static let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, showsResetButton: true, isStampToolActive: selectedTool != nil)
+        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, showsResetButton: true, showsCompass: true, isStampToolActive: selectedTool != nil, tapsThroughFurniture: tapsThroughFurniture, tapsFurnitureTopAsFloor: placesOnFurniture, onRenameRoom: renameRoom, onRenameFurniture: renameFurniture, resetToken: resetToken)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
             .onChange(of: resetToken) { selection = nil }
+    }
+}
+
+// 스탬프가 가구와 겹칠 때
+// 사람·발화지점은 가구 위에 올라오도록 가구 윗면을 눌러 놓고, 전기·창문·문은 가구 밑·뒤에 있을 수 있어 가구를 지나쳐 그 뒤 바닥·벽에 놓는다
+extension FloorPlanEdit3DView {
+    private var placesOnFurniture: Bool {
+        selectedTool == .person || selectedTool == .ignitionPoint
+    }
+
+    private var tapsThroughFurniture: Bool {
+        selectedTool != nil && !placesOnFurniture
     }
 }
 
@@ -42,7 +54,7 @@ extension FloorPlanEdit3DView {
 extension FloorPlanEdit3DView {
     /// 이미 놓인 스탬프·창문을 누르면 도구와 상관없이 그것을 고른다.
     /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 고른 것을 푼다.
-    /// 도구는 놓은 뒤에도 켜져 있어서, 같은 버튼을 다시 누르거나 다른 도구를 고를 때까지 계속 놓을 수 있다.
+    /// 도구는 한 번 놓으면 꺼진다.
     /// 방금 놓은 스탬프를 고른 상태로 둔다
     private func handleTap(_ tap: PlanTap?) {
         switch (selectedTool, tap) {
@@ -51,10 +63,23 @@ extension FloorPlanEdit3DView {
         case (nil, _):
             selection = nil
         case (let tool?, let tap?):
-            selection = planData.place(tool, at: tap, defaults: stampDefaults) ?? selection
+            if let placed = planData.place(tool, at: tap, defaults: stampDefaults) {
+                selection = placed
+                // 한 번 놓으면 도구가 꺼진다. 한 번에 여러 개 놓이지 않게 한다
+                selectedTool = nil
+            }
         case (_?, nil):
             break
         }
+    }
+
+    /// 3D에서 캡슐을 눌러 고친 공간·가구 이름을 도면에 넣는다
+    private func renameRoom(id: String, name: String) {
+        planData.renameRoom(id: id, to: name)
+    }
+
+    private func renameFurniture(id: String, name: String) {
+        planData.renameFurniture(id: id, to: name)
     }
 
     /// 옮기거나 돌리거나 복제·삭제한 스탬프를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다

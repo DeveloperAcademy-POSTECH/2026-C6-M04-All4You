@@ -1,5 +1,5 @@
 // 도면을 위에서 본 2D 그림. 벽·문·창문은 선으로, 가구는 윗면 모양으로, 스탬프는 아이콘으로, 공간·가구 이름은 캡슐로 그린다
-// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐은 roomLabelActions로 누르기·끌기를, 가구 이름 캡슐은 onTapFurnitureLabel로 누르기를 알린다)
+// 그리기만 한다. 누르기·끌기는 이 그림을 쓰는 화면이 붙인다 (공간 이름 캡슐은 roomLabelActions로 누르기·끌기를 알린다. 가구 이름 캡슐은 화면이 누른 자리로 판정한다)
 
 import SwiftUI
 
@@ -19,8 +19,6 @@ struct Plan2DView: View {
     var roomLabelActions: RoomLabelActions? = nil
     /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 가구 (Furniture.id). 이 가구의 이름 캡슐은 그리지 않는다
     var editingFurnitureId: String? = nil
-    /// 가구 이름 캡슐을 누를 때 알릴 곳 (Furniture.id). nil이면 캡슐은 보기만 하고 누르기는 아래 도면으로 지나간다
-    var onTapFurnitureLabel: ((String) -> Void)? = nil
     /// 이름 캡슐을 그리지 않을 방들 (Room.id). 사건 메인에서 사진 핀 캡슐이 이름을 대신하는 방에 쓴다
     var hiddenLabelRoomIds: Set<String> = []
 
@@ -30,6 +28,14 @@ struct Plan2DView: View {
         let footprint = marker.footprint
         let delta = footprint.end - footprint.start
         return max((delta * delta).sum().squareRoot(), footprint.radius * 2)
+    }
+    /// 표시 종류별 아이콘. 도구 막대의 같은 이름 도구와 같은 모양이다
+    static func iconName(of kind: MarkerKind) -> String {
+        switch kind {
+        case .person: EditTool.person.iconName
+        case .ignitionPoint: EditTool.ignitionPoint.iconName
+        case .outlet: EditTool.outlet.iconName
+        }
     }
     /// 아이콘에서 고른 테두리까지 (pt). 손잡이도 이 테두리 모서리에 붙는다
     static let selectionPadding: CGFloat = 6
@@ -181,8 +187,8 @@ extension Plan2DView {
                 if furniture.id != editingFurnitureId {
                     FurnitureLabelView(label: furniture.label)
                         .overlay { selectionBorder(isSelected: selection == .furniture(furniture.id)) }
-                        .onTapGesture { onTapFurnitureLabel?(furniture.id) }
-                        .allowsHitTesting(onTapFurnitureLabel != nil)
+                        // 누르기는 화면이 판정한다 (Plan2DHitTest). 스탬프가 가구 이름 위에 겹치면 스탬프가 먼저 눌리게 하려고 캡슐 자체는 누르지 않는다
+                        .allowsHitTesting(false)
                         .position(screen.point(furniture.center))
                 }
             }
@@ -196,7 +202,7 @@ extension Plan2DView {
     private var stamps: some View {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
-                stampIcon(marker.kind == .person ? EditTool.person.iconName : EditTool.ignitionPoint.iconName, size: Self.iconSize(of: marker))
+                stampIcon(Self.iconName(of: marker.kind), size: Self.iconSize(of: marker))
                     // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
