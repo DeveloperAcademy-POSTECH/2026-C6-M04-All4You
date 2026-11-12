@@ -75,6 +75,6 @@ struct FloorPlanMemoRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .memoDeleteMenu(onDelete: onDelete)
+        .memoDeleteMenu(allowsSwipeDelete: true, onDelete: onDelete)
     }
 }

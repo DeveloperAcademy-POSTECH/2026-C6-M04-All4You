@@ -15,11 +15,22 @@ struct FloorPlanMemoDeleteLabel: View {
 }
 
 struct FloorPlanMemoDeleteMenu: ViewModifier {
+    let allowsSwipeDelete: Bool
     let onDelete: () -> Void
     @State private var isDeleteConfirmationPresented = false
     
     func body(content: Content) -> some View {
         content
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                if allowsSwipeDelete {
+                    Button {
+                        isDeleteConfirmationPresented = true
+                    } label: {
+                        Label("삭제", systemImage: "trash")
+                    }
+                    .tint(.red)
+                }
+            }
             .contextMenu {
                 Button(role: .destructive) {
                     isDeleteConfirmationPresented = true
@@ -37,7 +48,10 @@ struct FloorPlanMemoDeleteMenu: ViewModifier {
 }
 
 extension View {
-    func memoDeleteMenu(onDelete: @escaping () -> Void) -> some View {
-        modifier(FloorPlanMemoDeleteMenu(onDelete: onDelete))
+    func memoDeleteMenu(
+        allowsSwipeDelete: Bool = false,
+        onDelete: @escaping () -> Void
+    ) -> some View {
+        modifier(FloorPlanMemoDeleteMenu(allowsSwipeDelete: allowsSwipeDelete, onDelete: onDelete))
     }
 }
