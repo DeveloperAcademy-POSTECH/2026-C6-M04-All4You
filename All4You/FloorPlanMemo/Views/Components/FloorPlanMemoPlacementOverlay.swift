@@ -101,6 +101,8 @@ private extension FloorPlanMemoPlacementOverlay {
     }
     
     func placeDraft(at location: CGPoint, in size: CGSize) {
+        // 입력된 초안이 있으면 도면의 다른 위치를 눌러도 작성 중인 메모를 유지
+        guard draft?.content.isEmpty ?? true else { return }
         let canvasSize = drawingSize(in: size)
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
         
