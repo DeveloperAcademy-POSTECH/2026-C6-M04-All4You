@@ -78,6 +78,20 @@ extension PlanData {
         }
     }
 
+    /// 가구를 바닥에서 elevation(m)만큼 띄운다. 0(바닥)부터 천장에 닿기 전까지(가구 높이를 더해서)로 맞춘다
+    mutating func elevateFurniture(id: String, to elevation: Double) {
+        guard let index = furniture?.firstIndex(where: { $0.id == id }), let item = furniture?[index] else { return }
+        let limit = maxElevation(of: item)
+        furniture?[index].elevation = min(max(elevation, 0), limit)
+        reseatMarkers()
+    }
+
+    /// 가구를 띄울 수 있는 가장 높은 자리 (m). 천장(가장 높은 벽)에서 가구 높이를 뺀 만큼이고, 벽이 없으면 0
+    func maxElevation(of furniture: Furniture) -> Double {
+        let ceiling = walls.filter { !$0.isVirtual }.map(\.height).max() ?? 0
+        return max(ceiling - furniture.height, 0)
+    }
+
     /// 가구 이름을 바꾼다. 앞뒤 빈칸을 빼고 비어 있으면 바꾸지 않는다
     mutating func renameFurniture(id: String, to label: String) {
         let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -563,6 +563,9 @@ extension FloorPlan3DView {
                 ResizeHandleView()
                     .position(stampScreenPoints.resizeHandle)
                     .gesture(resizeFurnitureGesture(id: id, center: stampScreenPoints.center))
+                ElevationHandleView()
+                    .position(stampScreenPoints.elevationHandle)
+                    .gesture(elevateFurnitureGesture(id: id, pointsPerMeter: stampScreenPoints.pointsPerMeter))
             }
         }
     }
@@ -641,6 +644,30 @@ extension FloorPlan3DView {
             }
     }
 
+    /// 가구 높이 손잡이. 위로 끌면 끈 만큼 바닥에서 떠오르고 아래로 끌면 내려온다.
+    /// 끄는 동안은 미리 보기 도면으로 장면을 다시 만들고, 손을 떼면 도면을 한 번 바꾼다
+    private func elevateFurnitureGesture(id: String, pointsPerMeter: CGFloat) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                guard let elevation = elevatedFurniture(id: id, drag: value, pointsPerMeter: pointsPerMeter) else { return }
+                var preview = planData
+                preview.elevateFurniture(id: id, to: elevation)
+                windowPreview = preview
+            }
+            .onEnded { value in
+                windowPreview = nil
+                guard let elevation = elevatedFurniture(id: id, drag: value, pointsPerMeter: pointsPerMeter) else { return }
+                onEdit(.elevateFurniture(id: id, elevation: elevation))
+            }
+    }
+
+    /// 손가락이 화면에서 위로 끈 거리를 도면의 미터로 바꿔 처음 높이에 더한 높이
+    private func elevatedFurniture(id: String, drag: DragGesture.Value, pointsPerMeter: CGFloat) -> Double? {
+        guard let furniture = planData.furniture?.first(where: { $0.id == id }), pointsPerMeter > 1 else { return nil }
+        let meters = Double((drag.startLocation.y - drag.location.y) / pointsPerMeter)
+        return furniture.elevation + meters
+    }
+
     private func resizedFurniture(id: String, drag: DragGesture.Value, center: CGPoint) -> (width: Double, depth: Double)? {
         guard let furniture = planData.furniture?.first(where: { $0.id == id }) else { return nil }
         func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
@@ -648,20 +675,21 @@ extension FloorPlan3DView {
         return (max(furniture.width * ratio, Furniture.minSize), max(furniture.depth * ratio, Furniture.minSize))
     }
 
-    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
+    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리, 높이 손잡이는 아래쪽 왼쪽 모서리에 둔다.
     /// 손잡이가 모서리를 가리지 않도록 화면에서 가운데 반대쪽으로 cornerHandleGap만큼 더 민다
-    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
+    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint, elevation: CGPoint)? {
         let bounds = entity.visualBounds(relativeTo: entity)
-        func screenPoint(z: Float) -> CGPoint? {
-            let corner = entity.convert(position: SIMD3(bounds.max.x, bounds.max.y, z), to: nil)
+        func screenPoint(x: Float = bounds.max.x, z: Float) -> CGPoint? {
+            let corner = entity.convert(position: SIMD3(x, bounds.max.y, z), to: nil)
             guard let point = content.project(point: corner, to: .local) else { return nil }
             let dx = point.x - center.x
             let dy = point.y - center.y
             let length = max(hypot(dx, dy), 1)
             return CGPoint(x: point.x + dx / length * Layout.cornerHandleGap, y: point.y + dy / length * Layout.cornerHandleGap)
         }
-        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z) else { return nil }
-        return (rotate, resize)
+        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z),
+              let elevation = screenPoint(x: bounds.min.x, z: bounds.max.z) else { return nil }
+        return (rotate, resize, elevation)
     }
 
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
@@ -696,7 +724,14 @@ extension FloorPlan3DView {
                 if let corners = cornerHandlePoints(of: entity, center: screenCenter, using: content) {
                     switch entity.components[PlanSelectionComponent.self]?.selection {
                     case .furniture?:
-                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                        var furniturePoints = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                        furniturePoints.elevationHandle = corners.elevation
+                        // 장면이 줄어 있어도 도면 1m는 월드에서 sceneRoot 배율만큼이다
+                        let oneMeterUp = SIMD3(center.x, center.y + sceneRoot.scale.x, center.z)
+                        if let up = content.project(point: oneMeterUp, to: .local) {
+                            furniturePoints.pointsPerMeter = max(screenCenter.y - up.y, 0)
+                        }
+                        points = furniturePoints
                     case .marker?:
                         // 사람·발화지점도 크기 손잡이를 모서리에 붙여 돌리면 함께 돌게 한다. 회전 손잡이는 그대로
                         points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: corners.resize)
@@ -722,6 +757,10 @@ private struct StampScreenPoints: Equatable {
     let handle: CGPoint
     /// 크기 손잡이 자리 (가운데의 오른쪽 아래)
     let resizeHandle: CGPoint
+    /// 가구 높이 손잡이 자리 (윗면의 아래쪽 왼쪽 모서리 바깥)
+    var elevationHandle: CGPoint = .zero
+    /// 가구 자리에서 위로 1m가 화면에서 몇 pt인지. 높이 손잡이를 끈 거리를 미터로 바꿀 때 쓴다
+    var pointsPerMeter: CGFloat = 0
 }
 
 // 고른 창문의 테두리 손잡이와 편집 메뉴

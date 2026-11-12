@@ -438,14 +438,15 @@ extension FloorPlan3DBuilder {
             body.components.set(collision)
         }
         entity.addChild(body)
+        let tag = PlanSelection.furniture(furniture.id)
+        entity.components.set(PlanSelectionComponent(selection: tag))
+        // 테두리 상자는 바닥 그림자를 붙이기 전에 만든다. 그림자가 들어가면 상자가 바닥까지 늘어나 띄운 높이를 따라가지 못한다
+        if tag == selection { addSelectionFrame(to: entity) }
         if furniture.elevation > FurnitureModel.floatingElevation {
             let shadow = ModelEntity(mesh: furnitureMesh(furniture, height: FurnitureModel.shadowHeight), materials: [Materials.furnitureShadow])
             shadow.position.y = FurnitureModel.shadowHeight / 2
             entity.addChild(shadow)
         }
-        let tag = PlanSelection.furniture(furniture.id)
-        entity.components.set(PlanSelectionComponent(selection: tag))
-        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 

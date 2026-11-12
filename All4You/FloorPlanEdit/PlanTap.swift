@@ -26,6 +26,8 @@ enum PlanEdit {
     case delete(PlanSelection)
     /// 가구(Furniture.id)의 가로·세로(m)를 바꿈. 원형은 width만 씀
     case resizeFurniture(id: String, width: Double, depth: Double)
+    /// 가구(Furniture.id)를 바닥에서 elevation(m)만큼 띄움
+    case elevateFurniture(id: String, elevation: Double)
     /// 창문(DoorWindow.id) 테두리 edge를 벽 시작점에서 along(m), 바닥에서 height(m) 자리로 옮김
     case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
 }
@@ -51,6 +53,8 @@ extension PlanData {
             rotateFurniture(id: id, rotation: rotation)
         case .resizeFurniture(let id, let width, let depth):
             resizeFurniture(id: id, width: width, depth: depth)
+        case .elevateFurniture(let id, let elevation):
+            elevateFurniture(id: id, to: elevation)
         case .delete(.wall(let id)):
             removeWall(id: id)
             return nil
