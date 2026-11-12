@@ -12,6 +12,7 @@ import UIKit
 struct FloorPlanMemoInputField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    let taggedTokens: Set<String>
     let onSubmit: (String) -> Void
     
     func makeUIView(context: Context) -> UITextView {
@@ -34,6 +35,27 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
             view.text = text
             view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         }
+        if context.coordinator.styledText != text || context.coordinator.styledTokens != taggedTokens {
+            let fullRange = NSRange(location: 0, length: (text as NSString).length)
+            let baseAttributes: [NSAttributedString.Key: Any] = [
+                .font: view.font ?? UIFont.preferredFont(forTextStyle: .headline),
+                .foregroundColor: UIColor.white
+            ]
+            view.textStorage.beginEditing()
+            view.textStorage.setAttributes(baseAttributes, range: fullRange)
+            for token in taggedTokens {
+                let pattern = NSRegularExpression.escapedPattern(for: token) + "(?![0-9])"
+                let matches = (try? NSRegularExpression(pattern: pattern))?
+                    .matches(in: text, range: fullRange) ?? []
+                for match in matches {
+                    view.textStorage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: match.range)
+                }
+            }
+            view.textStorage.endEditing()
+            view.typingAttributes = baseAttributes
+            context.coordinator.styledText = text
+            context.coordinator.styledTokens = taggedTokens
+        }
         if isFocused && !view.isFirstResponder {
             DispatchQueue.main.async { [weak view, weak coordinator = context.coordinator] in
                 guard let view, view.window != nil, coordinator?.parent.isFocused == true else { return }
@@ -48,6 +70,8 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
     
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: FloorPlanMemoInputField
+        var styledText = ""
+        var styledTokens: Set<String> = []
         
         init(parent: FloorPlanMemoInputField) { self.parent = parent }
         

@@ -54,6 +54,7 @@ struct FloorPlanMemoTaggedContent: View {
             if let photo, let url = URL(string: "memo-photo://\(photo.id.uuidString)") {
                 var linkedToken = AttributedString(token)
                 linkedToken.foregroundColor = Color.brand500
+                linkedToken.underlineStyle = .single
                 linkedToken.link = url
                 result += linkedToken
             } else {

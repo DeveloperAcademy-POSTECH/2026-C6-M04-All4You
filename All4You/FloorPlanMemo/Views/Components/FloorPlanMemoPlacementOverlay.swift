@@ -196,6 +196,7 @@ private extension FloorPlanMemoPlacementOverlay {
                 FloorPlanMemoInputField(
                     text: draftContent,
                     isFocused: $isTextFieldFocused,
+                    taggedTokens: Set(taggedPhotoTokens.values),
                     onSubmit: submitDraft
                 )
                 if draft.content.isEmpty {
@@ -254,8 +255,9 @@ private extension FloorPlanMemoPlacementOverlay {
                 if confirmedPhotoTagInput != newValue { confirmedPhotoTagInput = nil }
                 updated.content = newValue
                 reconcileTags(in: &updated)
+                confirmCompletedPhotoTags(in: &updated)
                 draft = updated
-                // 숫자 입력은 후보만 바꿈. Enter를 눌러야 사진 UUID가 메모에 연결됨
+                // 숫자를 입력하는 동안 후보 표시, 숫자 뒤에 공백·글자가 오면 사진 태그 확정
                 isTagPickerPresented = pendingTagNumber(in: newValue) != nil
             }
         )
@@ -284,6 +286,25 @@ private extension FloorPlanMemoPlacementOverlay {
         }
         draft.taggedPhotoIDs.removeAll { taggedPhotoTokens[$0] == nil }
         draft.taggedMarkerIDs.removeAll { taggedMarkerTokens[$0] == nil }
+    }
+    
+    /// 해시태그 뒤에 숫자 외 문자가 입력되는 경우에만 사진 UUID로 확정
+    func confirmCompletedPhotoTags(in draft: inout FloorPlanMemoDraft) {
+        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+        let source = draft.content as NSString
+        let pattern = "#([1-9][0-9]*)(?=[^0-9])"
+        let matches = (try? NSRegularExpression(pattern: pattern))?
+            .matches(in: draft.content, range: NSRange(location: 0, length: source.length)) ?? []
+        
+        for match in matches {
+            let token = source.substring(with: match.range)
+            guard let number = Int(token.dropFirst()), photos.indices.contains(number - 1) else { continue }
+            let photo = photos[number - 1]
+            if !draft.taggedPhotoIDs.contains(photo.id) {
+                draft.taggedPhotoIDs.append(photo.id)
+            }
+            taggedPhotoTokens[photo.id] = token
+        }
     }
     
     var tagPicker: some View {
@@ -430,12 +451,17 @@ private extension FloorPlanMemoPlacementOverlay {
         if updated.content != inputText {
             updated.content = inputText
             reconcileTags(in: &updated)
+            confirmCompletedPhotoTags(in: &updated)
             draft = updated
         }
         if confirmedPhotoTagInput == inputText {
             saveDraft()
         } else if let pendingPhoto = pendingPhoto(in: inputText) {
-            tagPhoto(pendingPhoto.photo, number: pendingPhoto.number)
+            if updated.taggedPhotoIDs.contains(pendingPhoto.photo.id) {
+                saveDraft()
+            } else {
+                tagPhoto(pendingPhoto.photo, number: pendingPhoto.number)
+            }
         } else if pendingTagNumber(in: inputText) != nil {
             // #만 있거나 없는 번호라면 첫 Enter에서는 후보 목록만 닫음
             confirmedPhotoTagInput = inputText
