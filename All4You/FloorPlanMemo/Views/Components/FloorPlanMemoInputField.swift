@@ -31,6 +31,9 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
     
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
+        // SwiftUI 뷰 갱신 중 UIKit 델리게이트가 바인딩을 다시 변경하지 않도록 구분
+        context.coordinator.isUpdatingUIView = true
+        defer { context.coordinator.isUpdatingUIView = false }
         if view.text != text {
             view.text = text
             view.selectedRange = NSRange(location: (text as NSString).length, length: 0)
@@ -75,19 +78,29 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
         var parent: FloorPlanMemoInputField
         var styledText = ""
         var styledTokens: Set<String> = []
+        var isUpdatingUIView = false
         
         init(parent: FloorPlanMemoInputField) { self.parent = parent }
         
         func textViewDidChange(_ textView: UITextView) {
+            guard !isUpdatingUIView, parent.text != textView.text else { return }
             parent.text = textView.text
         }
         
         func textViewDidBeginEditing(_ textView: UITextView) {
-            parent.isFocused = true
+            guard !isUpdatingUIView else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, textView.isFirstResponder, !self.parent.isFocused else { return }
+                self.parent.isFocused = true
+            }
         }
         
         func textViewDidEndEditing(_ textView: UITextView) {
-            parent.isFocused = false
+            guard !isUpdatingUIView else { return }
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, !textView.isFirstResponder, self.parent.isFocused else { return }
+                self.parent.isFocused = false
+            }
         }
         
         func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
