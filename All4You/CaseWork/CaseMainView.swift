@@ -45,7 +45,7 @@ struct CaseMainView: View {
         _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
         _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
     }
-
+    
     /// 처음 고를 줄. 앨범은 전체, 메모는 메모가 있는 첫 장소(없으면 첫 장소)
     private static func firstSelection(of startTab: CaseStartTab, planData: PlanData, fireCase: FireCase) -> CaseTabSelection {
         switch startTab {
@@ -76,7 +76,8 @@ struct CaseMainView: View {
         } album: {
             albumTab
         } memo: {
-            withCaseToolbars(FloorPlanMemoView(sections: memoSections))
+            FloorPlanMemoView(sections: memoSections)
+                .navigationBarTitleDisplayMode(.inline)
         }
         // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
         .onChange(of: sessionNumber, initial: true) {
@@ -160,7 +161,7 @@ extension CaseMainView {
         }
     }
     
-    /// 전체 보기에는 사건 상단 바를, 장소 하나를 볼 때는 Figma처럼 뒤로가기만 둔다. 뒤로가면 전체 보기로 간다
+    /// 앨범 전체 보기에는 오른쪽 작업 버튼을 숨기고, 장소별 보기에는 뒤로가기만 표시
     @ViewBuilder
     private var albumTab: some View {
         let album = CaseAlbumView(
@@ -176,7 +177,8 @@ extension CaseMainView {
                     selection = .albumOverview
                 }
         } else {
-            withCaseToolbars(album)
+            album
+                .navigationBarTitleDisplayMode(.inline)
         }
     }
     
@@ -268,7 +270,7 @@ extension CaseMainView {
         isAddingMemo = false
         memoDraft = nil
     }
-
+    
     /// 이 사건에 저장된 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
     /// 장소 이름은 지금 도면의 이름을 쓴다 (메모를 쓴 뒤 장소 이름을 고쳐도 따라온다)
     private var memoSections: [FloorPlanMemoSection] {
@@ -287,7 +289,7 @@ extension CaseMainView {
         return sections
     }
     
-    // 탭마다 상단 바가 따로 있어서, 어느 탭에서든 같은 상단 바 버튼이 보이도록 각 탭 내용에 붙인다
+    // 도면 탭에만 메모·사진 추가, 수정, 공유 버튼을 붙임
     private func withCaseToolbars(_ content: some View) -> some View {
         content
             .navigationBarTitleDisplayMode(.inline)
@@ -303,7 +305,7 @@ extension CaseMainView {
                 }
             )
     }
-
+    
     /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
     private var titleHeader: some View {
         CaseTitleHeader(
