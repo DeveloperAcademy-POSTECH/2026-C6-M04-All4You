@@ -80,7 +80,7 @@ struct CaseMainView: View {
         } album: {
             albumTab
         } memo: {
-            FloorPlanMemoView(sections: memoSections)
+            FloorPlanMemoView(sections: memoSections, onDeleteMemo: deleteMemo)
                 .id(sessionNumber)
                 .navigationBarTitleDisplayMode(.inline)
         }
@@ -151,7 +151,8 @@ extension CaseMainView {
             isPlacingPhotos: $isPlacingPhotos,
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
             memos: isAddingMemo ? [] : memoSections.allMemos,
-            highlightedMemoID: justAddedMemoID
+            highlightedMemoID: justAddedMemoID,
+            onDeleteMemo: deleteMemo
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -163,6 +164,7 @@ extension CaseMainView {
                 draft: $memoDraft,
                 onSave: addMemo,
                 onCancel: cancelAddingMemo,
+                onDeleteMemo: deleteMemo,
                 highlightedMemoID: justAddedMemoID,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
@@ -283,6 +285,13 @@ extension CaseMainView {
         justAddedMemoID = memo.id
         isAddingMemo = false
         memoDraft = nil
+    }
+    
+    /// 도면 핀과 목록에서 요청한 동일한 메모를 SwiftData에서 삭제
+    private func deleteMemo(_ id: FloorPlanMemo.ID) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.modelContext?.delete(memo)
+        if justAddedMemoID == id { justAddedMemoID = nil }
     }
     
     /// 현재 조사 차수에 저장된 메모

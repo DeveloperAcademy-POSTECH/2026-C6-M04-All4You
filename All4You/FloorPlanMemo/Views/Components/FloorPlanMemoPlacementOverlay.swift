@@ -15,6 +15,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     @Binding var draft: FloorPlanMemoDraft?
     let onSave: (FloorPlanMemoDraft) -> Void
     let onCancel: () -> Void
+    var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var highlightedMemoID: UUID? = nil
     /// 현재 조사 차수의 북마크 사진
     var bookmarkedPhotos: [LoadedPhoto] = []
@@ -129,11 +130,20 @@ private extension FloorPlanMemoPlacementOverlay {
                 isHighlighted: memo.id == highlightedMemoID || memo.id == selectedMemoID
             )
             .frame(width: Layout.pinHitSize, height: Layout.pinHitSize)
-            .contentShape(Rectangle())
+            .contentShape(.interaction, Rectangle())
+            // 기본 컨텍스트 메뉴가 열릴 때 기존 메모 미리보기 닫기
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    selectedMemoID = nil
+                }
+            )
+            .memoDeleteMenu {
+                deleteMemo(memo.id)
+            }
         }
-        .buttonStyle(MemoPinButtonStyle())
-        .position(screenPoint(for: memo.anchor, in: size))
+        .buttonStyle(.plain)
         .accessibilityLabel("\(memo.title), \(memo.locationName), 메모 보기")
+        .position(screenPoint(for: memo.anchor, in: size))
     }
     
     func savedMemoCard(for memo: FloorPlanMemo, in size: CGSize) -> some View {
@@ -164,6 +174,11 @@ private extension FloorPlanMemoPlacementOverlay {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
         .position(position)
+    }
+    
+    func deleteMemo(_ id: FloorPlanMemo.ID) {
+        if selectedMemoID == id { selectedMemoID = nil }
+        onDeleteMemo(id)
     }
     
     func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
@@ -482,13 +497,6 @@ private extension FloorPlanMemoPlacementOverlay {
     
     func memoNumber(for memo: FloorPlanMemo) -> Int {
         (memos.firstIndex(where: { $0.id == memo.id }) ?? 0) + 1
-    }
-}
-
-/// 메모 핀은 눌림 중 축소·흐림 효과 없이 선택 테두리로만 상태를 표시
-private struct MemoPinButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
     }
 }
 

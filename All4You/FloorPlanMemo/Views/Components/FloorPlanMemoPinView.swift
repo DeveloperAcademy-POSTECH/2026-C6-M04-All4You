@@ -19,7 +19,7 @@ struct FloorPlanMemoPinView: View {
                     .resizable()
                     .scaledToFit()
                     .foregroundStyle(Color.brand500)
-                    .frame(width: Layout.size + 4, height: Layout.height + 4)
+                    .frame(width: Layout.size + 6, height: Layout.height + 6)
             }
             
             Image(systemName: "message.fill")
@@ -33,7 +33,7 @@ struct FloorPlanMemoPinView: View {
                 .foregroundStyle(.white)
                 .offset(y: -2)
         }
-        .frame(width: Layout.size + 4, height: Layout.height + 4)
+        .frame(width: Layout.size + 6, height: Layout.height + 6)
     }
     
     private enum Layout {

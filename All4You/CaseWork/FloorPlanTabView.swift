@@ -17,6 +17,7 @@ struct FloorPlanTabView: View {
     /// 도면에 띄울 저장된 메모. 2D는 도면 위에, 3D는 3D 자리에 핀을 띄운다 (메모 위치를 고르는 동안은 메인의 메모 오버레이가 그린다)
     var memos: [FloorPlanMemo] = []
     var highlightedMemoID: UUID? = nil
+    var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
@@ -160,6 +161,7 @@ extension FloorPlanTabView {
                             draft: .constant(nil),
                             onSave: { _ in },
                             onCancel: {},
+                            onDeleteMemo: onDeleteMemo,
                             highlightedMemoID: highlightedMemoID,
                             bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                             screen: screen
