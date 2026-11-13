@@ -45,8 +45,12 @@ struct FloorPlanMemoPlacementOverlay: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            finishEditingMemo()
-                            selectedMemoID = nil
+                            if editingMemoID != nil {
+                                // 메모 수정 중 미리보기 바깥 영역을 누르면 내용을 저장하고 미리보기는 유지
+                                finishEditingMemo()
+                            } else {
+                                selectedMemoID = nil
+                            }
                         }
                 }
                 
@@ -208,8 +212,10 @@ private extension FloorPlanMemoPlacementOverlay {
                 }
                 .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.5) { beginEditingMemo(memo) }
-                .accessibilityHint("길게 눌러 메모를 수정할 수 있습니다")
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded { beginEditingMemo(memo) }
+                )
+                .accessibilityHint("두 번 빠르게 탭하면 메모를 수정할 수 있습니다")
                 .accessibilityAction(named: "메모 수정") { beginEditingMemo(memo) }
             }
         }
