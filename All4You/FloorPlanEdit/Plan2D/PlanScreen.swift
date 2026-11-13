@@ -54,7 +54,7 @@ struct PlanScreen: Equatable {
         scale / fitScale
     }
 
-    /// 확대·축소에 맞춰 이름 캡슐을 키우고 줄이는 배율 (LabelScale 범위 안)
+    /// 확대·축소에 맞춰 이름 캡슐 크기에 곱하는 배율 (LabelScale). 처음 맞춘 화면에서 1
     var labelScale: CGFloat {
         LabelScale.value(zoom: zoom, zoomRange: Limit.minZoom...Limit.maxZoom)
     }

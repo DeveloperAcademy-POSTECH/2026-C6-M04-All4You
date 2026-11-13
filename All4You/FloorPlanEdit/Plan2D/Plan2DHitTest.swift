@@ -121,7 +121,7 @@ enum Plan2DHit {
     }
 
     /// 이름을 담은 캡슐의 대략적인 크기 (pt). 뷰가 그려진 크기를 알 수 없어, 한글은 글자 크기만큼 라틴 글자는 0.55배로 어림한다.
-    /// 지우개가 캡슐을 맞히는 데만 쓰므로 손가락 여유(fingerMargin의 절반)를 더해 조금 넉넉하게 둔다
+    /// 지우개와 가구 이름 누르기가 캡슐을 맞히는 데 쓰므로 손가락 여유(fingerMargin의 절반)를 더해 조금 넉넉하게 둔다
     /// scale은 도면을 확대·축소하며 캡슐을 키우고 줄이는 배율 (LabelScale). 캡슐 크기에만 곱하고 손가락 여유는 그대로 둔다
     static func capsuleSize(of text: String, font: CapsuleFont, scale: CGFloat = 1) -> CGSize {
         let textWidth = text.reduce(CGFloat(0)) { $0 + ($1.isASCII ? font.size * 0.55 : font.size) }

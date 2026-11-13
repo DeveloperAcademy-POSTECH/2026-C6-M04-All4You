@@ -103,7 +103,7 @@ extension PlanData {
         }
     }
 
-    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기·창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
+    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기는 벽이나 바닥, 창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
     /// option은 도구 막대에서 고른 종류(발화원인·전기 종류)로, 놓은 스탬프에 함께 저장한다.
     /// 맞지 않는 자리이거나 놓을 수 없으면 아무것도 바꾸지 않고 nil
     mutating func place(_ tool: EditTool, at tap: PlanTap, defaults: StampDefaults? = nil, option: StampOption? = nil) -> PlanSelection? {

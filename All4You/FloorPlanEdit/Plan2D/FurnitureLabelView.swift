@@ -2,7 +2,7 @@
 
 import SwiftUI
 
-/// 가구 이름 캡슐. 도면을 확대·축소하면 scale만큼 함께 커지고 작아진다 (한계는 LabelScale)
+/// 가구 이름 캡슐. 도면을 확대·축소하면 scale 배율만큼 크기가 바뀐다 (배율은 LabelScale)
 struct FurnitureLabelView: View {
     /// Furniture.label
     let label: String

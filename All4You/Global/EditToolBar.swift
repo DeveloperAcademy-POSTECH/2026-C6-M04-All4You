@@ -1,4 +1,4 @@
-// 2D·3D 수정 화면이 함께 쓰는 상단 도구 막대. 고른 도구를 표시하고, 발화지점·전기 도구는 누르면 버튼에서 리퀴드 글래스가 갈라져 나오며 종류 옵션을 보여 준다
+// 2D·3D 수정 화면이 함께 쓰는 상단 도구 막대. 고른 도구를 표시하고, 발화지점·전기 도구는 누르면 버튼 바로 아래에 리퀴드 글래스 종류 옵션이 나타난다
 
 import SwiftUI
 
@@ -45,7 +45,7 @@ struct EditToolBar: View {
         selectedTool = selectedTool == tool ? nil : tool
     }
 
-    /// 도구 버튼을 눌렀다. 종류를 고르는 도구는 버튼에서 옵션이 갈라져 나오고, 종류를 고른 뒤 다시 누르면 옵션이 다시 펼쳐지고, 옵션이 펼쳐진 채 누르면 도구가 꺼진다
+    /// 도구 버튼을 눌렀다. 종류를 고르는 도구는 버튼 아래에 옵션이 나타나고, 종류를 고른 뒤 다시 누르면 옵션이 다시 펼쳐지고, 옵션이 펼쳐진 채 누르면 도구가 꺼진다
     private func tapTool(_ tool: EditTool) {
         updateTools {
             guard let stampOption, !tool.stampOptions.isEmpty else {
@@ -225,7 +225,7 @@ extension EditToolBar {
         static let optionSpacing: CGFloat = 6
         static let optionHeight: CGFloat = 36
         static let optionHorizontalPadding: CGFloat = 14
-        /// 옵션이 갈라져 나오고 합쳐지는 움직임
+        /// 도구를 켜고 끄거나 종류를 고를 때 버튼과 옵션 줄이 바뀌는 움직임
         static let morph = Animation.smooth(duration: 0.3)
     }
 }

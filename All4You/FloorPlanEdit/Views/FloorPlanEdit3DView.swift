@@ -26,7 +26,7 @@ struct FloorPlanEdit3DView: View {
     /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
     @State private var noticeDismissTask: Task<Void, Never>?
 
-    /// 3D에서 가구는 만들 수 없고(고른 가구만 옮기고 돌리고 크기를 바꿈) 공간 이름은 라벨로만 보여 주므로 두 도구를 숨긴다
+    /// 3D에서 가구는 만들 수 없고(고른 가구만 옮기고 돌리고 크기를 바꿈) 공간 이름은 새로 달 수 없어서(있는 이름 캡슐을 눌러 고치기만 함) 두 도구를 숨긴다
     static let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
@@ -111,7 +111,7 @@ extension FloorPlanEdit3DView {
 // 누른 자리 처리
 extension FloorPlanEdit3DView {
     /// 이미 놓인 스탬프·창문을 누르면 도구와 상관없이 그것을 고른다.
-    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽)에 놓고, 도구가 없으면 고른 것을 푼다.
+    /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽이나 바닥)에 놓고, 도구가 없으면 고른 것을 푼다.
     /// 도구는 한 번 놓으면 꺼진다.
     /// 방금 놓은 스탬프를 고른 상태로 둔다
     private func handleTap(_ tap: PlanTap?) {
