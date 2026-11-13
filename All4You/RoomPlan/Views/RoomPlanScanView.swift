@@ -232,10 +232,10 @@ private struct RoomPlanScanSessionView: View {
                     description: Text(!RoomCaptureSession.isSupported
                                       ? "LiDAR를 지원하는 iPhone 또는 iPad에서 실행해 주세요."
                                       : cameraStatus == .notDetermined
-                                      ? "카메라 권한을 확인하고 있습니다."
+                                      ? "잠시 기다려 주세요."
                                       : "설정 → 앱 → FireLine에서 카메라 접근을 허용해 주세요.")
                 )
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

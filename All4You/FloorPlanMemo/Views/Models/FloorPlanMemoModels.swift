@@ -21,6 +21,8 @@ struct FloorPlanMemoDraft: Equatable {
     let locationID: String?
     let locationName: String
     var content = ""
+    var taggedPhotoIDs: [UUID] = []
+    var taggedMarkerIDs: [String] = []
 }
 
 struct FloorPlanMemoSection: Identifiable {
@@ -32,12 +34,14 @@ struct FloorPlanMemoSection: Identifiable {
 
 struct FloorPlanMemo: Identifiable {
     let id: UUID
-    let title: String
+    var title: String
     let createdAt: Date
     let content: String
     let locationID: String?
     let locationName: String
     let anchor: FloorPlanMemoAnchor
+    /// 메모에 태그된 사진
+    let taggedPhotos: [LoadedPhoto]
     
     init(
         id: UUID = UUID(),
@@ -46,7 +50,8 @@ struct FloorPlanMemo: Identifiable {
         content: String,
         locationID: String?,
         locationName: String,
-        anchor: FloorPlanMemoAnchor
+        anchor: FloorPlanMemoAnchor,
+        taggedPhotos: [LoadedPhoto] = []
     ) {
         self.id = id
         self.title = title
@@ -55,6 +60,7 @@ struct FloorPlanMemo: Identifiable {
         self.locationID = locationID
         self.locationName = locationName
         self.anchor = anchor
+        self.taggedPhotos = taggedPhotos
     }
     
     var detailTitle: String { title }
@@ -72,6 +78,39 @@ struct FloorPlanMemo: Identifiable {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: createdAt)
+    }
+}
+
+/// 본문에서 삭제된 사진 태그를 메모의 사진 UUID 목록에도 반영
+enum FloorPlanMemoPhotoTagReconciler {
+    static func photoIDs(in content: String, tokenByPhotoID: [UUID: String]) -> [UUID] {
+        var photoIDByToken: [String: UUID] = [:]
+        for (id, token) in tokenByPhotoID where photoIDByToken[token] == nil {
+            photoIDByToken[token] = id
+        }
+        return photoTokens(in: content).compactMap { photoIDByToken[$0] }
+    }
+    
+    static func retainedPhotoIDs(
+        from oldContent: String,
+        to newContent: String,
+        taggedPhotoIDs: [UUID]
+    ) -> [UUID] {
+        let oldTokens = photoTokens(in: oldContent)
+        guard oldTokens.count == taggedPhotoIDs.count else { return taggedPhotoIDs }
+        
+        let photoIDByToken = Dictionary(uniqueKeysWithValues: zip(oldTokens, taggedPhotoIDs))
+        return photoTokens(in: newContent).compactMap { photoIDByToken[$0] }
+    }
+    
+    private static func photoTokens(in content: String) -> [String] {
+        let source = content as NSString
+        let range = NSRange(location: 0, length: source.length)
+        let matches = (try? NSRegularExpression(pattern: "#[1-9][0-9]*"))?
+            .matches(in: content, range: range) ?? []
+        var seen = Set<String>()
+        return matches.map { source.substring(with: $0.range) }
+            .filter { seen.insert($0).inserted }
     }
 }
 

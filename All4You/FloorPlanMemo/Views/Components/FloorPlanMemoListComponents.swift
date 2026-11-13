@@ -26,6 +26,7 @@ struct FloorPlanMemoRow: View {
     let isSelected: Bool
     let showsDivider: Bool
     let action: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         Button(action: action) {
@@ -74,5 +75,6 @@ struct FloorPlanMemoRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .memoDeleteMenu(allowsSwipeDelete: true, onDelete: onDelete)
     }
 }

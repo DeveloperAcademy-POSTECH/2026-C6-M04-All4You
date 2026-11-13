@@ -22,6 +22,7 @@ struct CaseMainView: View {
     // 메모 추가 버튼을 누른 뒤 도면에서 위치를 고르고 있는지와 작성 중인 내용
     @State private var isAddingMemo = false
     @State private var memoDraft: FloorPlanMemoDraft?
+    @State private var justAddedMemoID: UUID?
     // 메모 작성을 시작할 때 도면의 확대·이동을 초기화해 메모 핀과 도면 좌표를 맞춘다
     @State private var floorPlanPresentationID = UUID()
     // 거절된 권한. 값이 있으면 설정 앱으로 안내하는 알림이 뜬다
@@ -45,7 +46,7 @@ struct CaseMainView: View {
         _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
         _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
     }
-
+    
     /// 처음 고를 줄. 앨범은 전체, 메모는 메모가 있는 첫 장소(없으면 첫 장소)
     private static func firstSelection(of startTab: CaseStartTab, planData: PlanData, fireCase: FireCase) -> CaseTabSelection {
         switch startTab {
@@ -54,7 +55,10 @@ struct CaseMainView: View {
         case .album:
             return .albumOverview
         case .memo:
+            let latestSession = fireCase.sessions.map(\.sessionNumber).max() ?? 1
+            let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1
             let firstMemoRoom = fireCase.memos
+                .filter { $0.sessionNumber == latestSession || ($0.sessionNumber == nil && latestSession == firstSession) }
                 .sorted { $0.createdAt < $1.createdAt }
                 .compactMap { memo in planData.rooms.first { $0.id == memo.targetKey }?.name }
                 .first
@@ -76,7 +80,14 @@ struct CaseMainView: View {
         } album: {
             albumTab
         } memo: {
-            withCaseToolbars(FloorPlanMemoView(sections: memoSections))
+            FloorPlanMemoView(
+                sections: memoSections,
+                bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
+                onDeleteMemo: deleteMemo,
+                onUpdateMemo: updateMemoWithTags
+            )
+            .id(sessionNumber)
+            .navigationBarTitleDisplayMode(.inline)
         }
         // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
         .onChange(of: sessionNumber, initial: true) {
@@ -144,7 +155,10 @@ extension CaseMainView {
             photoStore: photoStore,
             isPlacingPhotos: $isPlacingPhotos,
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
-            memos: isAddingMemo ? [] : memoSections.allMemos
+            memos: isAddingMemo ? [] : memoSections.allMemos,
+            highlightedMemoID: justAddedMemoID,
+            onDeleteMemo: deleteMemo,
+            onUpdateMemo: updateMemo
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -155,12 +169,16 @@ extension CaseMainView {
                 isPresented: $isAddingMemo,
                 draft: $memoDraft,
                 onSave: addMemo,
-                onCancel: cancelAddingMemo
+                onCancel: cancelAddingMemo,
+                onDeleteMemo: deleteMemo,
+                onUpdateMemo: updateMemo,
+                highlightedMemoID: justAddedMemoID,
+                bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
         }
     }
     
-    /// 전체 보기에는 사건 상단 바를, 장소 하나를 볼 때는 Figma처럼 뒤로가기만 둔다. 뒤로가면 전체 보기로 간다
+    /// 앨범 전체 보기에는 오른쪽 작업 버튼을 숨기고, 장소별 보기에는 뒤로가기만 표시
     @ViewBuilder
     private var albumTab: some View {
         let album = CaseAlbumView(
@@ -176,7 +194,8 @@ extension CaseMainView {
                     selection = .albumOverview
                 }
         } else {
-            withCaseToolbars(album)
+            album
+                .navigationBarTitleDisplayMode(.inline)
         }
     }
     
@@ -241,6 +260,7 @@ extension CaseMainView {
         selection = .floorPlan2D
         isPlacingPhotos = false
         memoDraft = nil
+        justAddedMemoID = nil
         floorPlanPresentationID = UUID()
         withAnimation {
             isAddingMemo = true
@@ -257,23 +277,62 @@ extension CaseMainView {
     
     // 작성을 완료한 메모를 사건에 저장하고 현재 도면을 유지한다.
     private func addMemo(_ draft: FloorPlanMemoDraft) {
-        fireCase.memos.append(Memo(
-            title: "메모 #\(fireCase.memos.count + 1)",
+        let memo = Memo(
+            title: "메모 #\(currentSessionMemos.count + 1)",
             content: draft.content,
+            sessionNumber: sessionNumber,
             targetKey: draft.locationID,
             locationName: draft.locationName,
             anchorX: draft.anchor.x,
-            anchorY: draft.anchor.y
-        ))
+            anchorY: draft.anchor.y,
+            taggedPhotoIDs: draft.taggedPhotoIDs,
+            taggedMarkerIDs: draft.taggedMarkerIDs
+        )
+        fireCase.memos.append(memo)
+        justAddedMemoID = memo.id
         isAddingMemo = false
         memoDraft = nil
     }
-
-    /// 이 사건에 저장된 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
+    
+    /// 도면 핀과 목록에서 요청한 동일한 메모를 SwiftData에서 삭제
+    private func deleteMemo(_ id: FloorPlanMemo.ID) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.modelContext?.delete(memo)
+        if justAddedMemoID == id { justAddedMemoID = nil }
+    }
+    
+    /// 수정한 본문과 남아 있는 사진 태그를 기존 사건 메모에 반영
+    private func updateMemo(_ id: FloorPlanMemo.ID, content: String) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.taggedPhotoIDs = FloorPlanMemoPhotoTagReconciler.retainedPhotoIDs(
+            from: memo.content,
+            to: content,
+            taggedPhotoIDs: memo.taggedPhotoIDs
+        )
+        memo.content = content
+    }
+    
+    /// 메모 탭에서 수정한 본문과 사진 태그를 함께 저장
+    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID]) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.taggedPhotoIDs = photoIDs
+        memo.content = content
+    }
+    
+    /// 현재 조사 차수에 저장된 메모
+    private var currentSessionMemos: [Memo] {
+        let firstSession = fireCase.sessions.map(\.sessionNumber).min() ?? 1
+        return fireCase.memos.filter {
+            $0.sessionNumber == sessionNumber || ($0.sessionNumber == nil && sessionNumber == firstSession)
+        }
+    }
+    
+    /// 현재 차수의 메모를 장소별로 묶는다. 장소 목록·도면 핀·사이드바가 같은 값을 본다.
     /// 장소 이름은 지금 도면의 이름을 쓴다 (메모를 쓴 뒤 장소 이름을 고쳐도 따라온다)
     private var memoSections: [FloorPlanMemoSection] {
         var sections: [FloorPlanMemoSection] = []
-        for memo in fireCase.memos.sorted(by: { $0.createdAt < $1.createdAt }) {
+        let photosByID = Dictionary(uniqueKeysWithValues: photoStore.photos.map { ($0.id, $0) })
+        for memo in currentSessionMemos.sorted(by: { $0.createdAt < $1.createdAt }) {
             sections.append(FloorPlanMemo(
                 id: memo.id,
                 title: memo.title,
@@ -281,13 +340,23 @@ extension CaseMainView {
                 content: memo.content,
                 locationID: memo.targetKey,
                 locationName: planData.rooms.first { $0.id == memo.targetKey }?.name ?? memo.locationName,
-                anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY)
+                anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY),
+                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] }
             ))
+        }
+        
+        // 도면 핀이 쓰는 섹션별 목록 순서로 표시 제목도 매번 계산해 삭제 후 번호를 맞춤
+        var displayNumber = 0
+        for sectionIndex in sections.indices {
+            for memoIndex in sections[sectionIndex].memos.indices {
+                displayNumber += 1
+                sections[sectionIndex].memos[memoIndex].title = "메모 #\(displayNumber)"
+            }
         }
         return sections
     }
     
-    // 탭마다 상단 바가 따로 있어서, 어느 탭에서든 같은 상단 바 버튼이 보이도록 각 탭 내용에 붙인다
+    // 도면 탭에만 메모·사진 추가, 수정, 공유 버튼을 붙임
     private func withCaseToolbars(_ content: some View) -> some View {
         content
             .navigationBarTitleDisplayMode(.inline)
@@ -303,7 +372,7 @@ extension CaseMainView {
                 }
             )
     }
-
+    
     /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
     private var titleHeader: some View {
         CaseTitleHeader(

@@ -9,6 +9,9 @@ import SwiftUI
 
 struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
+    let bookmarkedPhotos: [LoadedPhoto]
+    var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID]) -> Void = { _, _, _ in }
     
     // nil이면 전체, 값이 있으면 Room.id에 해당하는 메모만 보여줌
     @State private var selectedLocationID: String?
@@ -22,8 +25,16 @@ struct FloorPlanMemoView: View {
     private let splitHandleWidth: CGFloat = 24
     private let pickerBottomClearance: CGFloat = 82
     
-    init(sections: [FloorPlanMemoSection] = []) {
+    init(
+        sections: [FloorPlanMemoSection] = [],
+        bookmarkedPhotos: [LoadedPhoto] = [],
+        onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in },
+        onUpdateMemo: @escaping (FloorPlanMemo.ID, String, [UUID]) -> Void = { _, _, _ in }
+    ) {
         self.sections = sections
+        self.bookmarkedPhotos = bookmarkedPhotos
+        self.onDeleteMemo = onDeleteMemo
+        self.onUpdateMemo = onUpdateMemo
     }
     
     init(
@@ -32,6 +43,9 @@ struct FloorPlanMemoView: View {
         isDetailExpanded: Bool
     ) {
         self.sections = sections
+        self.bookmarkedPhotos = []
+        self.onDeleteMemo = { _ in }
+        self.onUpdateMemo = { _, _, _ in }
         _selectedMemoID = State(initialValue: selectedMemoID)
         _isDetailExpanded = State(initialValue: isDetailExpanded)
     }
@@ -171,6 +185,13 @@ struct FloorPlanMemoView: View {
                             action: {
                                 selectedMemoID = selectedMemoID == memo.id ? nil : memo.id
                                 isDetailExpanded = false
+                            },
+                            onDelete: {
+                                if selectedMemoID == memo.id {
+                                    selectedMemoID = nil
+                                    isDetailExpanded = false
+                                }
+                                onDeleteMemo(memo.id)
                             }
                         )
                         .listRowInsets(
@@ -198,7 +219,7 @@ struct FloorPlanMemoView: View {
         ContentUnavailableView {
             Label("작성된 메모가 없어요", systemImage: "bubble.left")
         } description: {
-            Text("상단의 메모 추가 버튼을 누르고\n도면에서 위치를 선택해주세요.")
+            Text("도면에서 \(Image(systemName: "plus.bubble"))버튼을 눌러 메모를 작성해 주세요")
         }
     }
     
@@ -214,13 +235,8 @@ struct FloorPlanMemoView: View {
         }
         .pickerStyle(.segmented)
         .controlSize(.large)
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(minWidth: 180, minHeight: 50)
-        .background {
-            Capsule()
-                .fill(Color.gray100)
-                .padding(.top, 1)
-        }
+        .frame(width: min(700, max(240, CGFloat(sections.count + 1) * 92)))
+        .background(Color(uiColor: .systemGray6), in: Capsule())
     }
     
     private func expandedDetail(for memo: FloorPlanMemo, in size: CGSize) -> some View {
@@ -282,8 +298,11 @@ struct FloorPlanMemoView: View {
     ) -> some View {
         FloorPlanMemoDetailView(
             memo: memo,
-            presentation: presentation
+            presentation: presentation,
+            bookmarkedPhotos: bookmarkedPhotos,
+            onUpdateMemo: onUpdateMemo
         )
+        .id(memo.id)
     }
     
     private var expansionButton: some View {
@@ -294,7 +313,7 @@ struct FloorPlanMemoView: View {
             }
         } label: {
             Image(systemName: isDetailExpanded
-                  ? "arrow.down.right.and.arrow.up.left"
+                  ? "arrow.up.right.and.arrow.down.left"
                   : "arrow.down.left.and.arrow.up.right")
             .font(.system(size: 20, weight: .semibold))
             .foregroundStyle(.primary)

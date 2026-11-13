@@ -15,18 +15,43 @@ struct FloorPlanMemoPlacementOverlay: View {
     @Binding var draft: FloorPlanMemoDraft?
     let onSave: (FloorPlanMemoDraft) -> Void
     let onCancel: () -> Void
+    var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+    var highlightedMemoID: UUID? = nil
+    /// 현재 조사 차수의 북마크 사진
+    var bookmarkedPhotos: [LoadedPhoto] = []
     /// 도면이 실제로 놓인 화면 자리. 주면 저장된 메모 핀을 이 자리에 맞춰 그려서, 도면을 확대·이동하거나 옆에 사진 모음이 열려 도면이 좁아져도 핀이 따라간다.
     /// nil이면 이 오버레이 크기에 도면을 맞춘 자리로 그린다 (메모 위치를 고를 때)
     var screen: PlanScreen? = nil
     
-    @FocusState private var isTextFieldFocused: Bool
+    @State private var isTextFieldFocused = false
     @State private var selectedMemoID: FloorPlanMemo.ID?
+    @State private var editingMemoID: FloorPlanMemo.ID?
+    @State private var editingContent = ""
+    @State private var isEditingFocused = false
+    @State private var previewPhoto: LoadedPhoto?
+    @State private var isTagPickerPresented = false
+    @State private var keyboardFrame: CGRect = .null
+    @State private var taggedPhotoTokens: [UUID: String] = [:]
+    @State private var taggedMarkerTokens: [String: String] = [:]
+    @State private var confirmedPhotoTagInput: String?
     
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 if isPresented {
                     placementSurface(in: proxy.size)
+                } else if selectedMemoID != nil {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if editingMemoID != nil {
+                                // 메모 수정 중 미리보기 바깥 영역을 누르면 내용을 저장하고 미리보기는 유지
+                                finishEditingMemo()
+                            } else {
+                                selectedMemoID = nil
+                            }
+                        }
                 }
                 
                 ForEach(memos) { memo in
@@ -35,7 +60,11 @@ struct FloorPlanMemoPlacementOverlay: View {
                 
                 if isPresented {
                     if let draft {
-                        draftEditor(for: draft, in: proxy.size)
+                        draftEditor(
+                            for: draft,
+                            in: proxy.size,
+                            keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                        )
                     } else {
                         instruction
                             .position(x: proxy.size.width / 2, y: Layout.instructionTop)
@@ -43,16 +72,40 @@ struct FloorPlanMemoPlacementOverlay: View {
                 }
                 
                 if let selectedMemo = memos.first(where: { $0.id == selectedMemoID }) {
-                    savedMemoCard(for: selectedMemo, in: proxy.size)
+                    savedMemoCard(
+                        for: selectedMemo,
+                        in: proxy.size,
+                        keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                    )
                 }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isPresented)
-        .onChange(of: draft) { _, newDraft in
-            guard newDraft != nil else { return }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+            keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .null
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardFrame = .null
+        }
+        .onChange(of: draft) { oldDraft, newDraft in
+            guard let newDraft else {
+                isTagPickerPresented = false
+                taggedPhotoTokens = [:]
+                taggedMarkerTokens = [:]
+                confirmedPhotoTagInput = nil
+                return
+            }
+            guard oldDraft?.anchor != newDraft.anchor else { return }
+            isTagPickerPresented = false
+            taggedPhotoTokens = [:]
+            taggedMarkerTokens = [:]
+            confirmedPhotoTagInput = nil
             Task { @MainActor in
                 isTextFieldFocused = true
             }
+        }
+        .sheet(item: $previewPhoto) { photo in
+            FloorPlanMemoPhotoPreview(photo: photo)
         }
     }
 }
@@ -64,19 +117,14 @@ private extension FloorPlanMemoPlacementOverlay {
             .onTapGesture { location in
                 placeDraft(at: location, in: size)
             }
-            .overlay(alignment: .topTrailing) {
-                Button(Copy.cancel, systemImage: "xmark") {
-                    onCancel()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .padding(Layout.cancelPadding)
-                .accessibilityLabel(Copy.cancel)
-            }
     }
     
     func placeDraft(at location: CGPoint, in size: CGSize) {
+        finishEditingMemo()
+        selectedMemoID = nil
+        // 입력된 초안이 있으면 도면의 다른 위치를 눌러도 작성 중인 메모를 유지
+        guard draft?.content.isEmpty ?? true else { return }
+        guard canvasBounds(in: size).contains(location) else { return }
         let canvasSize = drawingSize(in: size)
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
         
@@ -88,7 +136,6 @@ private extension FloorPlanMemoPlacementOverlay {
         let planPoint = screen.plan(canvasPoint)
         let room = planData.room(containing: planPoint)
         
-        selectedMemoID = nil
         draft = FloorPlanMemoDraft(
             anchor: FloorPlanMemoAnchor(x: planPoint.x, y: planPoint.y),
             locationID: room?.id,
@@ -98,28 +145,39 @@ private extension FloorPlanMemoPlacementOverlay {
     
     func savedPin(for memo: FloorPlanMemo, in size: CGSize) -> some View {
         Button {
+            finishEditingMemo()
             isTextFieldFocused = false
             selectedMemoID = selectedMemoID == memo.id ? nil : memo.id
         } label: {
-            Image("memoBubble")
-                .resizable()
-                .frame(width: Layout.pinSize, height: Layout.pinSize * 37 / 40)
-                .overlay {
-                    Text("\(memoNumber(for: memo))")
-                        .font(AppTypography.subheadlineEmphasized)
-                        .foregroundStyle(.white)
-                        .offset(y: -2)
+            FloorPlanMemoPinView(
+                number: memoNumber(for: memo),
+                isHighlighted: memo.id == highlightedMemoID || memo.id == selectedMemoID
+            )
+            .frame(width: Layout.pinHitSize, height: Layout.pinHitSize)
+            .contentShape(.interaction, Rectangle())
+            // 기본 컨텍스트 메뉴가 열릴 때 기존 메모 미리보기 닫기
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    finishEditingMemo()
+                    selectedMemoID = nil
                 }
-                .frame(width: Layout.pinHitSize, height: Layout.pinHitSize)
-                .contentShape(Rectangle())
+            )
+            .memoDeleteMenu {
+                deleteMemo(memo.id)
+            }
         }
         .buttonStyle(.plain)
-        .position(screenPoint(for: memo.anchor, in: size))
         .accessibilityLabel("\(memo.title), \(memo.locationName), 메모 보기")
+        .position(pinPosition(for: memo.anchor, in: size))
     }
     
-    func savedMemoCard(for memo: FloorPlanMemo, in size: CGSize) -> some View {
-        let position = cardPosition(around: screenPoint(for: memo.anchor, in: size), in: size)
+    func savedMemoCard(for memo: FloorPlanMemo, in size: CGSize, keyboardTop: CGFloat?) -> some View {
+        let position = cardPosition(
+            around: screenPoint(for: memo.anchor, in: size),
+            in: size,
+            keyboardTop: editingMemoID == memo.id ? keyboardTop : nil,
+            cardHeight: editingMemoID == memo.id ? Layout.editingCardHeight : Layout.cardHeight
+        )
         
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -127,6 +185,7 @@ private extension FloorPlanMemoPlacementOverlay {
                     .font(AppTypography.headlineEmphasized)
                 Spacer()
                 Button {
+                    finishEditingMemo()
                     selectedMemoID = nil
                 } label: {
                     Image(systemName: "xmark")
@@ -136,9 +195,48 @@ private extension FloorPlanMemoPlacementOverlay {
                 .accessibilityLabel("메모 닫기")
             }
             
-            Text(memo.content)
-                .font(AppTypography.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if editingMemoID == memo.id {
+                ZStack(alignment: .topLeading) {
+                    FloorPlanMemoInputField(
+                        text: $editingContent,
+                        isFocused: $isEditingFocused,
+                        taggedTokens: [],
+                        onSubmit: { text in
+                            editingContent = text
+                            finishEditingMemo()
+                        },
+                        textColor: .label
+                    )
+                    if editingContent.isEmpty {
+                        Text(Copy.placeholder)
+                            .font(AppTypography.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(height: 90)
+            } else {
+                Group {
+                    if memo.content.isEmpty {
+                        Text(Copy.placeholder)
+                            .font(AppTypography.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        FloorPlanMemoTaggedContent(memo: memo, bookmarkedPhotos: bookmarkedPhotos) { photo in
+                            previewPhoto = photo
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded { beginEditingMemo(memo) }
+                )
+                .accessibilityHint("두 번 빠르게 탭하면 메모를 수정할 수 있습니다")
+                .accessibilityAction(named: "메모 수정") { beginEditingMemo(memo) }
+            }
         }
         .padding(20)
         .frame(width: Layout.cardWidth, alignment: .leading)
@@ -147,54 +245,99 @@ private extension FloorPlanMemoPlacementOverlay {
         .position(position)
     }
     
-    func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize) -> some View {
+    func deleteMemo(_ id: FloorPlanMemo.ID) {
+        if editingMemoID == id {
+            editingMemoID = nil
+            isEditingFocused = false
+        }
+        if selectedMemoID == id { selectedMemoID = nil }
+        onDeleteMemo(id)
+    }
+    
+    func beginEditingMemo(_ memo: FloorPlanMemo) {
+        editingContent = memo.content
+        editingMemoID = memo.id
+        Task { @MainActor in
+            guard editingMemoID == memo.id else { return }
+            isEditingFocused = true
+        }
+    }
+    
+    func finishEditingMemo() {
+        guard let id = editingMemoID else { return }
+        let content = editingContent.trimmingCharacters(in: .whitespacesAndNewlines)
+        editingMemoID = nil
+        isEditingFocused = false
+        guard content != memos.first(where: { $0.id == id })?.content else { return }
+        onUpdateMemo(id, content)
+    }
+    
+    func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
         let anchorPoint = screenPoint(for: draft.anchor, in: size)
-        let editorPosition = editorPosition(around: anchorPoint, in: size)
+        let editorWidth = min(Layout.editorWidth, size.width - Layout.edgePadding * 2)
+        let editorPosition = editorPosition(
+            around: anchorPoint,
+            in: size,
+            editorWidth: editorWidth,
+            keyboardTop: keyboardTop
+        )
         
         return ZStack(alignment: .topLeading) {
-            Image("memoBubble")
-                .resizable()
-                .frame(width: Layout.draftPinSize, height: Layout.draftPinSize * 37 / 40)
-                .position(anchorPoint)
-            
-            HStack(alignment: .bottom, spacing: Layout.editorSpacing) {
-                TextField(
+            ZStack(alignment: .topLeading) {
+                FloorPlanMemoInputField(
                     text: draftContent,
-                    prompt: Text(Copy.placeholder).foregroundStyle(.white.opacity(0.7)),
-                    axis: .vertical
-                ) {
+                    isFocused: $isTextFieldFocused,
+                    taggedTokens: Set(taggedPhotoTokens.values),
+                    onSubmit: submitDraft
+                )
+                if draft.content.isEmpty {
                     Text(Copy.placeholder)
+                        .font(AppTypography.headline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .allowsHitTesting(false)
                 }
-                .lineLimit(1...Layout.maximumLines)
-                .textFieldStyle(.plain)
-                .font(AppTypography.headline)
-                .foregroundStyle(.white)
-                .submitLabel(.done)
-                .focused($isTextFieldFocused)
-                .onSubmit(saveDraft)
-                
-                Button(action: saveDraft) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: Layout.sendIconSize, weight: .bold))
-                        .foregroundStyle(.black)
-                        .frame(width: Layout.sendButtonSize, height: Layout.sendButtonSize)
-                        .background(Color.brand500, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(trimmedContent.isEmpty)
-                .opacity(trimmedContent.isEmpty ? Layout.disabledOpacity : 1)
-                .accessibilityLabel(Copy.complete)
             }
+            .frame(
+                width: editorWidth - Layout.editorHorizontalPadding * 2,
+                height: Layout.editorHeight - Layout.editorVerticalPadding * 2,
+                alignment: .topLeading
+            )
             .padding(.horizontal, Layout.editorHorizontalPadding)
             .padding(.vertical, Layout.editorVerticalPadding)
-            .frame(width: Layout.editorWidth, alignment: .leading)
+            .frame(width: editorWidth, height: Layout.editorHeight, alignment: .leading)
             .background(.black, in: RoundedRectangle(cornerRadius: Layout.editorCornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: Layout.editorCornerRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: Layout.editorCornerRadius)
                     .strokeBorder(Color.brand500, lineWidth: Layout.editorBorderWidth)
             }
+            .overlay(alignment: .topTrailing) {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.brand500)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .padding(.trailing, 4)
+                .accessibilityLabel(Copy.cancel)
+            }
             .position(editorPosition)
+            
+            if isTagPickerPresented {
+                tagPicker
+                    .frame(width: min(Layout.tagPickerWidth, size.width - Layout.edgePadding * 2), height: Layout.tagPickerHeight)
+                    .position(
+                        x: editorPosition.x,
+                        y: editorPosition.y + Layout.editorHeight / 2 + Layout.tagPickerGap + Layout.tagPickerHeight / 2
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
         }
+        .animation(.easeOut(duration: 0.22), value: isTagPickerPresented)
     }
     
     var draftContent: Binding<String> {
@@ -202,14 +345,137 @@ private extension FloorPlanMemoPlacementOverlay {
             get: { draft?.content ?? "" },
             set: { newValue in
                 guard var updated = draft else { return }
+                if confirmedPhotoTagInput != newValue { confirmedPhotoTagInput = nil }
                 updated.content = newValue
+                reconcileTags(in: &updated)
+                confirmCompletedPhotoTags(in: &updated)
                 draft = updated
+                // 숫자를 입력하는 동안 후보 표시, 숫자 뒤에 공백·글자가 오면 사진 태그 확정
+                isTagPickerPresented = pendingTagNumber(in: newValue) != nil
             }
         )
     }
     
+    func pendingTagNumber(in content: String) -> Int? {
+        guard let hashIndex = content.lastIndex(of: "#") else { return nil }
+        let suffix = content[content.index(after: hashIndex)...]
+        guard suffix.allSatisfy(\.isNumber) else { return nil }
+        return suffix.isEmpty ? 0 : Int(suffix)
+    }
+    
+    func pendingPhoto(in content: String) -> (number: Int, photo: LoadedPhoto)? {
+        guard let number = pendingTagNumber(in: content), number > 0 else { return nil }
+        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+        guard photos.indices.contains(number - 1) else { return nil }
+        return (number, photos[number - 1])
+    }
+    
+    func reconcileTags(in draft: inout FloorPlanMemoDraft) {
+        taggedPhotoTokens = taggedPhotoTokens.filter { _, token in
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+        }
+        taggedMarkerTokens = taggedMarkerTokens.filter { _, token in
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+        }
+        draft.taggedPhotoIDs.removeAll { taggedPhotoTokens[$0] == nil }
+        draft.taggedMarkerIDs.removeAll { taggedMarkerTokens[$0] == nil }
+    }
+    
+    /// 해시태그 뒤에 숫자 외 문자가 입력되는 경우에만 사진 UUID로 확정
+    func confirmCompletedPhotoTags(in draft: inout FloorPlanMemoDraft) {
+        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
+        let source = draft.content as NSString
+        let pattern = "#([1-9][0-9]*)(?=[^0-9])"
+        let matches = (try? NSRegularExpression(pattern: pattern))?
+            .matches(in: draft.content, range: NSRange(location: 0, length: source.length)) ?? []
+        
+        for match in matches {
+            let token = source.substring(with: match.range)
+            guard let number = Int(token.dropFirst()), photos.indices.contains(number - 1) else { continue }
+            let photo = photos[number - 1]
+            guard !draft.taggedPhotoIDs.contains(photo.id) else { continue }
+            draft.taggedPhotoIDs.append(photo.id)
+            taggedPhotoTokens[photo.id] = token
+        }
+    }
+    
+    var tagPicker: some View {
+        FloorPlanMemoTagPicker(
+            photos: bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt },
+            taggedPhotoIDs: Set(draft?.taggedPhotoIDs ?? []),
+            markers: planData.markers.filter { $0.kind == .ignitionPoint },
+            taggedMarkerIDs: Set(draft?.taggedMarkerIDs ?? []),
+            activePhotoID: draft.flatMap { pendingPhoto(in: $0.content)?.photo.id },
+            onSelectPhoto: { photo, number in tagPhoto(photo, number: number) },
+            onSelectMarker: { marker, number in tagMarker(marker, number: number) }
+        )
+    }
+    
+    func tagPhoto(_ photo: LoadedPhoto, number: Int) {
+        guard var updated = draft, !updated.taggedPhotoIDs.contains(photo.id) else { return }
+        let token = "#\(number)"
+        if let hashIndex = updated.content.lastIndex(of: "#"),
+           pendingTagNumber(in: updated.content) != nil {
+            // 키보드에서 입력한 #번호 또는 #을 탭한 사진 번호로 확정
+            updated.content = String(updated.content[..<hashIndex]) + token
+        } else {
+            appendTag(token, to: &updated)
+        }
+        reconcileTags(in: &updated)
+        updated.taggedPhotoIDs.append(photo.id)
+        taggedPhotoTokens[photo.id] = token
+        draft = updated
+        isTagPickerPresented = false
+        confirmedPhotoTagInput = updated.content
+        Task { @MainActor in isTextFieldFocused = true }
+    }
+    
+    func tagMarker(_ marker: PlanMarker, number: Int) {
+        guard var updated = draft else { return }
+        guard !updated.taggedMarkerIDs.contains(marker.id) else { return }
+        updated.taggedMarkerIDs.append(marker.id)
+        let token = "#발화지점\(number)"
+        appendTag(token, to: &updated)
+        taggedMarkerTokens[marker.id] = token
+        draft = updated
+        isTagPickerPresented = false
+        Task { @MainActor in isTextFieldFocused = true }
+    }
+    
+    func appendTag(_ tag: String, to draft: inout FloorPlanMemoDraft) {
+        if draft.content.hasSuffix("#") { draft.content.removeLast() }
+        if !draft.content.isEmpty && !draft.content.hasSuffix(" ") { draft.content += " " }
+        draft.content += tag
+    }
+    
     var trimmedContent: String {
         draft?.content.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+    
+    func submitDraft(_ inputText: String) {
+        guard var updated = draft else { return }
+        // UIKit 입력창의 최신 값을 기준으로 처리해 SwiftUI 바인딩 갱신 순서에 의존하지 않음
+        if updated.content != inputText {
+            updated.content = inputText
+            reconcileTags(in: &updated)
+            confirmCompletedPhotoTags(in: &updated)
+            draft = updated
+        }
+        if confirmedPhotoTagInput == inputText {
+            saveDraft()
+        } else if let pendingPhoto = pendingPhoto(in: inputText) {
+            if updated.taggedPhotoIDs.contains(pendingPhoto.photo.id) {
+                saveDraft()
+            } else {
+                tagPhoto(pendingPhoto.photo, number: pendingPhoto.number)
+            }
+        } else if pendingTagNumber(in: inputText) != nil {
+            // #만 있거나 없는 번호라면 첫 Enter에서는 후보 목록만 닫음
+            confirmedPhotoTagInput = inputText
+            isTagPickerPresented = false
+        } else {
+            saveDraft()
+        }
     }
     
     func saveDraft() {
@@ -235,21 +501,52 @@ private extension FloorPlanMemoPlacementOverlay {
         return CGPoint(x: point.x, y: point.y + Layout.floorPlanVerticalInset)
     }
     
-    func editorPosition(around anchor: CGPoint, in size: CGSize) -> CGPoint {
-        let preferredX = anchor.x + Layout.editorWidth / 2 + Layout.editorOffset
-        let preferredY = anchor.y - Layout.editorHeight / 2
+    /// 위아래 도면 여백을 제외한 표시 범위. 이미 잘린 도면 화면에서는 전체 크기를 사용
+    func canvasBounds(in size: CGSize) -> CGRect {
+        let inset = screen == nil ? Layout.floorPlanVerticalInset : 0
+        return CGRect(x: 0, y: inset, width: size.width, height: max(0, size.height - inset * 2))
+    }
+    
+    /// 저장된 말풍선의 터치 영역까지 도면 안에 남도록 중심점 제한
+    func pinPosition(for anchor: FloorPlanMemoAnchor, in size: CGSize) -> CGPoint {
+        let point = screenPoint(for: anchor, in: size)
+        let bounds = canvasBounds(in: size)
+        let margin = Layout.pinHitSize / 2 + Layout.edgePadding
         return CGPoint(
-            x: min(max(preferredX, Layout.editorWidth / 2 + Layout.edgePadding), size.width - Layout.editorWidth / 2 - Layout.edgePadding),
-            y: min(max(preferredY, Layout.editorHeight / 2 + Layout.edgePadding), size.height - Layout.editorHeight / 2 - Layout.edgePadding)
+            x: min(max(point.x, bounds.minX + margin), max(bounds.minX + margin, bounds.maxX - margin)),
+            y: min(max(point.y, bounds.minY + margin), max(bounds.minY + margin, bounds.maxY - margin))
         )
     }
     
-    func cardPosition(around anchor: CGPoint, in size: CGSize) -> CGPoint {
-        let preferredX = anchor.x + Layout.cardWidth / 2 + Layout.editorOffset
-        let preferredY = anchor.y - Layout.cardHeight / 2
+    func editorPosition(
+        around anchor: CGPoint,
+        in size: CGSize,
+        editorWidth: CGFloat,
+        keyboardTop: CGFloat?
+    ) -> CGPoint {
+        let bounds = canvasBounds(in: size)
+        let preferredX = anchor.x + editorWidth / 2 + Layout.editorOffset
+        let preferredY = anchor.y - Layout.editorHeight / 2
+        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY) - Layout.edgePadding
+        let pickerSpace = isTagPickerPresented ? Layout.tagPickerHeight + Layout.tagPickerGap : 0
+        let highestCenter = bounds.minY + Layout.editorHeight / 2 + Layout.edgePadding
+        let lowestCenter = max(highestCenter, visibleBottom - pickerSpace - Layout.editorHeight / 2)
         return CGPoint(
-            x: min(max(preferredX, Layout.cardWidth / 2 + Layout.edgePadding), size.width - Layout.cardWidth / 2 - Layout.edgePadding),
-            y: min(max(preferredY, Layout.cardHeight / 2 + Layout.edgePadding), size.height - Layout.cardHeight / 2 - Layout.edgePadding)
+            x: min(max(preferredX, bounds.minX + editorWidth / 2 + Layout.edgePadding), bounds.maxX - editorWidth / 2 - Layout.edgePadding),
+            y: min(max(preferredY, highestCenter), lowestCenter)
+        )
+    }
+    
+    func cardPosition(around anchor: CGPoint, in size: CGSize, keyboardTop: CGFloat?, cardHeight: CGFloat) -> CGPoint {
+        let bounds = canvasBounds(in: size)
+        let preferredX = anchor.x + Layout.cardWidth / 2 + Layout.editorOffset
+        let preferredY = anchor.y - cardHeight / 2
+        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
+        let highestCenter = bounds.minY + cardHeight / 2 + Layout.edgePadding
+        let lowestCenter = max(highestCenter, visibleBottom - cardHeight / 2 - Layout.edgePadding)
+        return CGPoint(
+            x: min(max(preferredX, bounds.minX + Layout.cardWidth / 2 + Layout.edgePadding), bounds.maxX - Layout.cardWidth / 2 - Layout.edgePadding),
+            y: min(max(preferredY, highestCenter), lowestCenter)
         )
     }
     
@@ -264,29 +561,26 @@ private extension FloorPlanMemoPlacementOverlay {
         static let floorPlanVerticalInset: CGFloat = 80
         static let scrimOpacity = 0.035
         static let instructionTop: CGFloat = 70
-        static let cancelPadding: CGFloat = 16
         static let pinSize: CGFloat = 38
         static let pinHitSize: CGFloat = 48
-        static let draftPinSize: CGFloat = 28
         static let cardWidth: CGFloat = 320
         static let cardHeight: CGFloat = 140
-        static let editorWidth: CGFloat = 360
-        static let editorHeight: CGFloat = 88
+        static let editingCardHeight: CGFloat = 184
+        static let editorWidth: CGFloat = 464
+        static let editorHeight: CGFloat = 70
         static let editorOffset: CGFloat = 16
-        static let editorSpacing: CGFloat = 12
         static let editorHorizontalPadding: CGFloat = 16
         static let editorVerticalPadding: CGFloat = 14
         static let editorCornerRadius: CGFloat = 12
         static let editorBorderWidth: CGFloat = 1.5
-        static let sendButtonSize: CGFloat = 32
-        static let sendIconSize: CGFloat = 14
-        static let maximumLines = 3
-        static let disabledOpacity = 0.45
+        static let tagPickerWidth: CGFloat = 464
+        static let tagPickerHeight: CGFloat = 184
+        static let tagPickerGap: CGFloat = 8
         static let edgePadding: CGFloat = 16
     }
     
     enum Copy {
-        static let placeholder = "메모를 입력하세요."
+        static let placeholder = "메모를 입력하세요.\n#을 입력하면 발화지점이나 북마크한 사진을 태그할 수 있어요."
         static let complete = "메모 작성 완료"
         static let cancel = "메모 작성 취소"
         static let otherLocation = "기타"
