@@ -45,15 +45,12 @@ struct CaseListContent: View {
             || $0.detailAddress.localizedStandardContains(keyword)
         }
         
-        // 사건은 목록 하나에만 들어가므로, 조사 중·조사 종결에는 사용자 목록에 넣지 않은 사건만 보인다
+        // 사건은 목록 하나에만 들어가므로, 조사 중에는 사용자 목록에 넣지 않은 사건이 모두 보인다 (종결 여부 무관)
         switch selection {
         case .filter(.recent):
             return searched.sorted { $0.lastViewedAt > $1.lastViewedAt }
         case .filter(.inProgress):
-            return searched.filter { $0.folder == nil && $0.status == .inProgress }
-                .sorted { $0.occurredAt > $1.occurredAt }
-        case .filter(.closed):
-            return searched.filter { $0.folder == nil && $0.status == .closed }
+            return searched.filter { $0.folder == nil }
                 .sorted { $0.occurredAt > $1.occurredAt }
         case .folder(let folderID):
             return searched.filter { $0.folder?.id == folderID }
@@ -73,8 +70,6 @@ struct CaseListContent: View {
             return "최근 열람한 사건이 없어요"
         case .filter(.inProgress):
             return "조사 중인 사건이 없어요"
-        case .filter(.closed):
-            return "종결된 사건이 없어요"
         case .folder:
             return "해당 사건이 없어요"
         }
@@ -86,8 +81,6 @@ struct CaseListContent: View {
             return "열람한 사건은 이곳에서 확인할 수 있어요"
         case .filter(.inProgress):
             return "조사를 시작한 사건은 이곳에서 확인할 수 있어요"
-        case .filter(.closed):
-            return "조사가 끝난 사건은 이곳에서 확인할 수 있어요"
         case .folder:
             return "다른 목록을 선택하거나 새로운 사건을 등록해 주세요"
         }
@@ -262,8 +255,18 @@ extension CaseListContent {
             .accessibilityLabel("사건 목록 너비 조절")
     }
     
-    @ViewBuilder
+    /// 사이드바가 펼쳐져 있으면 목록 화면이 사이드바 뒤까지 깔려서, 꾹 눌렀을 때 줄 모양이 사이드바 뒤까지 길게 늘어난다.
+    /// 왼쪽 안전 영역(사이드바가 덮는 폭)만큼 목록을 밀어서 사이드바 뒤에는 목록이 없게 한다
     private var caseList: some View {
+        GeometryReader { proxy in
+            caseListBody
+                .padding(.leading, proxy.safeAreaInsets.leading)
+                .ignoresSafeArea(.container, edges: .leading)
+        }
+    }
+    
+    @ViewBuilder
+    private var caseListBody: some View {
         // List 기본 selection 색을 쓰지 않고 직접 회색 선택 배경을 그린다.
         List {
             if selection == .filter(.recent) {
@@ -285,7 +288,7 @@ extension CaseListContent {
     
     private func caseRow(_ fireCase: FireCase) -> some View {
         Button {
-            selectedCaseID = fireCase.id
+            toggleSelection(fireCase)
         } label: {
             HStack {
                 Text(fireCase.title)
@@ -302,12 +305,6 @@ extension CaseListContent {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.12)
-                .onEnded { _ in
-                    selectedCaseID = fireCase.id
-                }
-        )
         .listRowBackground(
             RoundedRectangle(cornerRadius: 12)
                 .fill(
@@ -366,33 +363,29 @@ extension CaseListContent {
         }
     }
     
+    /// 누른 사건을 고르고, 이미 고른 사건을 다시 누르면 선택을 푼다.
+    /// 길게 누르기(메뉴·드래그)에서는 선택을 바꾸지 않는다. 드래그 도중 화면 배치가 바뀌면 드래그가 끊긴다
+    private func toggleSelection(_ fireCase: FireCase) {
+        selectedCaseID = selectedCaseID == fireCase.id ? nil : fireCase.id
+    }
+    
     /// 메뉴 안에서도 빨간색이 유지되는 쓰레기통 아이콘
     private static let destructiveTrashImage: UIImage = {
         let image = UIImage(systemName: "trash") ?? UIImage()
         return image.withTintColor(.systemRed, renderingMode: .alwaysOriginal)
     }()
     
-    /// 조사 상태별 기본 목록과 사용자 목록으로 사건을 이동한다.
+    /// 조사 중과 사용자 목록으로 사건을 이동한다.
     @ViewBuilder
     private func moveMenu(_ fireCase: FireCase) -> some View {
         Menu(Copy.moveToFolder, systemImage: "folder") {
             Button {
                 move(fireCase, to: .inProgress)
             } label: {
-                if fireCase.folder == nil && fireCase.status == .inProgress {
+                if fireCase.folder == nil {
                     Label(CaseFilter.inProgress.title, systemImage: "checkmark")
                 } else {
                     Text(CaseFilter.inProgress.title)
-                }
-            }
-            
-            Button {
-                move(fireCase, to: .closed)
-            } label: {
-                if fireCase.folder == nil && fireCase.status == .closed {
-                    Label(CaseFilter.closed.title, systemImage: "checkmark")
-                } else {
-                    Text(CaseFilter.closed.title)
                 }
             }
             
