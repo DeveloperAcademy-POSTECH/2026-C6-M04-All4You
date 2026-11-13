@@ -81,6 +81,39 @@ struct FloorPlanMemo: Identifiable {
     }
 }
 
+/// 본문에서 삭제된 사진 태그를 메모의 사진 UUID 목록에도 반영
+enum FloorPlanMemoPhotoTagReconciler {
+    static func photoIDs(in content: String, tokenByPhotoID: [UUID: String]) -> [UUID] {
+        var photoIDByToken: [String: UUID] = [:]
+        for (id, token) in tokenByPhotoID where photoIDByToken[token] == nil {
+            photoIDByToken[token] = id
+        }
+        return photoTokens(in: content).compactMap { photoIDByToken[$0] }
+    }
+    
+    static func retainedPhotoIDs(
+        from oldContent: String,
+        to newContent: String,
+        taggedPhotoIDs: [UUID]
+    ) -> [UUID] {
+        let oldTokens = photoTokens(in: oldContent)
+        guard oldTokens.count == taggedPhotoIDs.count else { return taggedPhotoIDs }
+        
+        let photoIDByToken = Dictionary(uniqueKeysWithValues: zip(oldTokens, taggedPhotoIDs))
+        return photoTokens(in: newContent).compactMap { photoIDByToken[$0] }
+    }
+    
+    private static func photoTokens(in content: String) -> [String] {
+        let source = content as NSString
+        let range = NSRange(location: 0, length: source.length)
+        let matches = (try? NSRegularExpression(pattern: "#[1-9][0-9]*"))?
+            .matches(in: content, range: range) ?? []
+        var seen = Set<String>()
+        return matches.map { source.substring(with: $0.range) }
+            .filter { seen.insert($0).inserted }
+    }
+}
+
 // TODO: 기존 위치 피커 Preview와의 호환을 위한 값. 실제 메모 목록은 Room.id와 이름을 직접 사용해야함
 enum FloorPlanMemoLocation: String, CaseIterable, Identifiable {
     case all = "전체"

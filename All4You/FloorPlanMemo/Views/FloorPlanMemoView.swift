@@ -11,7 +11,7 @@ struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
     let bookmarkedPhotos: [LoadedPhoto]
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
-    var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID]) -> Void = { _, _, _ in }
     
     // nil이면 전체, 값이 있으면 Room.id에 해당하는 메모만 보여줌
     @State private var selectedLocationID: String?
@@ -29,7 +29,7 @@ struct FloorPlanMemoView: View {
         sections: [FloorPlanMemoSection] = [],
         bookmarkedPhotos: [LoadedPhoto] = [],
         onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in },
-        onUpdateMemo: @escaping (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+        onUpdateMemo: @escaping (FloorPlanMemo.ID, String, [UUID]) -> Void = { _, _, _ in }
     ) {
         self.sections = sections
         self.bookmarkedPhotos = bookmarkedPhotos
@@ -45,7 +45,7 @@ struct FloorPlanMemoView: View {
         self.sections = sections
         self.bookmarkedPhotos = []
         self.onDeleteMemo = { _ in }
-        self.onUpdateMemo = { _, _ in }
+        self.onUpdateMemo = { _, _, _ in }
         _selectedMemoID = State(initialValue: selectedMemoID)
         _isDetailExpanded = State(initialValue: isDetailExpanded)
     }

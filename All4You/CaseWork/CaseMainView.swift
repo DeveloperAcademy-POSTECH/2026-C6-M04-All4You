@@ -84,7 +84,7 @@ struct CaseMainView: View {
                 sections: memoSections,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                 onDeleteMemo: deleteMemo,
-                onUpdateMemo: updateMemo
+                onUpdateMemo: updateMemoWithTags
             )
             .id(sessionNumber)
             .navigationBarTitleDisplayMode(.inline)
@@ -301,9 +301,21 @@ extension CaseMainView {
         if justAddedMemoID == id { justAddedMemoID = nil }
     }
     
-    /// 미리보기에서 수정한 본문을 기존 사건 메모에 반영
+    /// 수정한 본문과 남아 있는 사진 태그를 기존 사건 메모에 반영
     private func updateMemo(_ id: FloorPlanMemo.ID, content: String) {
         guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.taggedPhotoIDs = FloorPlanMemoPhotoTagReconciler.retainedPhotoIDs(
+            from: memo.content,
+            to: content,
+            taggedPhotoIDs: memo.taggedPhotoIDs
+        )
+        memo.content = content
+    }
+    
+    /// 메모 탭에서 수정한 본문과 사진 태그를 함께 저장
+    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID]) {
+        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
+        memo.taggedPhotoIDs = photoIDs
         memo.content = content
     }
     

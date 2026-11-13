@@ -195,20 +195,38 @@ private extension FloorPlanMemoPlacementOverlay {
             }
             
             if editingMemoID == memo.id {
-                FloorPlanMemoInputField(
-                    text: $editingContent,
-                    isFocused: $isEditingFocused,
-                    taggedTokens: [],
-                    onSubmit: { text in
-                        editingContent = text
-                        finishEditingMemo()
-                    },
-                    textColor: .label
-                )
+                ZStack(alignment: .topLeading) {
+                    FloorPlanMemoInputField(
+                        text: $editingContent,
+                        isFocused: $isEditingFocused,
+                        taggedTokens: [],
+                        onSubmit: { text in
+                            editingContent = text
+                            finishEditingMemo()
+                        },
+                        textColor: .label
+                    )
+                    if editingContent.isEmpty {
+                        Text(Copy.placeholder)
+                            .font(AppTypography.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .allowsHitTesting(false)
+                    }
+                }
                 .frame(height: 90)
             } else {
-                FloorPlanMemoTaggedContent(memo: memo, bookmarkedPhotos: bookmarkedPhotos) { photo in
-                    previewPhoto = photo
+                Group {
+                    if memo.content.isEmpty {
+                        Text(Copy.placeholder)
+                            .font(AppTypography.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        FloorPlanMemoTaggedContent(memo: memo, bookmarkedPhotos: bookmarkedPhotos) { photo in
+                            previewPhoto = photo
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
                 .contentShape(Rectangle())
@@ -249,7 +267,7 @@ private extension FloorPlanMemoPlacementOverlay {
         let content = editingContent.trimmingCharacters(in: .whitespacesAndNewlines)
         editingMemoID = nil
         isEditingFocused = false
-        guard !content.isEmpty, content != memos.first(where: { $0.id == id })?.content else { return }
+        guard content != memos.first(where: { $0.id == id })?.content else { return }
         onUpdateMemo(id, content)
     }
     
@@ -381,100 +399,15 @@ private extension FloorPlanMemoPlacementOverlay {
     }
     
     var tagPicker: some View {
-        let photos = bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt }
-        let markers = planData.markers.filter { $0.kind == .ignitionPoint }
-        let activePhotoID = draft.flatMap { pendingPhoto(in: $0.content)?.photo.id }
-        // 같은 메모에 이미 태그한 사진은 선택할 수 없도록 표시
-        let availablePhotos = Array(photos.enumerated())
-        let availableMarkers = Array(markers.enumerated()).filter { !(draft?.taggedMarkerIDs.contains($0.element.id) ?? false) }
-        
-        return Group {
-            if availablePhotos.isEmpty && availableMarkers.isEmpty {
-                Text(photos.isEmpty && markers.isEmpty
-                     ? "발화지점이나 북마크한 사진이 없어요"
-                     : "모든 발화지점과 북마크한 사진을 태그했어요")
-                .foregroundStyle(.secondary)
-                .padding(20)
-            } else {
-                ScrollViewReader { scrollProxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(availableMarkers.indices, id: \.self) { index in
-                                let marker = availableMarkers[index].element
-                                let number = availableMarkers[index].offset + 1
-                                Button {
-                                    tagMarker(marker, number: number)
-                                } label: {
-                                    tagTile(number: number) {
-                                        Image(systemName: "flame.fill")
-                                            .font(.system(size: 40))
-                                            .foregroundStyle(.orange)
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                            .background(Color(uiColor: .systemGray4))
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("발화지점 \(number) 태그")
-                            }
-                            
-                            ForEach(availablePhotos.indices, id: \.self) { index in
-                                let photo = availablePhotos[index].element
-                                let number = availablePhotos[index].offset + 1
-                                let isTagged = draft?.taggedPhotoIDs.contains(photo.id) ?? false
-                                Button {
-                                    tagPhoto(photo, number: number)
-                                } label: {
-                                    tagTile(number: number) {
-                                        Image(uiImage: photo.thumbnail)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: Layout.tagTileSize, height: Layout.tagTileSize)
-                                            .clipped()
-                                            .overlay {
-                                                if photo.id == activePhotoID && !isTagged {
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .strokeBorder(Color.brand500, lineWidth: 3)
-                                                }
-                                            }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isTagged)
-                                .opacity(isTagged ? 0.45 : 1)
-                                .id(photo.id)
-                                .accessibilityLabel(isTagged ? "북마크 사진 \(number), 이미 태그됨" : "북마크 사진 \(number) 태그")
-                            }
-                        }
-                        .padding(16)
-                    }
-                    .onAppear {
-                        if let activePhotoID { scrollProxy.scrollTo(activePhotoID, anchor: .center) }
-                    }
-                    .onChange(of: activePhotoID) { _, photoID in
-                        guard let photoID else { return }
-                        Task { @MainActor in
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                scrollProxy.scrollTo(photoID, anchor: .center)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemGray5), in: RoundedRectangle(cornerRadius: 16))
-    }
-    
-    func tagTile<Content: View>(number: Int, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            content()
-                .frame(width: Layout.tagTileSize, height: Layout.tagTileSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text("#\(number)")
-                .font(AppTypography.headlineEmphasized)
-                .foregroundStyle(.primary)
-        }
-        .frame(width: Layout.tagTileSize)
+        FloorPlanMemoTagPicker(
+            photos: bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt },
+            taggedPhotoIDs: Set(draft?.taggedPhotoIDs ?? []),
+            markers: planData.markers.filter { $0.kind == .ignitionPoint },
+            taggedMarkerIDs: Set(draft?.taggedMarkerIDs ?? []),
+            activePhotoID: draft.flatMap { pendingPhoto(in: $0.content)?.photo.id },
+            onSelectPhoto: { photo, number in tagPhoto(photo, number: number) },
+            onSelectMarker: { marker, number in tagMarker(marker, number: number) }
+        )
     }
     
     func tagPhoto(_ photo: LoadedPhoto, number: Int) {
@@ -621,7 +554,6 @@ private extension FloorPlanMemoPlacementOverlay {
         static let editorCornerRadius: CGFloat = 12
         static let editorBorderWidth: CGFloat = 1.5
         static let tagPickerWidth: CGFloat = 464
-        static let tagTileSize: CGFloat = 116
         static let tagPickerHeight: CGFloat = 184
         static let tagPickerGap: CGFloat = 8
         static let edgePadding: CGFloat = 16
