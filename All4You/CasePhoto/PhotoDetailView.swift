@@ -71,64 +71,119 @@ struct PhotoDetailView: View {
 
 // 서브 뷰
 extension PhotoDetailView {
-    /// 옆으로 밀어 넘기는 사진들
-    private var pages: some View {
-        TabView(selection: $currentID) {
-            ForEach(photos) { photo in
-                Image(uiImage: photo.image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .tag(Optional(photo.id))
-            }
-        }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .ignoresSafeArea()
-    }
 
-    /// 왼쪽 뒤로가기·북마크, 가운데 찍은 날짜, 오른쪽 마크업·삭제
-    private var topBar: some View {
-        HStack(spacing: Layout.buttonSpacing) {
-            GlassCircleButton(title: Copy.back, systemImage: "chevron.left", action: onClose)
-            if let currentPhoto {
-                GlassCircleButton(
-                    title: currentPhoto.isBookmarked ? Copy.removeBookmark : Copy.addBookmark,
-                    systemImage: currentPhoto.isBookmarked ? "bookmark.fill" : "bookmark"
-                ) {
-                    store.toggleBookmark(id: currentPhoto.id)
-                }
-            }
-            Spacer()
-            GlassCircleButton(title: Copy.markup, systemImage: "pencil.tip.crop.circle") {
-                isMarkupShown = true
-            }
-            GlassCircleButton(title: Copy.delete, systemImage: "trash") {
-                isDeleteAlertShown = true
-            }
-        }
-        // 날짜는 버튼 줄과 상관없이 화면 가운데에 둔다
-        .overlay {
-            if let currentPhoto {
-                dateLabel(currentPhoto.takenAt)
-            }
-        }
-        .padding(Layout.edgePadding)
-    }
+   /// 옆으로 밀어 넘기는 사진들
+   private var pages: some View {
+       TabView(selection: $currentID) {
+           ForEach(photos) { photo in
+               Image(uiImage: photo.image)
+                   .resizable()
+                   .scaledToFit()
+                   .frame(maxWidth: .infinity, maxHeight: .infinity)
+                   .tag(Optional(photo.id))
+           }
+       }
+       .tabViewStyle(.page(indexDisplayMode: .never))
+       .ignoresSafeArea()
+   }
 
-    /// "10월 9일" 아래 작은 "오후 10:46"
-    private func dateLabel(_ date: Date) -> some View {
-        VStack(spacing: 0) {
-            Text(date, format: .dateTime.month().day())
-                .font(AppTypography.subheadlineEmphasized)
-            Text(date, format: .dateTime.hour().minute())
-                .font(AppTypography.label)
-                .foregroundStyle(.white.secondary)
-        }
-        .foregroundStyle(.white)
-        .padding(.horizontal, Layout.datePadding)
-        .padding(.vertical, Layout.dateVerticalPadding)
-        .glassEffect(in: .capsule)
-    }
+   /// 왼쪽 뒤로가기·북마크, 가운데 촬영 날짜,
+   /// 오른쪽 마크업·삭제
+   private var topBar: some View {
+       HStack(spacing: Layout.buttonSpacing) {
+
+           // 뒤로가기
+           glassToolbarButton(
+               title: Copy.back,
+               systemImage: "chevron.left",
+               action: onClose
+           )
+
+           // 북마크
+           if let currentPhoto {
+               glassToolbarButton(
+                   title: currentPhoto.isBookmarked
+                       ? Copy.removeBookmark
+                       : Copy.addBookmark,
+                   systemImage: currentPhoto.isBookmarked
+                       ? "bookmark.fill"
+                       : "bookmark"
+               ) {
+                   store.toggleBookmark(id: currentPhoto.id)
+               }
+           }
+
+           Spacer()
+
+           // 마크업
+           glassToolbarButton(
+               title: Copy.markup,
+               systemImage: "pencil.tip.crop.circle"
+           ) {
+               isMarkupShown = true
+           }
+
+           // 삭제
+           glassToolbarButton(
+               title: Copy.delete,
+               systemImage: "trash"
+           ) {
+               isDeleteAlertShown = true
+           }
+       }
+       .overlay {
+           if let currentPhoto {
+               dateLabel(currentPhoto.takenAt)
+           }
+       }
+       .padding(Layout.edgePadding)
+   }
+
+   /// 사진 상세 화면 공통 Liquid Glass 버튼
+   private func glassToolbarButton(
+       title: String,
+       systemImage: String,
+       action: @escaping () -> Void
+   ) -> some View {
+       Button(action: action) {
+           Image(systemName: systemImage)
+               .font(AppTypography.headlineEmphasized)
+               .foregroundStyle(.primary)
+               .frame(width: 44, height: 44)
+               .contentShape(.circle)
+       }
+       .buttonStyle(.plain)
+       .glassEffect(
+           .regular.interactive(),
+           in: .circle
+       )
+       .accessibilityLabel(title)
+   }
+
+   /// 촬영 날짜 및 시간
+   private func dateLabel(_ date: Date) -> some View {
+       VStack(spacing: 0) {
+           Text(
+               date,
+               format: .dateTime.month().day()
+           )
+           .font(AppTypography.subheadlineEmphasized)
+           .foregroundStyle(.primary)
+
+           Text(
+               date,
+               format: .dateTime.hour().minute()
+           )
+           .font(AppTypography.label)
+           .foregroundStyle(.secondary)
+       }
+       .padding(.horizontal, Layout.datePadding)
+       .padding(.vertical, Layout.dateVerticalPadding)
+       .glassEffect(
+           .regular,
+           in: .capsule
+       )
+   }
 }
 
 // 삭제
