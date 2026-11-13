@@ -81,13 +81,12 @@ final class FireCase {
 // 사이드바 분류는 저장 대상이 아닌 UI 상태
 // enum 케이스명은 기존 화면과 호환되도록 유지
 enum CaseFilter: CaseIterable, Hashable {
-    case recent, inProgress, closed
+    case recent, inProgress
     
     var title: String {
         switch self {
         case .recent: "최근 열람"
         case .inProgress: "조사 중"
-        case .closed: "조사 종결"
         }
     }
     
@@ -95,7 +94,6 @@ enum CaseFilter: CaseIterable, Hashable {
         switch self {
         case .recent: "clock"
         case .inProgress: "waveform.path.ecg"
-        case .closed: "checkmark.seal"
         }
     }
 }
