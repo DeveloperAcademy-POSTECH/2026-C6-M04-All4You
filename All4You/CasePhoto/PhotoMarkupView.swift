@@ -126,9 +126,49 @@ private struct MarkupCanvas: UIViewRepresentable {
         coordinator.toolPicker.removeObserver(uiView)
     }
 
-    /// 도구 막대가 그림판이 있는 동안 사라지지 않도록 들고 있는다
     final class Coordinator {
-        let toolPicker = PKToolPicker()
+        let toolPicker: PKToolPicker = {
+            // 첫 번째 펜
+            let firstPen = PKToolPickerInkingItem(
+                type: .pen,
+                color: .red,
+                width: 4
+            )
+
+            // 두 번째 펜
+            let secondPen = PKToolPickerInkingItem(
+                type: .monoline,
+                color: .white,
+                width: 1
+            )
+            
+            // 하이라이트
+            let highlighter = PKToolPickerInkingItem(
+                type: .marker,
+                color: nil,
+                width: 8
+            )
+
+            // 지우개
+            let eraser = PKToolPickerEraserItem(
+                type: .vector
+            )
+
+            // 올가미
+            let lasso = PKToolPickerLassoItem()
+
+            // 눈금자 (블러 현상 확인을 위한 임시 도구)
+            let ruler = PKToolPickerRulerItem()
+
+            return PKToolPicker(toolItems: [
+                firstPen,
+                secondPen,
+                highlighter,
+                eraser,
+                lasso,
+                ruler
+            ])
+        }()
     }
 }
 
