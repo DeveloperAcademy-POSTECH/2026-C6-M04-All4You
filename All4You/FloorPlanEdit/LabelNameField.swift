@@ -19,6 +19,8 @@ struct LabelNameField: View {
     var isFocused: FocusState<Bool>.Binding
     /// 키보드의 완료를 눌렀다
     let onSubmit: () -> Void
+    /// 캡슐과 같은 배율 (LabelScale). 이름을 고치는 중에도 캡슐 크기가 그대로이게
+    var scale: CGFloat = 1
 
     var body: some View {
         switch style {
@@ -29,6 +31,7 @@ struct LabelNameField: View {
                 .padding(.horizontal, Layout.roomHorizontalPadding)
                 .padding(.vertical, Layout.roomVerticalPadding)
                 .background(.black, in: .capsule)
+                .scaleEffect(scale)
         case .furniture:
             field
                 .font(AppTypography.label)
@@ -37,6 +40,7 @@ struct LabelNameField: View {
                 .padding(.vertical, Layout.furnitureVerticalPadding)
                 .background(.white, in: .capsule)
                 .overlay { Capsule().stroke(.black, lineWidth: 1) }
+                .scaleEffect(scale)
         }
     }
 

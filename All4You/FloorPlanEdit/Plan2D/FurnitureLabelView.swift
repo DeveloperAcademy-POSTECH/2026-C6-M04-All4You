@@ -2,10 +2,12 @@
 
 import SwiftUI
 
-/// 가구 이름 캡슐. 글자는 확대해도 같은 크기다
+/// 가구 이름 캡슐. 도면을 확대·축소하면 scale만큼 함께 커지고 작아진다 (한계는 LabelScale)
 struct FurnitureLabelView: View {
     /// Furniture.label
     let label: String
+    /// 도면 확대·축소에 맞춰 키우고 줄이는 배율 (LabelScale). 1이면 Figma 크기
+    var scale: CGFloat = 1
 
     var body: some View {
         Text(label)
@@ -18,6 +20,7 @@ struct FurnitureLabelView: View {
                 Capsule()
                     .stroke(.black, lineWidth: Layout.borderWidth)
             }
+            .scaleEffect(scale)
     }
 }
 
