@@ -1,4 +1,4 @@
-// 스탬프(발화지점·전기) 아래에 띄우는 종류 글자 캡슐. 가구 이름 캡슐을 따르되 조금 작다
+// 스탬프(발화지점·전기) 아래에 띄우는 종류 글자 캡슐. 스탬프와 같은 주황 바탕이라 흰 바탕의 가구 이름 캡슐·검은 바탕의 공간 이름 캡슐과 구분된다
 
 import SwiftUI
 
@@ -11,16 +11,12 @@ struct StampKindLabelView: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: Layout.fontSize))
-            .foregroundStyle(.black)
+            .font(.system(size: Layout.fontSize, weight: .semibold))
+            .foregroundStyle(.white)
             .fixedSize()
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
-            .background(.white, in: .capsule)
-            .overlay {
-                Capsule()
-                    .stroke(.black, lineWidth: Layout.borderWidth)
-            }
+            .background(.brand500, in: .capsule)
             .scaleEffect(scale)
     }
 
@@ -31,11 +27,10 @@ struct StampKindLabelView: View {
 // 레이아웃 값
 extension StampKindLabelView {
     private enum Layout {
-        // TEMP: Figma에 없어 가구 이름 캡슐(글자 12·여백 13×7.5)보다 조금 작게 임시로 정함 — 디자인 확인 필요
+        // TEMP: Figma에 없어 스탬프와 같은 주황 바탕·흰 글자로 가구 이름 캡슐(글자 12·여백 13×7.5)보다 조금 작게 임시로 정함 — 디자인 확인 필요
         static let fontSize: CGFloat = 11
         static let horizontalPadding: CGFloat = 9
         static let verticalPadding: CGFloat = 4
-        static let borderWidth: CGFloat = 1
     }
 }
 
