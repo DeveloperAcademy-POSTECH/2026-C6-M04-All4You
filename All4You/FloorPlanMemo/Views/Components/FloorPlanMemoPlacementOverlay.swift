@@ -124,6 +124,7 @@ private extension FloorPlanMemoPlacementOverlay {
         selectedMemoID = nil
         // 입력된 초안이 있으면 도면의 다른 위치를 눌러도 작성 중인 메모를 유지
         guard draft?.content.isEmpty ?? true else { return }
+        guard canvasBounds(in: size).contains(location) else { return }
         let canvasSize = drawingSize(in: size)
         guard canvasSize.width > 0, canvasSize.height > 0 else { return }
         
@@ -167,7 +168,7 @@ private extension FloorPlanMemoPlacementOverlay {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(memo.title), \(memo.locationName), 메모 보기")
-        .position(screenPoint(for: memo.anchor, in: size))
+        .position(pinPosition(for: memo.anchor, in: size))
     }
     
     func savedMemoCard(for memo: FloorPlanMemo, in size: CGSize, keyboardTop: CGFloat?) -> some View {
@@ -500,32 +501,51 @@ private extension FloorPlanMemoPlacementOverlay {
         return CGPoint(x: point.x, y: point.y + Layout.floorPlanVerticalInset)
     }
     
+    /// 위아래 도면 여백을 제외한 표시 범위. 이미 잘린 도면 화면에서는 전체 크기를 사용
+    func canvasBounds(in size: CGSize) -> CGRect {
+        let inset = screen == nil ? Layout.floorPlanVerticalInset : 0
+        return CGRect(x: 0, y: inset, width: size.width, height: max(0, size.height - inset * 2))
+    }
+    
+    /// 저장된 말풍선의 터치 영역까지 도면 안에 남도록 중심점 제한
+    func pinPosition(for anchor: FloorPlanMemoAnchor, in size: CGSize) -> CGPoint {
+        let point = screenPoint(for: anchor, in: size)
+        let bounds = canvasBounds(in: size)
+        let margin = Layout.pinHitSize / 2 + Layout.edgePadding
+        return CGPoint(
+            x: min(max(point.x, bounds.minX + margin), max(bounds.minX + margin, bounds.maxX - margin)),
+            y: min(max(point.y, bounds.minY + margin), max(bounds.minY + margin, bounds.maxY - margin))
+        )
+    }
+    
     func editorPosition(
         around anchor: CGPoint,
         in size: CGSize,
         editorWidth: CGFloat,
         keyboardTop: CGFloat?
     ) -> CGPoint {
+        let bounds = canvasBounds(in: size)
         let preferredX = anchor.x + editorWidth / 2 + Layout.editorOffset
         let preferredY = anchor.y - Layout.editorHeight / 2
-        let visibleBottom = min(size.height, keyboardTop ?? size.height) - Layout.edgePadding
+        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY) - Layout.edgePadding
         let pickerSpace = isTagPickerPresented ? Layout.tagPickerHeight + Layout.tagPickerGap : 0
-        let highestCenter = Layout.editorHeight / 2 + Layout.edgePadding
+        let highestCenter = bounds.minY + Layout.editorHeight / 2 + Layout.edgePadding
         let lowestCenter = max(highestCenter, visibleBottom - pickerSpace - Layout.editorHeight / 2)
         return CGPoint(
-            x: min(max(preferredX, editorWidth / 2 + Layout.edgePadding), size.width - editorWidth / 2 - Layout.edgePadding),
+            x: min(max(preferredX, bounds.minX + editorWidth / 2 + Layout.edgePadding), bounds.maxX - editorWidth / 2 - Layout.edgePadding),
             y: min(max(preferredY, highestCenter), lowestCenter)
         )
     }
     
     func cardPosition(around anchor: CGPoint, in size: CGSize, keyboardTop: CGFloat?, cardHeight: CGFloat) -> CGPoint {
+        let bounds = canvasBounds(in: size)
         let preferredX = anchor.x + Layout.cardWidth / 2 + Layout.editorOffset
         let preferredY = anchor.y - cardHeight / 2
-        let visibleBottom = min(size.height, keyboardTop ?? size.height)
-        let highestCenter = cardHeight / 2 + Layout.edgePadding
+        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
+        let highestCenter = bounds.minY + cardHeight / 2 + Layout.edgePadding
         let lowestCenter = max(highestCenter, visibleBottom - cardHeight / 2 - Layout.edgePadding)
         return CGPoint(
-            x: min(max(preferredX, Layout.cardWidth / 2 + Layout.edgePadding), size.width - Layout.cardWidth / 2 - Layout.edgePadding),
+            x: min(max(preferredX, bounds.minX + Layout.cardWidth / 2 + Layout.edgePadding), bounds.maxX - Layout.cardWidth / 2 - Layout.edgePadding),
             y: min(max(preferredY, highestCenter), lowestCenter)
         )
     }
