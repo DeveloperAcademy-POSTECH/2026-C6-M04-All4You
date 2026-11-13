@@ -13,10 +13,14 @@ struct FloorPlanEdit2DView: View {
     @Binding var history: PlanHistory
     /// 위 도구 막대에서 켠 스탬프 도구. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
     @Binding var selectedTool: EditTool?
+    /// 위 도구 막대의 옵션 줄에서 고른 종류. 발화지점·전기는 종류를 골라야 놓을 수 있다
+    @Binding var stampOption: StampOption?
     /// 스탬프를 놓을 때 쓰는 Figma 기본 크기. nil이면 addMarker·addOpening의 기본 크기를 쓴다
     var stampDefaults: StampDefaults? = nil
     /// 값이 바뀔 때마다 고른 것·메뉴·미리 보기를 비운다 (되돌리기·다시 하기나 2D·3D 전환 때 부모가 올린다)
     var resetToken = 0
+    /// 치수·면적 글자 설정. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
+    @Binding var dimensions: DimensionDisplay
 
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
@@ -110,8 +114,11 @@ struct FloorPlanEdit2DView: View {
                 .padding()
         }
         .overlay(alignment: .bottomTrailing) {
-            ResetViewButton(action: resetView)
-                .padding()
+            VStack(alignment: .trailing, spacing: Layout.cornerButtonSpacing) {
+                DimensionControl(display: $dimensions)
+                ResetViewButton(action: resetView)
+            }
+            .padding()
         }
         .onChange(of: resetToken) { clearEditingState() }
         // 키보드 내리기 버튼으로 엔터 없이 키보드를 내려도 이름 고치기를 끝내고 올려 둔 도면을 되돌린다
@@ -148,7 +155,9 @@ extension FloorPlanEdit2DView {
                 selectedRoomId: selectedRoomId,
                 selectedWallIds: wallSelection?.wallIds ?? [],
                 roomLabelActions: roomLabelActions,
-                editingFurnitureId: editingFurnitureId
+                editingFurnitureId: editingFurnitureId,
+                dimensions: dimensions,
+                scalesLabels: true
             )
                 .contentShape(.rect)
                 .gesture(tapGesture)
@@ -221,7 +230,7 @@ extension FloorPlanEdit2DView {
 
     private var toolBar: some View {
         // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 펜·지우개·손 어느 것이어도 쓸 수 있고, 켜 두면 아래 동작보다 먼저 처리된다
-        EditToolBar(selectedTool: $selectedTool)
+        EditToolBar(selectedTool: $selectedTool, stampOption: $stampOption)
             .padding()
             .onChange(of: selectedTool) {
                 // 도구를 켜면 고른 벽은 풀어 둔다 (도구가 켜진 동안은 벽을 고르거나 옮기지 않는다)
@@ -308,7 +317,7 @@ extension FloorPlanEdit2DView {
                 // 가구 이름 캡슐을 눌렀으면 가구를 고르거나 이름을 고친다 (손 도구나 가구라벨 도구일 때).
                 // 스탬프가 캡슐 위에 겹쳐 있거나 스탬프 도구가 켜져 있으면 스탬프가 먼저라 캡슐은 건너뛴다
                 if canUseStamps, selectedTool == nil || selectedTool == .furniture, screen.stamp(at: value.location, in: planData) == nil,
-                   let furnitureId = screen.furnitureLabel(at: value.location, in: planData) {
+                   let furnitureId = screen.furnitureLabel(at: value.location, in: planData, labelScale: screen.labelScale) {
                     tapFurnitureLabel(furnitureId)
                     return
                 }
@@ -369,7 +378,12 @@ extension FloorPlanEdit2DView {
                 showNotice(planData.furniturePlacementHint(at: point))
             }
         case (let tool?, _):
-            if let placed = planData.place(tool, at: tap, defaults: stampDefaults) {
+            // 발화지점·전기는 종류를 먼저 골라야 놓는다
+            if !tool.stampOptions.isEmpty, stampOption == nil {
+                showNotice(Copy.pickKindFirst)
+                return
+            }
+            if let placed = planData.place(tool, at: tap, defaults: stampDefaults, option: stampOption) {
                 selection = placed
                 // 한 번 놓으면 도구가 꺼진다. 한 번에 여러 개 놓이지 않게 하고, 아래 막대(펜·지우개·손)가 다시 먼저 동작한다
                 selectedTool = nil
@@ -387,7 +401,7 @@ extension FloorPlanEdit2DView {
     @ViewBuilder
     private func roomNameField(screen: PlanScreen) -> some View {
         if let editingRoomId, let room = planData.rooms.first(where: { $0.id == editingRoomId }) {
-            LabelNameField(style: .room, placeholder: room.name, text: $roomNameDraft, isFocused: $isRoomNameFocused, onSubmit: finishRoomEditing)
+            LabelNameField(style: .room, placeholder: room.name, text: $roomNameDraft, isFocused: $isRoomNameFocused, onSubmit: finishRoomEditing, scale: screen.labelScale)
                 .position(screen.point(SIMD2(room.labelX, room.labelY)))
         }
     }
@@ -470,7 +484,7 @@ extension FloorPlanEdit2DView {
     @ViewBuilder
     private func furnitureLabelField(screen: PlanScreen) -> some View {
         if let editingFurnitureId, let furniture = planData.furniture?.first(where: { $0.id == editingFurnitureId }) {
-            LabelNameField(style: .furniture, placeholder: furniture.label, text: $furnitureLabelDraft, isFocused: $isFurnitureLabelFocused, onSubmit: finishFurnitureEditing)
+            LabelNameField(style: .furniture, placeholder: furniture.label, text: $furnitureLabelDraft, isFocused: $isFurnitureLabelFocused, onSubmit: finishFurnitureEditing, scale: screen.labelScale)
                 .position(screen.point(furniture.center))
         }
     }
@@ -620,11 +634,11 @@ extension FloorPlanEdit2DView {
             _ = plan.apply(.delete(stamp), selection: nil)
             return true
         }
-        if let roomId = screen.roomLabel(at: location, in: plan) {
+        if let roomId = screen.roomLabel(at: location, in: plan, labelScale: screen.labelScale) {
             plan.removeRoom(id: roomId)
             return true
         }
-        if let furnitureId = screen.furnitureLabel(at: location, in: plan) {
+        if let furnitureId = screen.furnitureLabel(at: location, in: plan, labelScale: screen.labelScale) {
             plan.removeFurniture(id: furnitureId)
             return true
         }
@@ -1026,6 +1040,8 @@ extension FloorPlanEdit2DView {
 // 레이아웃 값
 extension FloorPlanEdit2DView {
     private enum Layout {
+        /// 오른쪽 아래 버튼들 사이 (pt)
+        static let cornerButtonSpacing: CGFloat = 8
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
         static let planFill = 0.85
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
@@ -1069,6 +1085,8 @@ extension FloorPlanEdit2DView {
     private enum Copy {
         static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
+        static let pickKindFirst = "종류를 먼저 골라 주세요"
+        // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
         static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
     }
@@ -1078,8 +1096,10 @@ extension FloorPlanEdit2DView {
     @Previewable @State var planData = DummyFloorPlan.planData
     @Previewable @State var history = PlanHistory()
     @Previewable @State var selectedTool: EditTool?
+    @Previewable @State var stampOption: StampOption?
+    @Previewable @State var dimensions = DimensionDisplay()
 
     NavigationStack {
-        FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool)
+        FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool, stampOption: $stampOption, dimensions: $dimensions)
     }
 }

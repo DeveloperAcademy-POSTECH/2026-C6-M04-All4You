@@ -14,6 +14,10 @@ struct PlanMarker: Codable, Hashable, Identifiable {
     var lying: Bool?
     /// 기본 크기에 곱하는 배율. nil이면 1 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
     var scale: Double?
+    /// 발화원인 (발화지점만 값이 있고 나머지는 nil. 이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
+    var ignitionCause: IgnitionCause? = nil
+    /// 전기 종류 (바닥 전기만 값이 있고 나머지는 nil)
+    var electricalKind: ElectricalKind? = nil
 
     /// 그릴 때 쓰는 배율. 저장된 값이 없으면 1
     var drawScale: Double { scale ?? 1 }
@@ -29,6 +33,15 @@ struct PlanMarker: Codable, Hashable, Identifiable {
     /// 3D에서 사람 모델에 곱하는 배수 (기호 크기 × 3D 확대). 사람이 아니면 1
     static func modelFactor(of kind: MarkerKind) -> Double {
         kind == .person ? personTokenScale * personModelEnlargement : 1
+    }
+
+    /// 스탬프 아래에 보일 종류 글자. 종류를 고르지 않은 스탬프(예전에 저장한 도면)는 nil
+    var kindLabel: String? {
+        switch kind {
+        case .ignitionPoint: ignitionCause?.title
+        case .outlet: electricalKind?.title
+        case .person: nil
+        }
     }
 
     /// 3D 모델에 곱하는 배율

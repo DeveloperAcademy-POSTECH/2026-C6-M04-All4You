@@ -34,6 +34,10 @@ struct FloorPlan3DView: View {
     var onRenameFurniture: ((String, String) -> Void)? = nil
     /// 값이 바뀌면 고치던 이름을 넣고 닫는다 (2D로 바꾸거나 되돌리기를 눌렀을 때 부모가 올린다)
     var resetToken = 0
+    /// 치수·면적 글자 설정. 받으면 오른쪽 아래에 켜고 끄는 버튼을 띄우고, 켜져 있으면 고른 종류의 글자를 도면 위에 겹친다. nil이면 띄우지 않는다
+    var dimensions: Binding<DimensionDisplay>? = nil
+    /// 도면을 확대·축소하면 이름 캡슐도 함께 키우고 줄일지 (한계는 LabelScale). false면 늘 같은 크기다
+    var scalesLabels = false
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -53,6 +57,14 @@ struct FloorPlan3DView: View {
     @State private var labelPoints: [String: CGPoint] = [:]
     /// 가구 이름 라벨의 화면 위치 (키 = Furniture.id). 공간 이름 라벨과 함께 다시 계산한다
     @State private var furnitureLabelPoints: [String: CGPoint] = [:]
+    /// 도면을 처음보다 몇 배로 확대해 보는지 (sceneRoot 배율). 이름 캡슐을 키우고 줄일 때 쓰며 라벨 위치와 함께 다시 읽는다
+    @State private var labelZoom: CGFloat = 1
+    /// 지금 띄울 치수선·면적 글자들. 도면이나 설정이 바뀔 때 장면을 다시 만들며 정한다
+    @State private var dimensionMarks = DimensionMarks()
+    /// 치수 글자의 화면 위치 (키 = DimensionLine.id·DimensionArea.id). 벽에 가려지면 빠진다
+    @State private var dimensionPoints: [String: CGPoint] = [:]
+    /// 스탬프 종류 라벨의 화면 위치 (키 = PlanMarker.id·WallFixture.id). 라벨과 함께 다시 계산한다
+    @State private var stampLabelPoints: [String: CGPoint] = [:]
     /// 핀의 화면 위치 (키 = Plan3DPin.id). 라벨과 함께 다시 계산한다
     @State private var pinPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
@@ -159,11 +171,17 @@ struct FloorPlan3DView: View {
             furnitureLabels
         }
         .overlay(alignment: .topLeading) {
+            stampKindLabels
+        }
+        .overlay(alignment: .topLeading) {
             roomLabels
         }
         // 핀은 이름 라벨 위에 보이고 누를 수 있다
         .overlay(alignment: .topLeading) {
             pinLayer
+        }
+        .overlay(alignment: .topLeading) {
+            dimensionLayer
         }
         .overlay(alignment: .topLeading) {
             labelEditor
@@ -175,16 +193,24 @@ struct FloorPlan3DView: View {
             windowControls
         }
         .overlay(alignment: .bottomTrailing) {
-            if showsResetButton {
-                ResetViewButton(action: resetView)
-                    .padding()
+            VStack(alignment: .trailing, spacing: Layout.cornerButtonSpacing) {
+                if let dimensions {
+                    DimensionControl(display: dimensions)
+                }
+                if showsResetButton {
+                    ResetViewButton(action: resetView)
+                }
             }
+            .padding()
         }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
             rebuildScene()
         }
         .onChange(of: windowPreview) {
+            rebuildScene()
+        }
+        .onChange(of: dimensions?.wrappedValue) {
             rebuildScene()
         }
         .onChange(of: pins) {
@@ -204,10 +230,34 @@ struct FloorPlan3DView: View {
 // 공간·가구 이름 라벨
 // iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹치는 방법 사용
 extension FloorPlan3DView {
+    /// 발화지점·전기 스탬프 아래의 종류 라벨. 2D와 같은 모양이고 눌리지 않는다
+    private var stampKindLabels: some View {
+        ZStack {
+            ForEach(planData.markers) { marker in
+                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id] {
+                    StampKindLabelView(text: text, scale: labelScale)
+                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                }
+            }
+            ForEach(planData.wallFixtures) { fixture in
+                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id] {
+                    StampKindLabelView(text: text, scale: labelScale)
+                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 지금 이름 캡슐 배율
+    private var labelScale: CGFloat {
+        scalesLabels ? LabelScale.value(zoom: Double(labelZoom), zoomRange: Double(Layout.zoomRange.lowerBound)...Double(Layout.zoomRange.upperBound), minimum: Layout.minimumLabelScale) : 1
+    }
+
     private var roomLabels: some View {
         ForEach(planData.rooms) { room in
             if let point = labelPoints[room.id], labelEdit != .room(room.id) {
-                RoomLabelView(name: room.name)
+                RoomLabelView(name: room.name, scale: labelScale)
                     .onTapGesture { startLabelEdit(.room(room.id), name: room.name, at: point) }
                     .allowsHitTesting(canRenameRooms)
                     .position(point)
@@ -219,7 +269,7 @@ extension FloorPlan3DView {
     private var furnitureLabels: some View {
         ForEach(planData.furniture ?? []) { furniture in
             if let point = furnitureLabelPoints[furniture.id], labelEdit != .furniture(furniture.id) {
-                FurnitureLabelView(label: furniture.label)
+                FurnitureLabelView(label: furniture.label, scale: labelScale)
                     .onTapGesture { startLabelEdit(.furniture(furniture.id), name: furniture.label, at: point) }
                     .allowsHitTesting(canRenameFurniture)
                     .position(point)
@@ -237,12 +287,12 @@ extension FloorPlan3DView {
         switch labelEdit {
         case .room(let id)?:
             if let room = planData.rooms.first(where: { $0.id == id }) {
-                LabelNameField(style: .room, placeholder: room.name, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit)
+                LabelNameField(style: .room, placeholder: room.name, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale)
                     .position(labelPoints[id] ?? labelEditFallbackPoint)
             }
         case .furniture(let id)?:
             if let furniture = planData.furniture?.first(where: { $0.id == id }) {
-                LabelNameField(style: .furniture, placeholder: furniture.label, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit)
+                LabelNameField(style: .furniture, placeholder: furniture.label, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale)
                     .position(furnitureLabelPoints[id] ?? labelEditFallbackPoint)
             }
         case nil:
@@ -298,6 +348,76 @@ extension FloorPlan3DView {
         }
     }
 
+    /// 면적 글자를 이름 캡슐 아래로 내릴 거리 (pt). 2D와 같다
+    private func belowOffset(of area: DimensionArea) -> CGFloat {
+        switch area.below {
+        case .room?: Layout.roomCapsuleBelow * labelScale
+        case .furniture?: Layout.furnitureCapsuleBelow * labelScale
+        case nil: 0
+        }
+    }
+
+    /// 도면 위 치수 글자. 벽 뒤에 있거나 먼저 남긴 글자와 겹치면 그리지 않고, 누를 수 없다
+    private var dimensionLayer: some View {
+        let slots = dimensionSlots()
+        let visible = DimensionDeclutter.visibleIds(slots)
+        return ZStack {
+            ForEach(dimensionMarks.lines) { line in
+                if visible.contains(line.id), let point = dimensionPoints[line.id] {
+                    DimensionTextView(text: line.text, scale: labelScale, color: line.kind.color)
+                        .position(point)
+                }
+            }
+            ForEach(dimensionMarks.areas) { area in
+                if visible.contains(area.id), let point = dimensionPoints[area.id] {
+                    DimensionTextView(text: area.text, scale: labelScale, color: area.kind.color)
+                        .position(x: point.x, y: point.y + belowOffset(of: area))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 화면에 자리가 잡힌 치수 글자들의 중심과 크기
+    private func dimensionSlots() -> [DimensionSlot] {
+        var slots: [DimensionSlot] = []
+        for line in dimensionMarks.lines {
+            guard let point = dimensionPoints[line.id] else { continue }
+            slots.append(DimensionSlot(id: line.id, kind: line.kind, center: point, size: DimensionDeclutter.estimatedSize(of: line.text, scale: labelScale)))
+        }
+        for area in dimensionMarks.areas {
+            guard let point = dimensionPoints[area.id] else { continue }
+            slots.append(DimensionSlot(
+                id: area.id, kind: area.kind, center: CGPoint(x: point.x, y: point.y + belowOffset(of: area)),
+                size: DimensionDeclutter.estimatedSize(of: area.text, scale: labelScale)
+            ))
+        }
+        return slots
+    }
+
+    /// 치수 글자 자리 엔티티들을 모아 두는 엔티티 이름
+    private static let dimensionAnchorsName = "dimensionAnchors"
+
+    /// 치수 글자마다 3D 자리 엔티티를 만든다. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = 치수선·면적 id.
+    /// 치수선 글자는 선 가운데에 놓는다
+    private func makeDimensionAnchors(for marks: DimensionMarks, space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = Self.dimensionAnchorsName
+        for line in marks.lines {
+            let anchor = Entity()
+            anchor.name = line.id
+            anchor.position = space.world((line.start + line.end) / 2, height: line.height)
+            group.addChild(anchor)
+        }
+        for area in marks.areas {
+            let anchor = Entity()
+            anchor.name = area.id
+            anchor.position = space.world(area.point, height: area.height)
+            group.addChild(anchor)
+        }
+        return group
+    }
+
     /// 핀 자리 엔티티들을 모아 두는 엔티티 이름
     private static let pinAnchorsName = "pinAnchors"
 
@@ -317,6 +437,10 @@ extension FloorPlan3DView {
 
     /// 공간·가구 라벨 자리를 화면 점으로 다시 계산한다. 바뀐 것만 넣어 화면을 쓸데없이 다시 그리지 않는다
     private func updateLabelPoints(using content: RealityViewCameraContent) {
+        let zoom = CGFloat(sceneRoot.scale.x)
+        if zoom != labelZoom {
+            labelZoom = zoom
+        }
         let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content)
         if rooms != labelPoints {
             labelPoints = rooms
@@ -324,6 +448,14 @@ extension FloorPlan3DView {
         let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content)
         if furniture != furnitureLabelPoints {
             furnitureLabelPoints = furniture
+        }
+        let stampKinds = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.stampLabelAnchorsName, content: content)
+        if stampKinds != stampLabelPoints {
+            stampLabelPoints = stampKinds
+        }
+        let dimensionScreenPoints = screenPoints(ofAnchorsIn: Self.dimensionAnchorsName, content: content)
+        if dimensionScreenPoints != dimensionPoints {
+            dimensionPoints = dimensionScreenPoints
         }
         let pinScreenPoints = screenPoints(ofAnchorsIn: Self.pinAnchorsName, content: content)
         if pinScreenPoints != pinPoints {
@@ -952,6 +1084,11 @@ extension FloorPlan3DView {
         sceneRoot.children.removeAll()
         sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: plan, selection: selection))
         sceneRoot.addChild(makePinAnchors(for: plan))
+        let display = dimensions?.wrappedValue
+        dimensionMarks = display?.isShown == true ? plan.dimensionMarks(kinds: display?.kinds ?? []) : DimensionMarks()
+        let space = PlanSpace(plan: plan)
+        sceneRoot.addChild(FloorPlan3DBuilder.makeDimensionLines(dimensionMarks.lines, space: space))
+        sceneRoot.addChild(makeDimensionAnchors(for: dimensionMarks, space: space))
         selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
         case .marker?, .wallFixture?, .furniture?:
@@ -973,6 +1110,17 @@ extension FloorPlan3DView {
 // 레이아웃 값
 extension FloorPlan3DView {
     private enum Layout {
+        /// 도면을 가장 줄였을 때 이름 캡슐 배율. 2D(LabelScale.range 최솟값)보다 작게 둔다
+        // TEMP: 실기기에서 줄여 보고 정함
+        static let minimumLabelScale: CGFloat = 0.4
+        /// 스탬프 종류 라벨을 스탬프 자리에서 아래로 내리는 거리 (pt)
+        // TEMP: 3D 스탬프 모델 크기에 맞춰 임시로 정함 — 실기기에서 보고 조절
+        static let stampLabelBelow: CGFloat = 22
+        /// 오른쪽 아래 버튼들 사이 (pt)
+        static let cornerButtonSpacing: CGFloat = 8
+        /// 치수 글자를 이름 캡슐 가운데에서 아래로 내리는 거리 (pt). 2D와 같다
+        static let roomCapsuleBelow: CGFloat = 32
+        static let furnitureCapsuleBelow: CGFloat = 26
         /// 가구 손잡이를 모서리에서 가구 바깥쪽으로 더 띄우는 거리 (pt)
         static let cornerHandleGap: CGFloat = 26
         /// 카메라가 있는 쪽 (원점에서 본 방향). 정면(남쪽) 앞 위라 처음에는 도면 위쪽(북쪽)이 화면 위로 온다. 2D 처음 화면과 같은 방향

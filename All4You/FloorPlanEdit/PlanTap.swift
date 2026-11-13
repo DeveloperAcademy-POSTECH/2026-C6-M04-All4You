@@ -104,18 +104,23 @@ extension PlanData {
     }
 
     /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기·창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
+    /// option은 도구 막대에서 고른 종류(발화원인·전기 종류)로, 놓은 스탬프에 함께 저장한다.
     /// 맞지 않는 자리이거나 놓을 수 없으면 아무것도 바꾸지 않고 nil
-    mutating func place(_ tool: EditTool, at tap: PlanTap, defaults: StampDefaults? = nil) -> PlanSelection? {
+    mutating func place(_ tool: EditTool, at tap: PlanTap, defaults: StampDefaults? = nil, option: StampOption? = nil) -> PlanSelection? {
+        let cause: IgnitionCause?
+        if case .ignitionCause(let value)? = option { cause = value } else { cause = nil }
+        let electrical: ElectricalKind?
+        if case .electricalKind(let value)? = option { electrical = value } else { electrical = nil }
         switch (tool, tap) {
         case (.ignitionPoint, .floor(let point)):
-            return addMarker(.ignitionPoint, at: point, scale: defaults?.markerScale(.ignitionPoint)).map(PlanSelection.marker)
+            return addMarker(.ignitionPoint, at: point, scale: defaults?.markerScale(.ignitionPoint), ignitionCause: cause).map(PlanSelection.marker)
         case (.person, .floor(let point)):
             return addMarker(.person, at: point, scale: defaults?.markerScale(.person)).map(PlanSelection.marker)
         case (.outlet, .wall(let wallId, let point, let height)):
-            return addWallFixture(.outlet, wallId: wallId, at: point, height: height).map(PlanSelection.wallFixture)
+            return addWallFixture(.outlet, wallId: wallId, at: point, height: height, electricalKind: electrical).map(PlanSelection.wallFixture)
         case (.outlet, .floor(let point)):
             // 전기는 벽 외에 바닥에도 놓을 수 있다 (멀티탭·바닥 콘센트). 바닥에 놓은 것은 사람·발화지점처럼 markers에 넣는다
-            return addMarker(.outlet, at: point, scale: defaults?.markerScale(.outlet)).map(PlanSelection.marker)
+            return addMarker(.outlet, at: point, scale: defaults?.markerScale(.outlet), electricalKind: electrical).map(PlanSelection.marker)
         case (.window, .wall(let wallId, let point, _)):
             return addOpening(.window, wallId: wallId, at: point, width: defaults?.windowWidth).map(PlanSelection.doorWindow)
         case (.door, .wall(let wallId, let point, _)):

@@ -14,7 +14,7 @@ extension PlanData {
     /// 스탬프가 차지하는 자리가 방 안에 다 들어가지 않으면(벽에 닿음·벽 바깥·도면 밖) 놓지 않고 nil.
     /// 사람은 늘 누운 자세로 놓는다.
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
-    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil) -> String? {
+    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil, ignitionCause: IgnitionCause? = nil, electricalKind: ElectricalKind? = nil) -> String? {
         let marker = PlanMarker(
             id: UUID().uuidString,
             kind: kind,
@@ -22,7 +22,9 @@ extension PlanData {
             height: kind.sitsOnFurniture ? surfaceHeight(at: point) : 0,
             yaw: 0,
             lying: kind == .person ? true : nil,
-            scale: scale
+            scale: scale,
+            ignitionCause: ignitionCause,
+            electricalKind: electricalKind
         )
         guard fits(marker) else { return nil }
         markers.append(marker)
@@ -54,7 +56,9 @@ extension PlanData {
                 height: original.kind.sitsOnFurniture ? surfaceHeight(at: original.position + offset) : original.height,
                 yaw: original.yaw,
                 lying: original.lying,
-                scale: original.scale
+                scale: original.scale,
+                ignitionCause: original.ignitionCause,
+                electricalKind: original.electricalKind
             )
         }
         guard let copy = copies.first(where: fits) else { return nil }
@@ -123,7 +127,7 @@ extension PlanData {
 extension PlanData {
     /// 벽 wallId의 면 위 점 point(도면 좌표)와 바닥에서 높이 height(m)에 콘센트 같은 것을 붙이고 새 id를 돌려준다.
     /// 누른 쪽 면이 방 안을 보지 않으면(벽 바깥) 반대쪽 면에 붙인다. 두 면 다 방 안이 아니거나 벽을 찾지 못하면 nil
-    mutating func addWallFixture(_ kind: FixtureKind, wallId: String, at point: SIMD2<Double>, height: Double) -> String? {
+    mutating func addWallFixture(_ kind: FixtureKind, wallId: String, at point: SIMD2<Double>, height: Double, electricalKind: ElectricalKind? = nil) -> String? {
         guard let spot = wallSpot(wallId: wallId, point: point, height: height) else { return nil }
         let otherFace: WallFace = spot.face == .left ? .right : .left
         guard let face = [spot.face, otherFace].first(where: { facesRoom(wallId: wallId, face: $0, along: spot.along) }) else { return nil }
@@ -133,7 +137,8 @@ extension PlanData {
             kind: kind,
             face: face,
             positionAlongWall: spot.along,
-            heightFromFloor: spot.height
+            heightFromFloor: spot.height,
+            electricalKind: electricalKind
         )
         wallFixtures.append(fixture)
         return fixture.id
@@ -159,7 +164,8 @@ extension PlanData {
             kind: original.kind,
             face: original.face,
             positionAlongWall: along,
-            heightFromFloor: original.heightFromFloor
+            heightFromFloor: original.heightFromFloor,
+            electricalKind: original.electricalKind
         )
         wallFixtures.append(copy)
         return copy.id
