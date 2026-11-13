@@ -26,6 +26,8 @@ enum PlanEdit {
     case delete(PlanSelection)
     /// 가구(Furniture.id)의 가로·세로(m)를 바꿈. 원형은 width만 씀
     case resizeFurniture(id: String, width: Double, depth: Double)
+    /// 가구(Furniture.id)를 바닥에서 elevation(m)만큼 띄움
+    case elevateFurniture(id: String, elevation: Double)
     /// 창문(DoorWindow.id) 테두리 edge를 벽 시작점에서 along(m), 바닥에서 height(m) 자리로 옮김
     case resizeWindow(id: String, edge: WindowEdge, along: Double, height: Double)
 }
@@ -51,6 +53,8 @@ extension PlanData {
             rotateFurniture(id: id, rotation: rotation)
         case .resizeFurniture(let id, let width, let depth):
             resizeFurniture(id: id, width: width, depth: depth)
+        case .elevateFurniture(let id, let elevation):
+            elevateFurniture(id: id, to: elevation)
         case .delete(.wall(let id)):
             removeWall(id: id)
             return nil
@@ -99,16 +103,24 @@ extension PlanData {
         }
     }
 
-    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기·창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
+    /// 고른 도구에 맞는 자리(발화지점·피해자는 바닥, 전기는 벽이나 바닥, 창문·문은 벽)를 눌렀으면 놓고, 새로 놓은 것을 돌려준다.
+    /// option은 도구 막대에서 고른 종류(발화원인·전기 종류)로, 놓은 스탬프에 함께 저장한다.
     /// 맞지 않는 자리이거나 놓을 수 없으면 아무것도 바꾸지 않고 nil
-    mutating func place(_ tool: EditTool, at tap: PlanTap, defaults: StampDefaults? = nil) -> PlanSelection? {
+    mutating func place(_ tool: EditTool, at tap: PlanTap, defaults: StampDefaults? = nil, option: StampOption? = nil) -> PlanSelection? {
+        let cause: IgnitionCause?
+        if case .ignitionCause(let value)? = option { cause = value } else { cause = nil }
+        let electrical: ElectricalKind?
+        if case .electricalKind(let value)? = option { electrical = value } else { electrical = nil }
         switch (tool, tap) {
         case (.ignitionPoint, .floor(let point)):
-            return addMarker(.ignitionPoint, at: point, scale: defaults?.markerScale(.ignitionPoint)).map(PlanSelection.marker)
+            return addMarker(.ignitionPoint, at: point, scale: defaults?.markerScale(.ignitionPoint), ignitionCause: cause).map(PlanSelection.marker)
         case (.person, .floor(let point)):
             return addMarker(.person, at: point, scale: defaults?.markerScale(.person)).map(PlanSelection.marker)
         case (.outlet, .wall(let wallId, let point, let height)):
-            return addWallFixture(.outlet, wallId: wallId, at: point, height: height).map(PlanSelection.wallFixture)
+            return addWallFixture(.outlet, wallId: wallId, at: point, height: height, electricalKind: electrical).map(PlanSelection.wallFixture)
+        case (.outlet, .floor(let point)):
+            // 전기는 벽 외에 바닥에도 놓을 수 있다 (멀티탭·바닥 콘센트). 바닥에 놓은 것은 사람·발화지점처럼 markers에 넣는다
+            return addMarker(.outlet, at: point, scale: defaults?.markerScale(.outlet), electricalKind: electrical).map(PlanSelection.marker)
         case (.window, .wall(let wallId, let point, _)):
             return addOpening(.window, wallId: wallId, at: point, width: defaults?.windowWidth).map(PlanSelection.doorWindow)
         case (.door, .wall(let wallId, let point, _)):
@@ -125,7 +137,7 @@ extension PlanData {
     /// 눌렀다가 놓이지 않은 자리만 다룬다 (place가 nil을 돌려준 경우)
     func placementHint(for tool: EditTool, at tap: PlanTap) -> String {
         switch (tool, tap) {
-        case (.ignitionPoint, .floor(let point)), (.person, .floor(let point)):
+        case (.ignitionPoint, .floor(let point)), (.person, .floor(let point)), (.outlet, .floor(let point)):
             if !isInsideRoom(point) {
                 return "\(tool.title)는 방 안쪽 바닥에만 놓을 수 있어요. 벽으로 둘러싸인 방 안을 눌러 주세요"
             }
@@ -135,8 +147,6 @@ extension PlanData {
             return "벽에 너무 가까워요. 벽에서 조금 떨어진 방 안쪽 바닥을 눌러 주세요"
         case (.ignitionPoint, _), (.person, _):
             return "\(tool.title)는 벽이 아니라 바닥에 놓아요. 방 안쪽 바닥을 눌러 주세요"
-        case (.outlet, .floor):
-            return "전기는 벽에만 붙일 수 있어요. 방 안쪽을 향한 벽을 눌러 주세요"
         case (.outlet, _):
             return "전기는 방 안쪽을 향한 벽 면에만 붙일 수 있어요. 건물 바깥쪽이 아니라 방 안쪽에서 벽을 눌러 주세요"
         case (.window, .wall), (.door, .wall):

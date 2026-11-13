@@ -20,8 +20,24 @@ struct FloorPlan3DView: View {
     var pinView: ((String) -> AnyView)? = nil
     /// 오른쪽 아래에 처음 시야로 되돌리는 버튼을 띄울지
     var showsResetButton = false
-    /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 가구 위를 눌러도 가구를 고르지 않고 그 아래 바닥에 스탬프를 놓는다
+    /// 오른쪽 위에 방위표를 띄울지. 카메라를 돌리는 대로 실시간으로 함께 돈다
+    var showsCompass = false
+    /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 이름 캡슐은 누르지 않는다
     var isStampToolActive = false
+    /// 누른 직선이 가구를 지나쳐 그 뒤 바닥·벽에 닿게 할지. 가구 밑에 있을 수 있는 전기·창문·문 도구가 켜져 있을 때 쓴다
+    var tapsThroughFurniture = false
+    /// 가구 윗면을 눌러도 가구를 고르지 않고 그 윗면 위 점으로 알릴지. 가구 위에 올라오는 사람·발화지점 도구가 켜져 있을 때 쓴다
+    var tapsFurnitureTopAsFloor = false
+    /// 공간 이름 캡슐을 누르면 이름을 고치고, 고친 이름을 알린다 (Room.id, 새 이름). nil이면 캡슐은 보기만 한다
+    var onRenameRoom: ((String, String) -> Void)? = nil
+    /// 가구 이름 캡슐을 누르면 이름을 고치고, 고친 이름을 알린다 (Furniture.id, 새 이름). nil이면 캡슐은 보기만 한다
+    var onRenameFurniture: ((String, String) -> Void)? = nil
+    /// 값이 바뀌면 고치던 이름을 넣고 닫는다 (2D로 바꾸거나 되돌리기를 눌렀을 때 부모가 올린다)
+    var resetToken = 0
+    /// 치수·면적 글자 설정. 받으면 오른쪽 아래에 켜고 끄는 버튼을 띄우고, 켜져 있으면 고른 종류의 글자를 도면 위에 겹친다. nil이면 띄우지 않는다
+    var dimensions: Binding<DimensionDisplay>? = nil
+    /// 도면을 확대·축소하면 이름 캡슐도 함께 키우고 줄일지 (한계는 LabelScale). false면 늘 같은 크기다
+    var scalesLabels = false
 
     /// 도면 엔티티를 담는 자리. 도면이 바뀌면 이 안만 다시 만든다
     @State private var sceneRoot = Entity()
@@ -41,6 +57,14 @@ struct FloorPlan3DView: View {
     @State private var labelPoints: [String: CGPoint] = [:]
     /// 가구 이름 라벨의 화면 위치 (키 = Furniture.id). 공간 이름 라벨과 함께 다시 계산한다
     @State private var furnitureLabelPoints: [String: CGPoint] = [:]
+    /// 도면을 처음보다 몇 배로 확대해 보는지 (sceneRoot 배율). 이름 캡슐을 키우고 줄일 때 쓰며 라벨 위치와 함께 다시 읽는다
+    @State private var labelZoom: CGFloat = 1
+    /// 지금 띄울 치수선·면적 글자들. 도면이나 설정이 바뀔 때 장면을 다시 만들며 정한다
+    @State private var dimensionMarks = DimensionMarks()
+    /// 치수 글자의 화면 위치 (키 = DimensionLine.id·DimensionArea.id). 벽에 가려지면 빠진다
+    @State private var dimensionPoints: [String: CGPoint] = [:]
+    /// 스탬프 종류 라벨의 화면 위치 (키 = PlanMarker.id·WallFixture.id). 라벨과 함께 다시 계산한다
+    @State private var stampLabelPoints: [String: CGPoint] = [:]
     /// 핀의 화면 위치 (키 = Plan3DPin.id). 라벨과 함께 다시 계산한다
     @State private var pinPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
@@ -63,8 +87,62 @@ struct FloorPlan3DView: View {
     @State private var windowMenuPoint: CGPoint?
     /// 창문 테두리를 끄는 동안 미리 보여 주는 도면. 손을 떼면 지우고 도면은 한 번만 바꾼다
     @State private var windowPreview: PlanData?
+    /// 이름을 고치는 중인 캡슐
+    @State private var labelEdit: LabelEdit?
+    /// 고치는 중인 이름. 끝낼 때 한 번 알린다
+    @State private var labelDraft = ""
+    @FocusState private var isLabelFocused: Bool
+    /// 고치기를 시작할 때 캡슐의 화면 위치. 카메라를 돌려 캡슐이 벽 뒤로 가려져도 입력칸이 사라지지 않게 쓴다
+    @State private var labelEditFallbackPoint: CGPoint = .zero
+
+    /// 키보드에 가리지 않게 3D 화면 전체(장면·라벨·버튼)를 위로 올린 거리 (pt, 올리면 음수)
+    @State private var liftOffset: CGFloat = 0
+    /// 3D 화면 윗변의 기기 화면 기준 높이. 올리지 않는 바닥 층에서 재서, 올려도 값이 변하지 않는다
+    @State private var originY: CGFloat = 0
+    /// 지금 올라와 있는 키보드의 높이 (pt). 내려가 있으면 0
+    @State private var keyboardHeight: CGFloat = 0
+    /// 이름을 고치는 캡슐의 3D 화면 안 높이. 고치는 중이 아니면 nil
+    @State private var labelEditY: CGFloat?
+
+    /// 이름을 고치는 캡슐 종류와 id
+    private enum LabelEdit: Equatable {
+        case room(String)
+        case furniture(String)
+    }
 
     var body: some View {
+        // 높이를 재는 투명한 층은 올리지 않고 장면만 올린다. 올린 뷰 안에서 재면 올림이 다시 값을 바꿔 앱이 멈춘다
+        ZStack {
+            Color.clear
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { originY = $0 }
+            scene
+                .offset(y: liftOffset)
+        }
+        // 키보드가 올라와도 3D 화면 크기가 바뀌지 않게 한다
+        .ignoresSafeArea(.keyboard)
+        // 방위표는 화면을 올려도 움직이지 않게 올리는 층 바깥에 둔다 (카메라가 돌 때 도는 것만 그대로)
+        .overlay(alignment: .topTrailing) {
+            if showsCompass {
+                // 도면 위쪽이 북쪽이다. 카메라가 도면 둘레를 yaw만큼 돌면 북쪽은 화면 위에서 같은 각만큼 시계 방향으로 돈다
+                CompassView(northAngle: .radians(Double(orbit.yaw)))
+                    .padding()
+            }
+        }
+        // 키보드가 올라오고 내려가는 때에 맞춰 올리고 내린다. 이름 고치기를 엔터·키보드 내리기 버튼·바깥 누르기 어느 쪽으로 끝내도 같은 움직임이다
+        .onKeyboardChange { height, _ in
+            // 엔터·키보드 내리기 버튼은 키보드가 먼저 내려가기 시작해, 입력칸이 캡슐로 바뀌기 전에 화면만 먼저 움직인다.
+            // 바깥 누르기와 같게, 어떤 방법이든 캡슐로 되돌리는 일을 먼저 하고 나서 화면을 내린다
+            if height == 0, labelEdit != nil { finishLabelEdit() }
+            keyboardHeight = height
+            updateLift()
+        }
+        // 키보드 내리기 버튼으로 엔터 없이 내려도 이름 고치기를 끝낸다
+        .onChange(of: isLabelFocused) { _, isFocused in
+            if !isFocused, labelEdit != nil { finishLabelEdit() }
+        }
+    }
+
+    private var scene: some View {
         RealityView { content in
             content.add(sceneRoot)
             content.add(makeLight())
@@ -93,11 +171,20 @@ struct FloorPlan3DView: View {
             furnitureLabels
         }
         .overlay(alignment: .topLeading) {
+            stampKindLabels
+        }
+        .overlay(alignment: .topLeading) {
             roomLabels
         }
         // 핀은 이름 라벨 위에 보이고 누를 수 있다
         .overlay(alignment: .topLeading) {
             pinLayer
+        }
+        .overlay(alignment: .topLeading) {
+            dimensionLayer
+        }
+        .overlay(alignment: .topLeading) {
+            labelEditor
         }
         .overlay(alignment: .topLeading) {
             stampControls
@@ -106,16 +193,24 @@ struct FloorPlan3DView: View {
             windowControls
         }
         .overlay(alignment: .bottomTrailing) {
-            if showsResetButton {
-                ResetViewButton(action: resetView)
-                    .padding()
+            VStack(alignment: .trailing, spacing: Layout.cornerButtonSpacing) {
+                if let dimensions {
+                    DimensionControl(display: dimensions)
+                }
+                if showsResetButton {
+                    ResetViewButton(action: resetView)
+                }
             }
+            .padding()
         }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
             rebuildScene()
         }
         .onChange(of: windowPreview) {
+            rebuildScene()
+        }
+        .onChange(of: dimensions?.wrappedValue) {
             rebuildScene()
         }
         .onChange(of: pins) {
@@ -126,31 +221,118 @@ struct FloorPlan3DView: View {
             if menuTarget != selection { menuTarget = nil }
             rebuildScene()
         }
+        .onChange(of: resetToken) {
+            if labelEdit != nil { finishLabelEdit() }
+        }
     }
 }
 
 // 공간·가구 이름 라벨
 // iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹치는 방법 사용
 extension FloorPlan3DView {
-    private var roomLabels: some View {
-        ForEach(planData.rooms) { room in
-            if let point = labelPoints[room.id] {
-                RoomLabelView(name: room.name)
-                    .position(point)
+    /// 발화지점·전기 스탬프 아래의 종류 라벨. 2D와 같은 모양이고 눌리지 않는다
+    private var stampKindLabels: some View {
+        ZStack {
+            ForEach(planData.markers) { marker in
+                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id] {
+                    StampKindLabelView(text: text, scale: labelScale)
+                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                }
+            }
+            ForEach(planData.wallFixtures) { fixture in
+                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id] {
+                    StampKindLabelView(text: text, scale: labelScale)
+                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                }
             }
         }
         .allowsHitTesting(false)
     }
 
-    /// 2D와 같은 가구 이름 캡슐. 3D에서는 보기만 한다
-    private var furnitureLabels: some View {
-        ForEach(planData.furniture ?? []) { furniture in
-            if let point = furnitureLabelPoints[furniture.id] {
-                FurnitureLabelView(label: furniture.label)
+    /// 지금 이름 캡슐 배율
+    private var labelScale: CGFloat {
+        scalesLabels ? LabelScale.value(zoom: Double(labelZoom), zoomRange: Double(Layout.zoomRange.lowerBound)...Double(Layout.zoomRange.upperBound), minimum: Layout.minimumLabelScale) : 1
+    }
+
+    private var roomLabels: some View {
+        ForEach(planData.rooms) { room in
+            if let point = labelPoints[room.id], labelEdit != .room(room.id) {
+                RoomLabelView(name: room.name, scale: labelScale)
+                    .onTapGesture { startLabelEdit(.room(room.id), name: room.name, at: point) }
+                    .allowsHitTesting(canRenameRooms)
                     .position(point)
             }
         }
-        .allowsHitTesting(false)
+    }
+
+    /// 2D와 같은 가구 이름 캡슐. 받을 곳이 있으면 눌러서 이름을 고친다
+    private var furnitureLabels: some View {
+        ForEach(planData.furniture ?? []) { furniture in
+            if let point = furnitureLabelPoints[furniture.id], labelEdit != .furniture(furniture.id) {
+                FurnitureLabelView(label: furniture.label, scale: labelScale)
+                    .onTapGesture { startLabelEdit(.furniture(furniture.id), name: furniture.label, at: point) }
+                    .allowsHitTesting(canRenameFurniture)
+                    .position(point)
+            }
+        }
+    }
+
+    /// 이름 캡슐을 눌러 고칠 수 있는지. 스탬프 도구가 켜져 있으면 캡슐 자리에도 스탬프를 놓을 수 있게 캡슐은 누르지 않는다
+    private var canRenameRooms: Bool { onRenameRoom != nil && !isStampToolActive }
+    private var canRenameFurniture: Bool { onRenameFurniture != nil && !isStampToolActive }
+
+    /// 이름을 고치는 중인 캡슐 자리에 띄우는 입력칸. 캡슐을 따라 카메라와 함께 움직인다
+    @ViewBuilder
+    private var labelEditor: some View {
+        switch labelEdit {
+        case .room(let id)?:
+            if let room = planData.rooms.first(where: { $0.id == id }) {
+                LabelNameField(style: .room, placeholder: room.name, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale)
+                    .position(labelPoints[id] ?? labelEditFallbackPoint)
+            }
+        case .furniture(let id)?:
+            if let furniture = planData.furniture?.first(where: { $0.id == id }) {
+                LabelNameField(style: .furniture, placeholder: furniture.label, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale)
+                    .position(furnitureLabelPoints[id] ?? labelEditFallbackPoint)
+            }
+        case nil:
+            EmptyView()
+        }
+    }
+
+    /// 이름 입력칸이 키보드 윗변 가까이 또는 아래로 가릴 때만, 가리지 않을 만큼 화면 전체를 올린다. 키보드 높이보다 더 올리지 않는다
+    private func updateLift() {
+        let target = KeyboardHeight.lift(labelY: labelEditY, originY: originY, keyboardHeight: keyboardHeight)
+        guard target != liftOffset else { return }
+        withAnimation(KeyboardHeight.animation) { liftOffset = target }
+    }
+
+    /// 캡슐을 눌러 이름 고치기를 시작한다
+    private func startLabelEdit(_ edit: LabelEdit, name: String, at point: CGPoint) {
+        labelDraft = name
+        labelEditFallbackPoint = point
+        labelEditY = point.y
+        updateLift()
+        labelEdit = edit
+        isLabelFocused = true
+    }
+
+    /// 고친 이름을 알리고 키보드를 내린다. 비워 두면 알리지 않아 원래 이름이 남는다
+    private func finishLabelEdit() {
+        guard labelEdit != nil else { return }
+        let name = labelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch labelEdit {
+        case .room(let id)?:
+            if !name.isEmpty { onRenameRoom?(id, name) }
+        case .furniture(let id)?:
+            if !name.isEmpty { onRenameFurniture?(id, name) }
+        case nil:
+            break
+        }
+        labelEdit = nil
+        isLabelFocused = false
+        // 올린 화면은 키보드가 내려갈 때 함께 내려온다
+        labelEditY = nil
     }
 
     /// 도면 위 핀. 화면 밖·벽 뒤에 있으면 그리지 않는다
@@ -164,6 +346,76 @@ extension FloorPlan3DView {
                 }
             }
         }
+    }
+
+    /// 면적 글자를 이름 캡슐 아래로 내릴 거리 (pt). 2D와 같다
+    private func belowOffset(of area: DimensionArea) -> CGFloat {
+        switch area.below {
+        case .room?: Layout.roomCapsuleBelow * labelScale
+        case .furniture?: Layout.furnitureCapsuleBelow * labelScale
+        case nil: 0
+        }
+    }
+
+    /// 도면 위 치수 글자. 벽 뒤에 있거나 먼저 남긴 글자와 겹치면 그리지 않고, 누를 수 없다
+    private var dimensionLayer: some View {
+        let slots = dimensionSlots()
+        let visible = DimensionDeclutter.visibleIds(slots)
+        return ZStack {
+            ForEach(dimensionMarks.lines) { line in
+                if visible.contains(line.id), let point = dimensionPoints[line.id] {
+                    DimensionTextView(text: line.text, scale: labelScale, color: line.kind.color)
+                        .position(point)
+                }
+            }
+            ForEach(dimensionMarks.areas) { area in
+                if visible.contains(area.id), let point = dimensionPoints[area.id] {
+                    DimensionTextView(text: area.text, scale: labelScale, color: area.kind.color)
+                        .position(x: point.x, y: point.y + belowOffset(of: area))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 화면에 자리가 잡힌 치수 글자들의 중심과 크기
+    private func dimensionSlots() -> [DimensionSlot] {
+        var slots: [DimensionSlot] = []
+        for line in dimensionMarks.lines {
+            guard let point = dimensionPoints[line.id] else { continue }
+            slots.append(DimensionSlot(id: line.id, kind: line.kind, center: point, size: DimensionDeclutter.estimatedSize(of: line.text, scale: labelScale)))
+        }
+        for area in dimensionMarks.areas {
+            guard let point = dimensionPoints[area.id] else { continue }
+            slots.append(DimensionSlot(
+                id: area.id, kind: area.kind, center: CGPoint(x: point.x, y: point.y + belowOffset(of: area)),
+                size: DimensionDeclutter.estimatedSize(of: area.text, scale: labelScale)
+            ))
+        }
+        return slots
+    }
+
+    /// 치수 글자 자리 엔티티들을 모아 두는 엔티티 이름
+    private static let dimensionAnchorsName = "dimensionAnchors"
+
+    /// 치수 글자마다 3D 자리 엔티티를 만든다. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = 치수선·면적 id.
+    /// 치수선 글자는 선 가운데에 놓는다
+    private func makeDimensionAnchors(for marks: DimensionMarks, space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = Self.dimensionAnchorsName
+        for line in marks.lines {
+            let anchor = Entity()
+            anchor.name = line.id
+            anchor.position = space.world((line.start + line.end) / 2, height: line.height)
+            group.addChild(anchor)
+        }
+        for area in marks.areas {
+            let anchor = Entity()
+            anchor.name = area.id
+            anchor.position = space.world(area.point, height: area.height)
+            group.addChild(anchor)
+        }
+        return group
     }
 
     /// 핀 자리 엔티티들을 모아 두는 엔티티 이름
@@ -185,6 +437,10 @@ extension FloorPlan3DView {
 
     /// 공간·가구 라벨 자리를 화면 점으로 다시 계산한다. 바뀐 것만 넣어 화면을 쓸데없이 다시 그리지 않는다
     private func updateLabelPoints(using content: RealityViewCameraContent) {
+        let zoom = CGFloat(sceneRoot.scale.x)
+        if zoom != labelZoom {
+            labelZoom = zoom
+        }
         let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content)
         if rooms != labelPoints {
             labelPoints = rooms
@@ -192,6 +448,14 @@ extension FloorPlan3DView {
         let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content)
         if furniture != furnitureLabelPoints {
             furnitureLabelPoints = furniture
+        }
+        let stampKinds = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.stampLabelAnchorsName, content: content)
+        if stampKinds != stampLabelPoints {
+            stampLabelPoints = stampKinds
+        }
+        let dimensionScreenPoints = screenPoints(ofAnchorsIn: Self.dimensionAnchorsName, content: content)
+        if dimensionScreenPoints != dimensionPoints {
+            dimensionPoints = dimensionScreenPoints
         }
         let pinScreenPoints = screenPoints(ofAnchorsIn: Self.pinAnchorsName, content: content)
         if pinScreenPoints != pinPoints {
@@ -234,19 +498,28 @@ extension FloorPlan3DView {
     private var tapGesture: some Gesture {
         SpatialTapGesture()
             .onEnded { value in
-                onTap(tapResult(at: value.location, excludingFurniture: isStampToolActive))
+                // 이름을 고치는 중에 다른 곳을 누르면 고치기만 끝낸다
+                if labelEdit != nil {
+                    finishLabelEdit()
+                    return
+                }
+                onTap(tapResult(at: value.location, excludingFurniture: tapsThroughFurniture))
             }
     }
 
     /// 누른 화면 점에서 3D 안쪽으로 가상의 직선을 그어, 가장 먼저 부딪힌 것을 도면 기준 값으로 바꾼다
     private func tapResult(at point: CGPoint, excludingFurniture: Bool = false) -> PlanTap? {
         guard let hit = firstHit(at: point, excludingFurniture: excludingFurniture) else { return nil }
-        if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
-            return .element(element)
-        }
         // 맞은 점은 월드 좌표라 핀치 배율(sceneRoot.scale)이 들어 있다. sceneRoot 기준으로 바꿔 배율을 뺀다
         let local = sceneRoot.convert(position: hit.position, from: nil)
         let planPoint = PlanSpace(plan: planData).plan(local)
+        if let element = FloorPlan3DBuilder.selection(of: hit.entity) {
+            // 사람·발화지점 도구로 가구를 누르면 가구를 고르지 않고, 가구 윗면 위의 그 점에 놓는다 (스탬프가 가구 위로 올라온다)
+            if tapsFurnitureTopAsFloor, case .furniture = element {
+                return .floor(planPoint)
+            }
+            return .element(element)
+        }
         if let wallId = FloorPlan3DBuilder.wallId(of: hit.entity) {
             return .wall(id: wallId, point: planPoint, height: Double(local.y))
         }
@@ -422,6 +695,9 @@ extension FloorPlan3DView {
                 ResizeHandleView()
                     .position(stampScreenPoints.resizeHandle)
                     .gesture(resizeFurnitureGesture(id: id, center: stampScreenPoints.center))
+                ElevationHandleView()
+                    .position(stampScreenPoints.elevationHandle)
+                    .gesture(elevateFurnitureGesture(id: id, pointsPerMeter: stampScreenPoints.pointsPerMeter))
             }
         }
     }
@@ -500,6 +776,30 @@ extension FloorPlan3DView {
             }
     }
 
+    /// 가구 높이 손잡이. 위로 끌면 끈 만큼 바닥에서 떠오르고 아래로 끌면 내려온다.
+    /// 끄는 동안은 미리 보기 도면으로 장면을 다시 만들고, 손을 떼면 도면을 한 번 바꾼다
+    private func elevateFurnitureGesture(id: String, pointsPerMeter: CGFloat) -> some Gesture {
+        DragGesture(coordinateSpace: .named(Layout.sceneSpace))
+            .onChanged { value in
+                guard let elevation = elevatedFurniture(id: id, drag: value, pointsPerMeter: pointsPerMeter) else { return }
+                var preview = planData
+                preview.elevateFurniture(id: id, to: elevation)
+                windowPreview = preview
+            }
+            .onEnded { value in
+                windowPreview = nil
+                guard let elevation = elevatedFurniture(id: id, drag: value, pointsPerMeter: pointsPerMeter) else { return }
+                onEdit(.elevateFurniture(id: id, elevation: elevation))
+            }
+    }
+
+    /// 손가락이 화면에서 위로 끈 거리를 도면의 미터로 바꿔 처음 높이에 더한 높이
+    private func elevatedFurniture(id: String, drag: DragGesture.Value, pointsPerMeter: CGFloat) -> Double? {
+        guard let furniture = planData.furniture?.first(where: { $0.id == id }), pointsPerMeter > 1 else { return nil }
+        let meters = Double((drag.startLocation.y - drag.location.y) / pointsPerMeter)
+        return furniture.elevation + meters
+    }
+
     private func resizedFurniture(id: String, drag: DragGesture.Value, center: CGPoint) -> (width: Double, depth: Double)? {
         guard let furniture = planData.furniture?.first(where: { $0.id == id }) else { return nil }
         func distance(_ point: CGPoint) -> Double { hypot(point.x - center.x, point.y - center.y) }
@@ -507,20 +807,21 @@ extension FloorPlan3DView {
         return (max(furniture.width * ratio, Furniture.minSize), max(furniture.depth * ratio, Furniture.minSize))
     }
 
-    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리에 둔다.
+    /// 고른 가구·스탬프를 감싼 상자의 윗면 모서리 바로 바깥 화면 점들. 회전 손잡이는 위쪽 오른쪽 모서리(도면에서 y가 작은 쪽), 크기 손잡이는 아래쪽 오른쪽 모서리, 높이 손잡이는 아래쪽 왼쪽 모서리에 둔다.
     /// 손잡이가 모서리를 가리지 않도록 화면에서 가운데 반대쪽으로 cornerHandleGap만큼 더 민다
-    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint)? {
+    private func cornerHandlePoints(of entity: Entity, center: CGPoint, using content: RealityViewCameraContent) -> (rotate: CGPoint, resize: CGPoint, elevation: CGPoint)? {
         let bounds = entity.visualBounds(relativeTo: entity)
-        func screenPoint(z: Float) -> CGPoint? {
-            let corner = entity.convert(position: SIMD3(bounds.max.x, bounds.max.y, z), to: nil)
+        func screenPoint(x: Float = bounds.max.x, z: Float) -> CGPoint? {
+            let corner = entity.convert(position: SIMD3(x, bounds.max.y, z), to: nil)
             guard let point = content.project(point: corner, to: .local) else { return nil }
             let dx = point.x - center.x
             let dy = point.y - center.y
             let length = max(hypot(dx, dy), 1)
             return CGPoint(x: point.x + dx / length * Layout.cornerHandleGap, y: point.y + dy / length * Layout.cornerHandleGap)
         }
-        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z) else { return nil }
-        return (rotate, resize)
+        guard let rotate = screenPoint(z: bounds.min.z), let resize = screenPoint(z: bounds.max.z),
+              let elevation = screenPoint(x: bounds.min.x, z: bounds.max.z) else { return nil }
+        return (rotate, resize, elevation)
     }
 
     /// 사람의 회전 손잡이를 둘 3D 점. 머리에서 몸 바깥쪽으로 조금 더 나간 머리 높이라, 위에서 내려다봐도 머리와 겹치지 않는다.
@@ -555,7 +856,14 @@ extension FloorPlan3DView {
                 if let corners = cornerHandlePoints(of: entity, center: screenCenter, using: content) {
                     switch entity.components[PlanSelectionComponent.self]?.selection {
                     case .furniture?:
-                        points = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                        var furniturePoints = StampScreenPoints(center: screenCenter, menu: menu, handle: corners.rotate, resizeHandle: corners.resize)
+                        furniturePoints.elevationHandle = corners.elevation
+                        // 장면이 줄어 있어도 도면 1m는 월드에서 sceneRoot 배율만큼이다
+                        let oneMeterUp = SIMD3(center.x, center.y + sceneRoot.scale.x, center.z)
+                        if let up = content.project(point: oneMeterUp, to: .local) {
+                            furniturePoints.pointsPerMeter = max(screenCenter.y - up.y, 0)
+                        }
+                        points = furniturePoints
                     case .marker?:
                         // 사람·발화지점도 크기 손잡이를 모서리에 붙여 돌리면 함께 돌게 한다. 회전 손잡이는 그대로
                         points = StampScreenPoints(center: screenCenter, menu: menu, handle: handle, resizeHandle: corners.resize)
@@ -581,6 +889,10 @@ private struct StampScreenPoints: Equatable {
     let handle: CGPoint
     /// 크기 손잡이 자리 (가운데의 오른쪽 아래)
     let resizeHandle: CGPoint
+    /// 가구 높이 손잡이 자리 (윗면의 아래쪽 왼쪽 모서리 바깥)
+    var elevationHandle: CGPoint = .zero
+    /// 가구 자리에서 위로 1m가 화면에서 몇 pt인지. 높이 손잡이를 끈 거리를 미터로 바꿀 때 쓴다
+    var pointsPerMeter: CGFloat = 0
 }
 
 // 고른 창문의 테두리 손잡이와 편집 메뉴
@@ -772,6 +1084,11 @@ extension FloorPlan3DView {
         sceneRoot.children.removeAll()
         sceneRoot.addChild(FloorPlan3DBuilder.makeScene(for: plan, selection: selection))
         sceneRoot.addChild(makePinAnchors(for: plan))
+        let display = dimensions?.wrappedValue
+        dimensionMarks = display?.isShown == true ? plan.dimensionMarks(kinds: display?.kinds ?? []) : DimensionMarks()
+        let space = PlanSpace(plan: plan)
+        sceneRoot.addChild(FloorPlan3DBuilder.makeDimensionLines(dimensionMarks.lines, space: space))
+        sceneRoot.addChild(makeDimensionAnchors(for: dimensionMarks, space: space))
         selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
         case .marker?, .wallFixture?, .furniture?:
@@ -793,10 +1110,21 @@ extension FloorPlan3DView {
 // 레이아웃 값
 extension FloorPlan3DView {
     private enum Layout {
+        /// 도면을 가장 줄였을 때 이름 캡슐 배율. 2D(LabelScale.range 최솟값)보다 작게 둔다
+        // TEMP: 실기기에서 줄여 보고 정함
+        static let minimumLabelScale: CGFloat = 0.4
+        /// 스탬프 종류 라벨을 스탬프 자리에서 아래로 내리는 거리 (pt)
+        // TEMP: 3D 스탬프 모델 크기에 맞춰 임시로 정함 — 실기기에서 보고 조절
+        static let stampLabelBelow: CGFloat = 22
+        /// 오른쪽 아래 버튼들 사이 (pt)
+        static let cornerButtonSpacing: CGFloat = 8
+        /// 치수 글자를 이름 캡슐 가운데에서 아래로 내리는 거리 (pt). 2D와 같다
+        static let roomCapsuleBelow: CGFloat = 32
+        static let furnitureCapsuleBelow: CGFloat = 26
         /// 가구 손잡이를 모서리에서 가구 바깥쪽으로 더 띄우는 거리 (pt)
         static let cornerHandleGap: CGFloat = 26
-        /// 카메라가 있는 쪽 (원점에서 본 방향). 오른쪽 앞 위
-        static let cameraDirection = SIMD3<Float>(0.35, 0.95, 1.0)
+        /// 카메라가 있는 쪽 (원점에서 본 방향). 정면(남쪽) 앞 위라 처음에는 도면 위쪽(북쪽)이 화면 위로 온다. 2D 처음 화면과 같은 방향
+        static let cameraDirection = SIMD3<Float>(0, 0.95, 1.0)
         /// 도면 긴 변에 곱하는 카메라 거리. 세로 화면(좁은 가로 시야)에서도 도면 전체가 들어오게 함
         static let cameraDistanceRatio: Float = 1.8
         /// 도면이 아주 작아도 이만큼(m)은 보이게

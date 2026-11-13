@@ -69,6 +69,18 @@ extension PlanData {
         return true
     }
 
+    /// 방 밖에서 새로 그린 벽(wallIds)이 닫은 칸마다 "새 공간" 방을 만든다. 새 벽의 면이 든 고리만 보므로, 이름을 지워 둔 기존 이름 없는 칸은 건드리지 않는다.
+    /// 이름 자리는 아직 없어, 이어서 부르는 refreshRoomLabels가 방 가운데에 놓는다
+    mutating func addRoomsClosed(by wallIds: Set<String>) {
+        guard let loops = faceLoops() else { return }
+        let takenSides = Set(rooms.flatMap(\.boundary).map { "\($0.wallId)/\($0.forward)" })
+        for loop in loops where loop.area > WallMoveRules.eps
+            && loop.edges.contains(where: { wallIds.contains($0.wallId) })
+            && !loop.edges.contains(where: { takenSides.contains("\($0.wallId)/\($0.forward)") }) {
+            rooms.append(Room(id: UUID().uuidString, name: RoomCopy.newRoomName, boundary: loop.edges, labelX: .infinity, labelY: .infinity))
+        }
+    }
+
     /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 방은 넓이 +, 건물 바깥은 넓이 −. 꼭짓점을 못 찾는 벽이 있으면 nil
     func faceLoops() -> [(edges: [RoomEdge], area: Double)]? {
         let pos = vertexPoints
@@ -108,6 +120,15 @@ extension PlanData {
             ))
         }
         return loops
+    }
+
+    /// 벽으로 닫힌 칸들의 꼭짓점 점들. 방(Room)과, 공간 라벨이 없는 닫힌 칸을 모두 포함한다. 가구처럼 방이 아니어도 놓을 수 있는 것이 칸 안인지 볼 때 쓴다
+    func closedCellPolygons() -> [[SIMD2<Double>]] {
+        var polygons = rooms.map { polygon(of: $0) }
+        for loop in faceLoops() ?? [] where loop.area > WallMoveRules.eps {
+            polygons.append(points(of: loop.edges))
+        }
+        return polygons
     }
 
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들

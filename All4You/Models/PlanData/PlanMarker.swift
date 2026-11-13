@@ -1,4 +1,4 @@
-// 도면 위에 놓는 사람·발화지점 표시 planData.markers 스탬프. 벽에 붙는 콘센트와 성격이 달라 둘이 묶어 분리.
+// 도면 위에 놓는 사람·발화지점·바닥 전기요소 표시 planData.markers 스탬프. 벽에 붙는 콘센트(WallFixture)와 성격이 달라 분리.
 
 /// 바닥 위 위치·높이와 바라보는 방향을 가진 표시. 2D에서는 기호, 3D에서는 모델로 그린다
 struct PlanMarker: Codable, Hashable, Identifiable {
@@ -14,6 +14,10 @@ struct PlanMarker: Codable, Hashable, Identifiable {
     var lying: Bool?
     /// 기본 크기에 곱하는 배율. nil이면 1 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
     var scale: Double?
+    /// 발화원인 (발화지점만 값이 있고 나머지는 nil. 이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
+    var ignitionCause: IgnitionCause? = nil
+    /// 전기 종류 (바닥 전기만 값이 있고 나머지는 nil)
+    var electricalKind: ElectricalKind? = nil
 
     /// 그릴 때 쓰는 배율. 저장된 값이 없으면 1
     var drawScale: Double { scale ?? 1 }
@@ -31,6 +35,15 @@ struct PlanMarker: Codable, Hashable, Identifiable {
         kind == .person ? personTokenScale * personModelEnlargement : 1
     }
 
+    /// 스탬프 아래에 보일 글자. 발화지점·전기는 고른 종류(종류를 고르지 않은 예전 스탬프는 nil), 피해자는 "피해자"
+    var kindLabel: String? {
+        switch kind {
+        case .ignitionPoint: ignitionCause?.title
+        case .outlet: electricalKind?.title
+        case .person: EditTool.person.title
+        }
+    }
+
     /// 3D 모델에 곱하는 배율
     var modelScale: Double { drawScale * Self.modelFactor(of: kind) }
 }
@@ -41,4 +54,9 @@ enum MarkerKind: String, Codable {
     case person
     /// 발화지점
     case ignitionPoint
+    /// 바닥에 놓인 전기요소 (멀티탭·바닥 콘센트 등, 화면 글자 "전기"). 벽에 붙은 콘센트는 `WallFixture`
+    case outlet
+
+    /// 가구 위에 놓이면 가구 윗면 위로 올라오는지. 전기는 가구 밑에 있을 수 있어 가구와 상관없이 바닥에 둔다
+    var sitsOnFurniture: Bool { self != .outlet }
 }

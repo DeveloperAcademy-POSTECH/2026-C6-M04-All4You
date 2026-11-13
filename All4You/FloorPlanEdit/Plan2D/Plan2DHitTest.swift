@@ -39,6 +39,22 @@ extension PlanScreen {
         return nil
     }
 
+    /// 공간 이름 캡슐 안을 누른 방 (Room.id). 겹치면 나중에 그린(위에 보이는) 것
+    func roomLabel(at point: CGPoint, in plan: PlanData, labelScale: CGFloat = 1) -> String? {
+        plan.rooms.last { room in
+            let size = Plan2DHit.capsuleSize(of: room.name, font: Plan2DHit.roomLabelFont, scale: labelScale)
+            return Plan2DHit.contains(point, capsuleAt: self.point(SIMD2(room.labelX, room.labelY)), size: size)
+        }?.id
+    }
+
+    /// 가구 이름 캡슐 안을 누른 가구 (Furniture.id). 겹치면 나중에 그린 것
+    func furnitureLabel(at point: CGPoint, in plan: PlanData, labelScale: CGFloat = 1) -> String? {
+        plan.furniture?.last { furniture in
+            let size = Plan2DHit.capsuleSize(of: furniture.label, font: Plan2DHit.furnitureLabelFont, scale: labelScale)
+            return Plan2DHit.contains(point, capsuleAt: self.point(furniture.center), size: size)
+        }?.id
+    }
+
     /// 벽 wallId에서 planPoint 자리에 달린 창문·문 (DoorWindow.id). 문짝 없는 개구부는 고르지 않는다
     private func opening(on wallId: String, at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         guard let wall = plan.wall(id: wallId), let line = plan.line(of: wall) else { return nil }
@@ -93,4 +109,31 @@ enum Plan2DHit {
     /// 2D에서 벽에 붙이는 콘센트의 바닥에서 높이 (m). 위에서 본 그림이라 높이를 누를 수 없다
     // TEMP: 흔한 콘센트 높이로 임시로 정한 값 — 디자인이나 사용자 확인 뒤 바꿀 수 있음
     static let outletHeight = 0.3
+
+    /// 이름 캡슐 글자 크기와 안쪽 여백 (pt). RoomLabelView·FurnitureLabelView와 같은 값이다
+    static let roomLabelFont = CapsuleFont(size: 15, horizontalPadding: 16, verticalPadding: 8)
+    static let furnitureLabelFont = CapsuleFont(size: 12, horizontalPadding: 13, verticalPadding: 7.5)
+
+    struct CapsuleFont {
+        let size: CGFloat
+        let horizontalPadding: CGFloat
+        let verticalPadding: CGFloat
+    }
+
+    /// 이름을 담은 캡슐의 대략적인 크기 (pt). 뷰가 그려진 크기를 알 수 없어, 한글은 글자 크기만큼 라틴 글자는 0.55배로 어림한다.
+    /// 지우개와 가구 이름 누르기가 캡슐을 맞히는 데 쓰므로 손가락 여유(fingerMargin의 절반)를 더해 조금 넉넉하게 둔다
+    /// scale은 도면을 확대·축소하며 캡슐을 키우고 줄이는 배율 (LabelScale). 캡슐 크기에만 곱하고 손가락 여유는 그대로 둔다
+    static func capsuleSize(of text: String, font: CapsuleFont, scale: CGFloat = 1) -> CGSize {
+        let textWidth = text.reduce(CGFloat(0)) { $0 + ($1.isASCII ? font.size * 0.55 : font.size) }
+        let margin = fingerMargin / 2
+        return CGSize(
+            width: (textWidth + font.horizontalPadding * 2) * scale + margin * 2,
+            height: (font.size * 1.2 + font.verticalPadding * 2) * scale + margin * 2
+        )
+    }
+
+    /// 화면 점이 center를 가운데로 한 size 크기의 캡슐 안인지
+    static func contains(_ point: CGPoint, capsuleAt center: CGPoint, size: CGSize) -> Bool {
+        abs(point.x - center.x) <= size.width / 2 && abs(point.y - center.y) <= size.height / 2
+    }
 }

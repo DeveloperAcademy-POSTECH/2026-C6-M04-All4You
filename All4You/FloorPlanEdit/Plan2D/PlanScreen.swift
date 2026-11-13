@@ -49,6 +49,16 @@ struct PlanScreen: Equatable {
         StampDefaults.iconPoints / fitScale
     }
 
+    /// 처음 맞춘 크기의 몇 배로 보이는지 (처음 = 1)
+    var zoom: Double {
+        scale / fitScale
+    }
+
+    /// 확대·축소에 맞춰 이름 캡슐 크기에 곱하는 배율 (LabelScale). 처음 맞춘 화면에서 1
+    var labelScale: CGFloat {
+        LabelScale.value(zoom: zoom, zoomRange: Limit.minZoom...Limit.maxZoom)
+    }
+
     /// 도면 길이 (m)를 화면 길이 (pt)로
     func length(_ meters: Double) -> CGFloat {
         meters * scale
