@@ -107,8 +107,8 @@ struct CaseListView: View {
                     // 2. 다음 화면에 전달할 사건 보관
                     pendingFloorPlan = newCase
                     
-                    // 3. 최근 열람 목록으로 이동
-                    selection = .filter(.recent)
+                    // 3. 조사 중 목록으로 이동
+                    selection = .filter(.inProgress)
                     
                     // 4. 사건 등록 시트 닫기
                     isPresentingRegistration = false
@@ -166,7 +166,7 @@ private struct OpenedCase: Identifiable {
     var id: UUID { fireCase.id }
 }
 
-// MARK: - 사이드바
+// 사이드바
 
 extension CaseListView {
     
@@ -174,7 +174,7 @@ extension CaseListView {
         editMode.isEditing
     }
     
-    /// 로고, 최근 열람, "사건 목록" 아래 조사 중·조사 종결·사용자 목록
+    /// 로고, 최근 열람, "사건 목록" 아래 조사 중·사용자 목록
     private var sidebar: some View {
         List(selection: $selection) {
             
@@ -201,7 +201,6 @@ extension CaseListView {
             // "사건 목록"은 고정 제목 (접거나 펼 수 없다)
             Section {
                 defaultRow(.inProgress)
-                defaultRow(.closed)
                 
                 ForEach(folders) { folder in
                     folderRow(folder)
@@ -222,7 +221,7 @@ extension CaseListView {
         }
     }
     
-    /// 최근 열람·조사 중·조사 종결. 바꿀 수 없는 기본 목록이라 편집 중에는 흐리게 보이고 고를 수 없다
+    /// 최근 열람·조사 중. 바꿀 수 없는 기본 목록이라 편집 중에는 흐리게 보이고 고를 수 없다
     private func defaultRow(_ filter: CaseFilter) -> some View {
         Label(filter.title, systemImage: filter.systemImage)
         // 최근 열람은 개수를 보이지 않고, 편집 중에는 개수를 숨긴다
@@ -331,20 +330,18 @@ extension CaseListView {
         }
     }
     
-    /// 사용자 목록에 들어 있지 않은 사건만 상태별로 센다 (사건은 목록 하나에만 들어간다)
+    /// 조사 중은 사용자 목록에 들어 있지 않은 사건을 모두 센다 (종결 여부 무관, 사건은 목록 하나에만 들어간다)
     private func caseCount(of filter: CaseFilter) -> Int {
         switch filter {
         case .recent:
             allCases.count
         case .inProgress:
-            allCases.filter { $0.folder == nil && $0.status == .inProgress }.count
-        case .closed:
-            allCases.filter { $0.folder == nil && $0.status == .closed }.count
+            allCases.filter { $0.folder == nil }.count
         }
     }
 }
 
-// MARK: - 사건 목록
+// 사건 목록
 
 extension CaseListView {
     
@@ -380,7 +377,7 @@ extension CaseListView {
         }
     }
     
-    /// 사이드바를 접었을 때 위에 뜨는 탭 막대. 사이드바 펼치기 버튼과 기본 목록 세 개
+    /// 사이드바를 접었을 때 위에 뜨는 탭 막대. 사이드바 펼치기 버튼과 기본 목록(최근 열람·조사 중)
     private var collapsedTabBar: some View {
         HStack(spacing: Layout.tabSpacing) {
             Button(Copy.showSidebar, systemImage: "sidebar.left") {
@@ -423,7 +420,7 @@ extension CaseListView {
     }
 }
 
-// MARK: - 목록 만들기·바꾸기·지우기
+// 목록 만들기·바꾸기·지우기
 
 extension CaseListView {
     
@@ -448,7 +445,7 @@ extension CaseListView {
         saveFolders()
     }
     
-    /// 목록만 지운다. 들어 있던 사건은 목록에서 빠져 상태에 따라 조사 중·조사 종결에 다시 보인다
+    /// 목록만 지운다. 들어 있던 사건은 목록에서 빠져 조사 중에 다시 보인다
     private func deleteFolder() {
         defer { deletingFolder = nil }
         guard let deletingFolder else { return }
@@ -492,30 +489,21 @@ extension CaseListView {
         )
     }
     
-    /// 기본 목록에 드롭하면 사용자 폴더 소속을 해제하고 조사 상태를 갱신한다.
+    /// 조사 중에 드롭하면 사용자 폴더 소속을 해제하고 조사 중 상태로 맞춘다.
     private func moveCaseToStatus(caseID: String, status: CaseFilter) -> Bool {
-        guard let fireCase = allCases.first(where: { $0.id.uuidString == caseID }) else {
+        guard status == .inProgress,
+              let fireCase = allCases.first(where: { $0.id.uuidString == caseID }) else {
             return false
         }
         
-        let targetStatus: FireCase.Status
-        switch status {
-        case .inProgress:
-            targetStatus = .inProgress
-        case .closed:
-            targetStatus = .closed
-        case .recent:
-            return false
-        }
-        
-        if fireCase.folder == nil && fireCase.status == targetStatus {
+        if fireCase.folder == nil && fireCase.status == .inProgress {
             return true
         }
         
         let previousFolder = fireCase.folder
         let previousStatus = fireCase.status
         fireCase.folder = nil
-        fireCase.status = targetStatus
+        fireCase.status = .inProgress
         
         do {
             try modelContext.save()
@@ -559,7 +547,7 @@ extension CaseListView {
     }
 }
 
-// MARK: - 사이드바 헤더
+// 사이드바 헤더
 
 extension CaseListView {
     
@@ -581,7 +569,7 @@ extension CaseListView {
     }
 }
 
-// MARK: - 목록 상단 툴바
+// 목록 상단 툴바
 
 extension CaseListView {
     
@@ -661,7 +649,7 @@ extension CaseListView {
     }
 }
 
-// MARK: - Layout
+// Layout
 
 extension CaseListView {
     
@@ -675,7 +663,7 @@ extension CaseListView {
         static let searchHorizontalPadding: CGFloat = 12
         static let searchItemSpacing: CGFloat = 6
         
-        /// 편집 중 기본 목록(조사 중·조사 종결)을 흐리게 보이는 정도
+        /// 편집 중 기본 목록(조사 중)을 흐리게 보이는 정도
         static let dimmedOpacity: CGFloat = 0.4
         
         // 사이드바를 접었을 때 위쪽 탭 막대
@@ -686,7 +674,7 @@ extension CaseListView {
     }
 }
 
-// MARK: - Copy
+// Copy
 
 extension CaseListView {
     
@@ -730,8 +718,6 @@ extension CaseListView {
         }
     }
 }
-
-// MARK: - Preview (실제 기기 DB와 분리된 빈 저장소)
 
 #Preview("사건 없음") {
     CaseListView()
