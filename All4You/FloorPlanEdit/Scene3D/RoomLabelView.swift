@@ -6,6 +6,8 @@ import SwiftUI
 struct RoomLabelView: View {
     /// Room.name
     let name: String
+    /// 도면 확대·축소에 맞춰 키우고 줄이는 배율 (LabelScale). 1이면 Figma 크기
+    var scale: CGFloat = 1
 
     var body: some View {
         Text(name)
@@ -14,13 +16,13 @@ struct RoomLabelView: View {
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPadding)
             .background(.black, in: .capsule)
+            .scaleEffect(scale)
     }
 }
 
 // 레이아웃 값
 extension RoomLabelView {
     private enum Layout {
-        // Figma 61:29616 공간라벨 87×36
         static let horizontalPadding: CGFloat = 16
         static let verticalPadding: CGFloat = 8
     }

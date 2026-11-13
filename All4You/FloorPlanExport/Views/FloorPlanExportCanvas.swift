@@ -51,7 +51,7 @@ struct FloorPlanExport2DCanvas: View {
     var body: some View {
         GeometryReader { proxy in
             let screen = PlanScreen(plan: content.planData, in: proxy.size, fill: Layout.planFill)
-            Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds)
+            Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds, showsStampKinds: false)
                 .overlay(alignment: .topLeading) {
                     PhotoPinLayer(planData: content.planData, screen: screen, pins: content.pins, selectedRoomID: nil, onTapRoom: { _ in })
                         .allowsHitTesting(false)

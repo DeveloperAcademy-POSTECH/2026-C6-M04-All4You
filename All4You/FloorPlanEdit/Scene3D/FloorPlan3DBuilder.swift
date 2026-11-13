@@ -36,7 +36,34 @@ enum FloorPlan3DBuilder {
         }
         root.addChild(makeRoomLabelAnchors(for: plan.rooms, space: space))
         root.addChild(makeFurnitureLabelAnchors(for: plan.furniture ?? [], space: space))
+        root.addChild(makeStampLabelAnchors(for: plan, space: space))
         return root
+    }
+}
+
+// 스탬프 종류 라벨 자리
+extension FloorPlan3DBuilder {
+    /// 종류 라벨 자리들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 라벨을 겹친다
+    static let stampLabelAnchorsName = "stampLabelAnchors"
+
+    /// 종류가 있는 스탬프(발화지점·전기)와 벽 전기마다 라벨이 놓일 3D 점. 보이는 모양은 없고 위치만 있다. 엔티티 이름 = PlanMarker.id·WallFixture.id
+    private static func makeStampLabelAnchors(for plan: PlanData, space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = stampLabelAnchorsName
+        for marker in plan.markers where marker.kindLabel != nil {
+            let anchor = Entity()
+            anchor.name = marker.id
+            anchor.position = space.world(marker.position, height: marker.height)
+            group.addChild(anchor)
+        }
+        for fixture in plan.wallFixtures where fixture.kindLabel != nil {
+            guard let point = plan.point(of: fixture) else { continue }
+            let anchor = Entity()
+            anchor.name = fixture.id
+            anchor.position = space.world(point, height: fixture.heightFromFloor)
+            group.addChild(anchor)
+        }
+        return group
     }
 }
 
@@ -169,6 +196,42 @@ extension FloorPlan3DBuilder {
             group.addChild(anchor)
         }
         return group
+    }
+}
+
+// 치수선
+extension FloorPlan3DBuilder {
+    /// 치수선들을 담은 엔티티 이름
+    static let dimensionLinesName = "dimensionLines"
+    /// 치수선·보조선 굵기 (m)
+    private static let dimensionLineThickness: Float = 0.02
+
+    /// 치수선마다 선 하나와 양 끝 보조선 둘을 얇은 상자로 만든다. 보이기만 하고 충돌 모양이 없어 누르는 판정에 끼지 않는다
+    static func makeDimensionLines(_ lines: [DimensionLine], space: PlanSpace) -> Entity {
+        let group = Entity()
+        group.name = dimensionLinesName
+        for line in lines {
+            let height = line.height
+            for (from, to) in [(line.start, line.end), (line.anchorStart, line.start), (line.anchorEnd, line.end)] {
+                if let segment = dimensionSegment(from: space.world(from, height: height), to: space.world(to, height: height), kind: line.kind) {
+                    group.addChild(segment)
+                }
+            }
+        }
+        return group
+    }
+
+    /// 3D 점 두 개를 잇는 얇은 상자. 위아래 축으로만 돌려 선 방향에 맞춘다. 거의 점이면 nil
+    private static func dimensionSegment(from: SIMD3<Float>, to: SIMD3<Float>, kind: DimensionKind) -> ModelEntity? {
+        let delta = to - from
+        let length = simd_length(delta)
+        guard length > 0.001 else { return nil }
+        let size = SIMD3(length, dimensionLineThickness, dimensionLineThickness)
+        let entity = ModelEntity(mesh: .generateBox(size: size), materials: [Materials.dimensionLine(of: kind)])
+        entity.position = (from + to) / 2
+        // 상자의 가로(x) 축이 (delta.x, delta.z) 방향을 향하게 위아래 축 기준으로 돌린다
+        entity.orientation = simd_quatf(angle: atan2(-delta.z, delta.x), axis: [0, 1, 0])
+        return entity
     }
 }
 
@@ -438,14 +501,15 @@ extension FloorPlan3DBuilder {
             body.components.set(collision)
         }
         entity.addChild(body)
+        let tag = PlanSelection.furniture(furniture.id)
+        entity.components.set(PlanSelectionComponent(selection: tag))
+        // 테두리 상자는 바닥 그림자를 붙이기 전에 만든다. 그림자가 들어가면 상자가 바닥까지 늘어나 띄운 높이를 따라가지 못한다
+        if tag == selection { addSelectionFrame(to: entity) }
         if furniture.elevation > FurnitureModel.floatingElevation {
             let shadow = ModelEntity(mesh: furnitureMesh(furniture, height: FurnitureModel.shadowHeight), materials: [Materials.furnitureShadow])
             shadow.position.y = FurnitureModel.shadowHeight / 2
             entity.addChild(shadow)
         }
-        let tag = PlanSelection.furniture(furniture.id)
-        entity.components.set(PlanSelectionComponent(selection: tag))
-        if tag == selection { addSelectionFrame(to: entity) }
         return entity
     }
 
@@ -519,7 +583,12 @@ extension FloorPlan3DBuilder {
     private static func makeMarker(_ marker: PlanMarker, space: PlanSpace, selection: PlanSelection?) -> Entity {
         let tag = PlanSelection.marker(marker.id)
         let material = stampMaterial(tag, selection: selection)
-        let entity = marker.kind == .person ? personModel(lying: marker.lying ?? false, material: material) : flameModel(material: material)
+        let entity: Entity
+        switch marker.kind {
+        case .person: entity = personModel(lying: marker.lying ?? false, material: material)
+        case .ignitionPoint: entity = flameModel(material: material)
+        case .outlet: entity = floorOutletModel(material: material)
+        }
         entity.position = space.world(marker.position, height: marker.height)
         entity.orientation = PlanSpace.orientation(yaw: marker.yaw)
         entity.scale = SIMD3(repeating: Float(marker.modelScale))
@@ -557,6 +626,16 @@ extension FloorPlan3DBuilder {
         return wrapper
     }
 
+    /// 바닥에 놓인 전기요소. 바닥에 납작하게 놓인 둥근 상자. 눌러 고를 수 있게 너무 얇지 않게 한다
+    // TEMP: 바닥 전기요소 3D 모양이 디자인에 없어 임의로 정한 크기
+    private static func floorOutletModel(material: SimpleMaterial) -> Entity {
+        let plate = ModelEntity(mesh: .generateBox(width: 0.36, height: 0.08, depth: 0.36, cornerRadius: 0.03), materials: [material])
+        plate.position = [0, 0.04, 0]
+        let wrapper = Entity()
+        wrapper.addChild(plate)
+        return wrapper
+    }
+
     /// 불꽃 대신 원뿔
     private static func flameModel(material: SimpleMaterial) -> Entity {
         let cone = ModelEntity(mesh: .generateCone(height: 0.5, radius: 0.18), materials: [material])
@@ -578,6 +657,9 @@ private enum Materials {
     static let selectedStamp = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     static let selectedGlass = glass(tint: UIColor(resource: .brand500), opacity: 0.6)
     static let selectionFrame = UnlitMaterial(color: UIColor(resource: .brand500))
+    static func dimensionLine(of kind: DimensionKind) -> UnlitMaterial {
+        UnlitMaterial(color: kind.uiColor)
+    }
     static let windowEdgeHandle = SimpleMaterial(color: UIColor(resource: .orange700), roughness: 0.6, isMetallic: false)
     // TEMP: 가구 3D 디자인이 정해지기 전이라 2D 가구 채움보다 진한 회색 상자
     static let furniture = SimpleMaterial(color: UIColor(resource: .gray300), roughness: 0.8, isMetallic: false)
