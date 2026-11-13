@@ -35,12 +35,12 @@ struct PlanMarker: Codable, Hashable, Identifiable {
         kind == .person ? personTokenScale * personModelEnlargement : 1
     }
 
-    /// 스탬프 아래에 보일 종류 글자. 종류를 고르지 않은 스탬프(예전에 저장한 도면)는 nil
+    /// 스탬프 아래에 보일 글자. 발화지점·전기는 고른 종류(종류를 고르지 않은 예전 스탬프는 nil), 피해자는 "피해자"
     var kindLabel: String? {
         switch kind {
         case .ignitionPoint: ignitionCause?.title
         case .outlet: electricalKind?.title
-        case .person: nil
+        case .person: EditTool.person.title
         }
     }
 
