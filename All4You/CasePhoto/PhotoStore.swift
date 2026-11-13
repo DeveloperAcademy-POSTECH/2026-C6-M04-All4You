@@ -9,6 +9,7 @@
 // 사진은 사건의 EvidencePhoto 모델(SwiftData)에 저장하고, 화면은 작은 사진을 읽어 둔 LoadedPhoto를 본다
 
 import Observation
+import PencilKit
 import SwiftData
 import UIKit
 
@@ -32,6 +33,18 @@ struct LoadedPhoto: Identifiable {
     fileprivate var record: EvidencePhoto?
     /// 저장하지 않는 사진(미리보기용 저장소)의 원본
     fileprivate var memoryImage: UIImage?
+
+    /// 마크업 편집 화면의 배경 사진. 원본이 남아 있으면 원본을 사용한다.
+    var markupBaseImage: UIImage {
+        record?.originalImageData.flatMap { UIImage(data: $0) } ?? memoryBaseImage ?? image
+    }
+
+    /// 기존에 저장한 PencilKit 획. 편집을 다시 열 때 복원한다.
+    var markupDrawingData: Data? { record?.markupDrawingData ?? memoryDrawingData }
+
+    /// 저장하지 않는 미리보기 사진의 드로잉 데이터.
+    fileprivate var memoryDrawingData: Data?
+    fileprivate var memoryBaseImage: UIImage?
 
     /// 원본(마크업하면 마크업이 그려진 사진으로 바뀐다). 읽지 못하면 작은 사진
     var image: UIImage {
@@ -144,15 +157,27 @@ final class PhotoStore {
         allPhotos[index].record?.isBookmarked = allPhotos[index].isBookmarked
     }
 
-    /// 마크업을 그린 사진으로 바꾼다
-    func replaceImage(id: UUID, with image: UIImage, thumbnail: UIImage) {
+    /// 완성된 이미지를 갱신하되 원본과 편집 가능한 PencilKit 획을 별도로 보관한다.
+    func replaceImage(id: UUID, with image: UIImage, thumbnail: UIImage, drawingData: Data) {
         guard let index = index(of: id) else { return }
+        let baseImage = allPhotos[index].markupBaseImage
         allPhotos[index].thumbnail = thumbnail
-        if let record = allPhotos[index].record, let imageData = Self.jpegData(image), let thumbnailData = Self.jpegData(thumbnail) {
+        if let record = allPhotos[index].record,
+           let imageData = Self.jpegData(image),
+           let thumbnailData = Self.jpegData(thumbnail) {
+            // 최초 마크업 전에만 원본을 저장한다. 이후 수정 시 덮어쓰지 않는다.
+            if record.originalImageData == nil {
+                record.originalImageData = Self.jpegData(baseImage)
+            }
             record.imageData = imageData
             record.thumbnailData = thumbnailData
+            record.markupDrawingData = drawingData
         } else {
+            if allPhotos[index].memoryBaseImage == nil {
+                allPhotos[index].memoryBaseImage = baseImage
+            }
             allPhotos[index].memoryImage = image
+            allPhotos[index].memoryDrawingData = drawingData
         }
     }
 

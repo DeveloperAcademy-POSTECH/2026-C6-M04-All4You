@@ -58,10 +58,10 @@ struct PhotoDetailView: View {
         }
         .fullScreenCover(isPresented: $isMarkupShown) {
             if let currentPhoto {
-                PhotoMarkupView(image: currentPhoto.image) {
+                PhotoMarkupView(image: currentPhoto.markupBaseImage, initialDrawingData: currentPhoto.markupDrawingData) {
                     isMarkupShown = false
-                } onSave: { image, thumbnail in
-                    store.replaceImage(id: currentPhoto.id, with: image, thumbnail: thumbnail)
+                } onSave: { image, thumbnail, drawingData in
+                    store.replaceImage(id: currentPhoto.id, with: image, thumbnail: thumbnail, drawingData: drawingData)
                     isMarkupShown = false
                 }
             }

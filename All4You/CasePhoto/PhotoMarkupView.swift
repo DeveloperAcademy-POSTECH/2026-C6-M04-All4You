@@ -6,12 +6,25 @@ import SwiftUI
 /// 사진 위에 그린 뒤 체크를 누르면 그림을 사진에 합쳐 돌려준다
 struct PhotoMarkupView: View {
     let image: UIImage
+    let initialDrawingData: Data?
     let onCancel: () -> Void
     /// 그림을 합친 사진과 목록용 작은 사진
-    let onSave: (UIImage, UIImage) -> Void
+    let onSave: (UIImage, UIImage, Data) -> Void
 
     @State private var canvasView = PKCanvasView()
     @State private var isSaving = false
+
+    init(image: UIImage, initialDrawingData: Data? = nil, onCancel: @escaping () -> Void, onSave: @escaping (UIImage, UIImage, Data) -> Void) {
+        self.image = image
+        self.initialDrawingData = initialDrawingData
+        self.onCancel = onCancel
+        self.onSave = onSave
+        let canvas = PKCanvasView()
+        if let initialDrawingData, let drawing = try? PKDrawing(data: initialDrawingData) {
+            canvas.drawing = drawing
+        }
+        _canvasView = State(initialValue: canvas)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -47,14 +60,13 @@ extension PhotoMarkupView {
     /// 사진 원래 크기로 사진과 그림을 겹쳐 그린다. 그림판은 화면 크기라 사진 크기에 맞게 늘려 그린다
     private func save() {
         let canvasSize = canvasView.bounds.size
-        guard canvasSize.width > 0, !canvasView.drawing.strokes.isEmpty else {
-            onCancel()
-            return
-        }
+        guard canvasSize.width > 0 else { return }
         isSaving = true
         let image = image
         let scale = image.size.width / canvasSize.width * image.scale
-        let strokes = canvasView.drawing.image(from: CGRect(origin: .zero, size: canvasSize), scale: scale)
+        let drawing = canvasView.drawing
+        let drawingData = drawing.dataRepresentation()
+        let strokes = drawing.image(from: CGRect(origin: .zero, size: canvasSize), scale: scale)
         // 큰 사진을 다시 그리는 일은 시간이 걸려 메인 스레드 밖에서 한다
         Task.detached(priority: .userInitiated) {
             let format = UIGraphicsImageRendererFormat()
@@ -66,7 +78,7 @@ extension PhotoMarkupView {
             }
             let thumbnail = LoadedPhoto.makeThumbnail(from: merged)
             await MainActor.run {
-                onSave(merged, thumbnail)
+                onSave(merged, thumbnail, drawingData)
             }
         }
     }
@@ -137,5 +149,5 @@ extension PhotoMarkupView {
 }
 
 #Preview {
-    PhotoMarkupView(image: UIImage(systemName: "flame")!, onCancel: {}, onSave: { _, _ in })
+    PhotoMarkupView(image: UIImage(systemName: "flame")!, onCancel: {}, onSave: { _, _, _ in })
 }
