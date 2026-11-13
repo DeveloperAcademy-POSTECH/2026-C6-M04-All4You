@@ -122,6 +122,15 @@ extension PlanData {
         return loops
     }
 
+    /// 벽으로 닫힌 칸들의 꼭짓점 점들. 방(Room)과, 공간 라벨이 없는 닫힌 칸을 모두 포함한다. 가구처럼 방이 아니어도 놓을 수 있는 것이 칸 안인지 볼 때 쓴다
+    func closedCellPolygons() -> [[SIMD2<Double>]] {
+        var polygons = rooms.map { polygon(of: $0) }
+        for loop in faceLoops() ?? [] where loop.area > WallMoveRules.eps {
+            polygons.append(points(of: loop.edges))
+        }
+        return polygons
+    }
+
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
     private func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
         polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
