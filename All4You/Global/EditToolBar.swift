@@ -10,7 +10,7 @@ struct EditToolBar: View {
     var stampOption: Binding<StampOption?>? = nil
 
     @State private var isCollapsed = false
-    /// 리퀴드 글래스 옵션을 같은 묶음의 글래스로 이어 주는 이름 공간
+    /// 옵션 글래스에 이름을 붙이는 이름 공간
     @Namespace private var glassNamespace
 
     /// 숨길 도구를 뺀 목록
@@ -19,8 +19,9 @@ struct EditToolBar: View {
     }
 
     var body: some View {
-        // 버튼마다 따로 리퀴드 글래스를 쓰되, 한 묶음으로 그려 서로 가까워지면 물방울처럼 이어지게 한다
-        GlassEffectContainer(spacing: Layout.barSpacing) {
+        // 버튼마다 따로 리퀴드 글래스를 쓰되, 이웃한 버튼과 물방울처럼 이어지지 않게 묶음의 이어짐 거리를 0으로 둔다.
+        // 옵션이 나타나고 사라지는 글래스 전환(materialize)은 같은 묶음 안이어야 동작해서 묶음은 그대로 쓴다
+        GlassEffectContainer(spacing: 0) {
             VStack(alignment: .leading, spacing: Layout.barSpacing) {
                 HStack(spacing: Layout.barSpacing) {
                     // 접으면 도구가 모두 사라지고 '스탬프' 버튼 하나만 남는다.
@@ -172,8 +173,6 @@ extension EditToolBar {
     private func toolLabel(for tool: EditTool, isSelected: Bool) -> some View {
         let title = pickedOption(of: tool)?.title ?? tool.title
         return buttonLabel(title: title, iconName: tool.iconName, isSelected: isSelected)
-            // 옵션이 이 버튼에서 갈라져 나오고 다시 합쳐지도록 버튼마다 이름을 붙인다
-            .glassEffectID("tool.\(String(describing: tool))", in: glassNamespace)
     }
 
     private func buttonLabel(title: String, iconName: String, isSelected: Bool) -> some View {
