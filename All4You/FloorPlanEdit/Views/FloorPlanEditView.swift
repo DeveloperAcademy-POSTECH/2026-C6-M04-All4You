@@ -15,7 +15,7 @@ struct FloorPlanEditView: View {
     @State private var dimension = PlanDimension.twoD
     /// 켜 둔 스탬프 도구. 전환해도 이어지되, 3D에 없는 도구는 3D로 갈 때 끈다
     @State private var selectedTool: EditTool?
-    /// 발화지점·전기 도구에서 고른 종류(발화원인·전기 종류). 도구를 바꾸거나 끄면(한 번 놓으면 도구가 꺼진다) 다시 고르게 비운다
+    /// 발화지점·전기 도구에서 고른 종류(발화원인·전기 종류). 도구가 바뀌어 그 도구의 종류가 아니게 되면(끄거나, 한 번 놓아서 꺼지면) 다시 고르게 비운다
     @State private var stampOption: StampOption?
     /// 올라가면 2D·3D 수정 화면이 고른 것·메뉴·미리 보기를 비운다. 되돌리기·다시 하기와 전환 때 올린다
     @State private var resetToken = 0
@@ -36,7 +36,10 @@ struct FloorPlanEditView: View {
             }
         }
         .animation(.easeInOut(duration: Layout.fadeDuration), value: dimension)
-        .onChange(of: selectedTool) { stampOption = nil }
+        .onChange(of: selectedTool) {
+            // 고른 종류가 지금 도구의 것이 아니면(도구를 바꾸거나 껐거나, 놓아서 도구가 꺼짐) 비워 다시 고르게 한다
+            if let stampOption, selectedTool?.stampOptions.contains(stampOption) != true { self.stampOption = nil }
+        }
         // 위 바 아래 도면 영역 크기로 스탬프 기본 크기를 정한다. 2D 수정 화면이 처음 도면을 맞추는 것과 같은 식이다
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
             // 화면이 막 생길 때는 높이가 0에 가까운 값이 먼저 오므로, 위·아래 막대를 뺀 높이가 충분해진 뒤의 값만 쓴다
