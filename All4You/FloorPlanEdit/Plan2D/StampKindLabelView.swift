@@ -22,11 +22,13 @@ struct StampKindLabelView: View {
 
     /// 배율 1일 때 캡슐 높이 (pt). 스탬프 아래에 놓을 자리를 셈할 때 쓴다
     static let height = Layout.fontSize * 1.2 + Layout.verticalPadding * 2
+
 }
 
 // 레이아웃 값
 extension StampKindLabelView {
-    private enum Layout {
+    /// 입력칸(LabelNameField)과 누르는 자리 판정이 같은 크기를 쓰도록 바깥에도 연다
+    enum Layout {
         // TEMP: Figma에 없어 스탬프와 같은 주황 바탕·흰 글자로 가구 이름 캡슐(글자 12·여백 13×7.5)보다 조금 작게 임시로 정함 — 디자인 확인 필요
         static let fontSize: CGFloat = 11
         static let horizontalPadding: CGFloat = 9

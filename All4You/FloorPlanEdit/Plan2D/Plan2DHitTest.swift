@@ -55,6 +55,33 @@ extension PlanScreen {
         }?.id
     }
 
+    /// 스탬프 아래 종류 라벨 캡슐의 가운데 (화면 점). 고른 테두리 바로 아래이고, 캡슐은 가운데 기준으로 키우고 줄므로 키운 높이의 절반만큼 더 내린다
+    func kindLabelCenter(at planPoint: SIMD2<Double>, iconSize: Double, labelScale: CGFloat) -> CGPoint {
+        let center = point(planPoint)
+        let below = length(iconSize) / 2 + Plan2DView.selectionPadding + Plan2DView.kindLabelGap + StampKindLabelView.height * labelScale / 2
+        return CGPoint(x: center.x, y: center.y + below)
+    }
+
+    /// 종류가 기타인 스탬프의 종류 라벨 캡슐 자리 (PlanMarker.id·WallFixture.id와 화면 점). 라벨 글자를 고칠 수 있는 스탬프만 돌려준다
+    func otherKindLabels(in plan: PlanData, labelScale: CGFloat) -> [(id: String, center: CGPoint, text: String)] {
+        let markers = plan.markers.filter(\.isKindOther).compactMap { marker in
+            marker.kindLabel.map { (marker.id, kindLabelCenter(at: marker.position, iconSize: Plan2DView.iconSize(of: marker), labelScale: labelScale), $0) }
+        }
+        let fixtures = plan.wallFixtures.filter(\.isKindOther).compactMap { fixture -> (id: String, center: CGPoint, text: String)? in
+            guard let text = fixture.kindLabel, let point = plan.point(of: fixture) else { return nil }
+            return (fixture.id, kindLabelCenter(at: point, iconSize: outletSize, labelScale: labelScale), text)
+        }
+        return fixtures + markers
+    }
+
+    /// 종류가 기타인 스탬프의 종류 라벨 캡슐 안을 누른 스탬프 (PlanMarker.id·WallFixture.id). 겹치면 나중에 그린 것
+    func otherKindLabel(at point: CGPoint, in plan: PlanData, labelScale: CGFloat = 1) -> String? {
+        otherKindLabels(in: plan, labelScale: labelScale).last { label in
+            let size = Plan2DHit.capsuleSize(of: label.text, font: Plan2DHit.stampKindLabelFont, scale: labelScale)
+            return Plan2DHit.contains(point, capsuleAt: label.center, size: size)
+        }?.id
+    }
+
     /// 벽 wallId에서 planPoint 자리에 달린 창문·문 (DoorWindow.id). 문짝 없는 개구부는 고르지 않는다
     private func opening(on wallId: String, at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         guard let wall = plan.wall(id: wallId), let line = plan.line(of: wall) else { return nil }
@@ -113,6 +140,12 @@ enum Plan2DHit {
     /// 이름 캡슐 글자 크기와 안쪽 여백 (pt). RoomLabelView·FurnitureLabelView와 같은 값이다
     static let roomLabelFont = CapsuleFont(size: 15, horizontalPadding: 16, verticalPadding: 8)
     static let furnitureLabelFont = CapsuleFont(size: 12, horizontalPadding: 13, verticalPadding: 7.5)
+    /// 스탬프 종류 라벨 (StampKindLabelView)
+    static let stampKindLabelFont = CapsuleFont(
+        size: StampKindLabelView.Layout.fontSize,
+        horizontalPadding: StampKindLabelView.Layout.horizontalPadding,
+        verticalPadding: StampKindLabelView.Layout.verticalPadding
+    )
 
     struct CapsuleFont {
         let size: CGFloat

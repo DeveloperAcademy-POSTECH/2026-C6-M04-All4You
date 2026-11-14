@@ -21,6 +21,8 @@ struct FloorPlanEdit2DView: View {
     var resetToken = 0
     /// 치수·면적 글자 설정. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
     @Binding var dimensions: DimensionDisplay
+    /// 화면에 들어오면 한 번 보여 줄 안내 (예: 변환 뒤 스케치 스탬프를 옮기지 못했다는 알림). nil이면 띄우지 않는다
+    var launchNotice: String? = nil
 
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
@@ -54,6 +56,11 @@ struct FloorPlanEdit2DView: View {
     /// 고치는 중인 가구 이름. 끝낼 때 도면에 한 번 넣는다
     @State private var furnitureLabelDraft = ""
     @FocusState private var isFurnitureLabelFocused: Bool
+    /// 기타 스탬프의 라벨 글자를 고치는 중인 스탬프 (PlanMarker.id·WallFixture.id)
+    @State private var editingKindNoteId: String?
+    /// 고치는 중인 라벨 글자. 끝낼 때 도면에 한 번 넣는다
+    @State private var kindNoteDraft = ""
+    @FocusState private var isKindNoteFocused: Bool
     /// 공간 이름 캡슐을 끄는 중이면, 끌기를 시작할 때 캡슐이 있던 도면 점
     @State private var labelDragStart: SIMD2<Double>?
     /// 도면을 그리는 영역의 크기. 키보드에 가리지 않게 도면을 올릴 때 쓴다
@@ -94,6 +101,7 @@ struct FloorPlanEdit2DView: View {
             if height == 0 {
                 if editingRoomId != nil { finishRoomEditing() }
                 if editingFurnitureId != nil { finishFurnitureEditing() }
+                if editingKindNoteId != nil { finishKindNoteEditing() }
             }
             keyboardHeight = height
             updateLift()
@@ -121,12 +129,18 @@ struct FloorPlanEdit2DView: View {
             .padding()
         }
         .onChange(of: resetToken) { clearEditingState() }
+        .task {
+            if let launchNotice { showNotice(launchNotice) }
+        }
         // 키보드 내리기 버튼으로 엔터 없이 키보드를 내려도 이름 고치기를 끝내고 올려 둔 도면을 되돌린다
         .onChange(of: isRoomNameFocused) { _, isFocused in
             if !isFocused, editingRoomId != nil { finishRoomEditing() }
         }
         .onChange(of: isFurnitureLabelFocused) { _, isFocused in
             if !isFocused, editingFurnitureId != nil { finishFurnitureEditing() }
+        }
+        .onChange(of: isKindNoteFocused) { _, isFocused in
+            if !isFocused, editingKindNoteId != nil { finishKindNoteEditing() }
         }
         // 키보드가 올라와도 화면 크기가 바뀌지 않게 해서, 도면이 다시 맞춰지며 확대·이동이 풀리지 않게 한다
         .ignoresSafeArea(.keyboard)
@@ -157,7 +171,8 @@ extension FloorPlanEdit2DView {
                 roomLabelActions: roomLabelActions,
                 editingFurnitureId: editingFurnitureId,
                 dimensions: dimensions,
-                scalesLabels: true
+                scalesLabels: true,
+                editingKindNoteId: editingKindNoteId
             )
                 .contentShape(.rect)
                 .gesture(tapGesture)
@@ -178,6 +193,9 @@ extension FloorPlanEdit2DView {
                 }
                 .overlay(alignment: .topLeading) {
                     furnitureLabelField(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
+                    kindNoteField(screen: screen)
                 }
                 .coordinateSpace(.named(Layout.planSpace))
                 .onChange(of: selection) {
@@ -275,6 +293,8 @@ extension FloorPlanEdit2DView {
         isRoomNameFocused = false
         editingFurnitureId = nil
         isFurnitureLabelFocused = false
+        editingKindNoteId = nil
+        isKindNoteFocused = false
         selection = nil
         selectedRoomId = nil
         menuTarget = nil
@@ -306,12 +326,23 @@ extension FloorPlanEdit2DView {
                     finishFurnitureEditing()
                     return
                 }
+                if editingKindNoteId != nil {
+                    finishKindNoteEditing()
+                    return
+                }
                 // 지우개는 스탬프·라벨·창문·문·벽을 눌러 바로 지운다 (위 도구가 켜져 있으면 그쪽이 먼저라 이 길로 오지 않는다)
                 if drawingTool == .eraser, !isStampActive {
                     selection = nil
                     selectedRoomId = nil
                     var plan = planData
                     if erase(at: value.location, in: &plan, screen: screen) { planData = plan }
+                    return
+                }
+                // 고른 기타 스탬프의 라벨 사각형을 누르면 바로 글자를 고친다 (손 도구일 때. 스탬프 도구가 켜져 있으면 그 자리에 스탬프를 놓을 수 있게 건너뛴다)
+                if canUseStamps, selectedTool == nil, screen.stamp(at: value.location, in: planData) == nil,
+                   let stampId = screen.otherKindLabel(at: value.location, in: planData, labelScale: screen.labelScale),
+                   selection?.stampId == stampId {
+                    startKindNoteEditing(stampId)
                     return
                 }
                 // 가구 이름 캡슐을 눌렀으면 가구를 고르거나 이름을 고친다 (손 도구나 가구라벨 도구일 때).
@@ -387,6 +418,8 @@ extension FloorPlanEdit2DView {
                 selection = placed
                 // 한 번 놓으면 도구가 꺼진다. 한 번에 여러 개 놓이지 않게 하고, 아래 막대(펜·지우개·손)가 다시 먼저 동작한다
                 selectedTool = nil
+                // 기타로 놓았으면 바로 라벨 글자를 적게 한다
+                if stampOption?.isOther == true, let id = placed.stampId { startKindNoteEditing(id) }
             } else {
                 // 벽에 닿거나 방 밖이거나 도구와 맞지 않는 자리면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
                 showNotice(planData.placementHint(for: tool, at: tap))
@@ -529,6 +562,46 @@ extension FloorPlanEdit2DView {
         }
         editingFurnitureId = nil
         isFurnitureLabelFocused = false
+        labelEditY = nil
+    }
+}
+
+// 기타 스탬프 라벨 글자 고치기
+extension FloorPlanEdit2DView {
+    /// 라벨 자리에 글자 입력칸을 띄운다. 스탬프 라벨과 같은 주황 캡슐 모양, 비면 "기타"가 보인다
+    @ViewBuilder
+    private func kindNoteField(screen: PlanScreen) -> some View {
+        if let editingKindNoteId, let center = kindNoteCenter(of: editingKindNoteId, screen: screen) {
+            LabelNameField(style: .stamp, placeholder: Copy.otherKind, text: $kindNoteDraft, isFocused: $isKindNoteFocused, onSubmit: finishKindNoteEditing, scale: screen.labelScale, maxLength: PlanData.kindNoteMaxLength)
+                .position(center)
+        }
+    }
+
+    /// 스탬프 라벨 캡슐의 가운데 (화면 점)
+    private func kindNoteCenter(of stampId: String, screen: PlanScreen) -> CGPoint? {
+        screen.otherKindLabels(in: planData, labelScale: screen.labelScale).first { $0.id == stampId }?.center
+    }
+
+    private func startKindNoteEditing(_ stampId: String) {
+        guard let screen, let center = kindNoteCenter(of: stampId, screen: screen) else { return }
+        selection = nil
+        selectedRoomId = nil
+        menuTarget = nil
+        kindNoteDraft = planData.kindNote(id: stampId) ?? ""
+        editingKindNoteId = stampId
+        isKindNoteFocused = true
+        labelEditY = center.y
+        updateLift()
+    }
+
+    /// 적은 글자를 도면에 넣고 키보드를 내린다. 비워 두면 "기타"로 남는다. 고치던 스탬프는 다시 고른 상태로 둔다
+    private func finishKindNoteEditing() {
+        if let editingKindNoteId {
+            planData.setKindNote(id: editingKindNoteId, to: kindNoteDraft)
+            selection = planData.markers.contains { $0.id == editingKindNoteId } ? .marker(editingKindNoteId) : .wallFixture(editingKindNoteId)
+        }
+        editingKindNoteId = nil
+        isKindNoteFocused = false
         labelEditY = nil
     }
 }
@@ -1083,6 +1156,8 @@ extension FloorPlanEdit2DView {
 // 문구
 extension FloorPlanEdit2DView {
     private enum Copy {
+        /// 라벨 글자를 비워 두면 보이는 글자
+        static let otherKind = IgnitionCause.other.title
         static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
