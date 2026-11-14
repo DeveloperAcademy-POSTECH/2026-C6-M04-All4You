@@ -27,6 +27,8 @@ struct FloorPlanEditView: View {
     @State private var dimensions = DimensionDisplay()
     /// 스탬프 기본 크기. 화면 크기를 처음 알았을 때 정하고 바꾸지 않는다
     @State private var stampDefaults: StampDefaults?
+    /// 완료(✓)를 눌러 "이대로 도면을 완성할지" 묻는 알림을 띄우는지
+    @State private var isCompleteAlertShown = false
 
     var body: some View {
         ZStack {
@@ -68,8 +70,13 @@ struct FloorPlanEditView: View {
             centerAccessory: AnyView(DimensionPicker(selection: $dimension)),
             trailingAccessory: AnyView(undoRedo),
             onBack: onBack,
-            onDone: onDone
+            // ✓는 도면을 확정하는 버튼인데 방금 고친 것을 저장하는 버튼으로 오해하기 쉬워서, 한 번 묻는다
+            onDone: { isCompleteAlertShown = true }
         )
+        .alert(Copy.completeTitle, isPresented: $isCompleteAlertShown) {
+            Button(Copy.cancel, role: .cancel) {}
+            Button(Copy.complete, action: onDone)
+        }
     }
 
     /// 되돌리면 고른 것이 사라졌을 수 있어 두 화면의 고르기를 푼다
@@ -100,6 +107,10 @@ extension FloorPlanEditView {
 extension FloorPlanEditView {
     private enum Copy {
         static let title = "도면 수정"
+        // TEMP: Figma에 알림 버튼 문구가 없어 임의로 작성 — 디자인 확인 필요
+        static let completeTitle = "이대로 도면을 완성하시겠습니까?"
+        static let complete = "완성"
+        static let cancel = "취소"
     }
 }
 
