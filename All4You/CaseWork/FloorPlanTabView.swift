@@ -264,8 +264,6 @@ extension FloorPlanTabView {
     private var dimensionPicker: some View {
         DimensionPicker(selection: $dimension)
             .padding()
-        // 사진을 끌어다 놓을 수 있는 건 2D 도면뿐이라, 패널을 펼친 동안은 3D로 바꿀 수 없게 한다
-            .disabled(isPlacingPhotos)
     }
 }
 
