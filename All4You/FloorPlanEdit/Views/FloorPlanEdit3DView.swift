@@ -21,6 +21,8 @@ struct FloorPlanEdit3DView: View {
 
     /// 3D에서 눌러 고른 스탬프·창문
     @State private var selection: PlanSelection?
+    /// 방금 기타로 놓은 스탬프의 id. 3D 화면이 그 라벨의 글자 고치기를 시작하면 비운다
+    @State private var kindNoteRequest: String?
     /// 위쪽에 잠깐 보여 주는 안내
     @State private var notice: String?
     /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
@@ -30,7 +32,7 @@ struct FloorPlanEdit3DView: View {
     static let hiddenTools: Set<EditTool> = [.roomName, .furniture]
 
     var body: some View {
-        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, showsResetButton: true, showsCompass: true, isStampToolActive: selectedTool != nil, tapsThroughFurniture: tapsThroughFurniture, tapsFurnitureTopAsFloor: placesOnFurniture, onRenameRoom: renameRoom, onRenameFurniture: renameFurniture, resetToken: resetToken, dimensions: $dimensions, scalesLabels: true)
+        FloorPlan3DView(planData: planData, selection: selection, onTap: handleTap, onEdit: handleEdit, showsResetButton: true, showsCompass: true, isStampToolActive: selectedTool != nil, tapsThroughFurniture: tapsThroughFurniture, tapsFurnitureTopAsFloor: placesOnFurniture, onRenameRoom: renameRoom, onRenameFurniture: renameFurniture, onChangeKindNote: changeKindNote, kindNoteRequest: $kindNoteRequest, resetToken: resetToken, dimensions: $dimensions, scalesLabels: true)
             .overlay(alignment: .topLeading) {
                 toolBar
             }
@@ -130,6 +132,8 @@ extension FloorPlanEdit3DView {
                 selection = placed
                 // 한 번 놓으면 도구가 꺼진다. 한 번에 여러 개 놓이지 않게 한다
                 selectedTool = nil
+                // 기타로 놓았으면 바로 라벨 글자를 적게 한다
+                if stampOption?.isOther == true { kindNoteRequest = placed.stampId }
             }
         case (_?, nil):
             break
@@ -143,6 +147,11 @@ extension FloorPlanEdit3DView {
 
     private func renameFurniture(id: String, name: String) {
         planData.renameFurniture(id: id, to: name)
+    }
+
+    /// 3D에서 기타 스탬프의 라벨을 눌러 적은 글자를 도면에 넣는다
+    private func changeKindNote(_ id: String, _ text: String) {
+        planData.setKindNote(id: id, to: text)
     }
 
     /// 옮기거나 돌리거나 복제·삭제한 스탬프를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
