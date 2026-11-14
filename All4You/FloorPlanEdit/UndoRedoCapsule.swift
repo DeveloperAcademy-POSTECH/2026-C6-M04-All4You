@@ -1,8 +1,8 @@
-// 상단 바 ✓ 옆의 되돌리기·다시 하기 유리 캡슐. 2D·3D 수정 화면이 함께 쓴다
+// 상단 바 ✓ 옆의 되돌리기·다시 하기 유리 캡슐. 2D·3D 수정 화면과 직접 그리기 화면이 함께 쓴다
 
 import SwiftUI
 
-/// ↶ ↷ 두 버튼. 할 수 없는 쪽은 흐리게 하고 누를 수 없게 한다
+/// ↶ ↷ 두 버튼. 할 수 없는 쪽은 흐리게 하고 누를 수 없게 한다. 도면 기록(PlanHistory)에 연결한 캡슐
 struct UndoRedoCapsule: View {
     @Binding var history: PlanHistory
     @Binding var planData: PlanData
@@ -10,9 +10,33 @@ struct UndoRedoCapsule: View {
     var onRestore: () -> Void = {}
 
     var body: some View {
+        UndoRedoButtons(canUndo: history.canUndo, canRedo: history.canRedo, onUndo: undo, onRedo: redo)
+    }
+
+    private func undo() {
+        guard let previous = history.undo(from: planData) else { return }
+        onRestore()
+        planData = previous
+    }
+
+    private func redo() {
+        guard let next = history.redo(from: planData) else { return }
+        onRestore()
+        planData = next
+    }
+}
+
+/// 기록과 상관없이 모양만 가진 ↶ ↷ 유리 캡슐. 직접 그리기 화면은 PencilKit 기록에 연결해 쓴다
+struct UndoRedoButtons: View {
+    let canUndo: Bool
+    let canRedo: Bool
+    let onUndo: () -> Void
+    let onRedo: () -> Void
+
+    var body: some View {
         HStack(spacing: 0) {
-            button(Copy.undo, icon: "arrow.uturn.backward", isEnabled: history.canUndo, action: undo)
-            button(Copy.redo, icon: "arrow.uturn.forward", isEnabled: history.canRedo, action: redo)
+            button(Copy.undo, icon: "arrow.uturn.backward", isEnabled: canUndo, action: onUndo)
+            button(Copy.redo, icon: "arrow.uturn.forward", isEnabled: canRedo, action: onRedo)
         }
         .frame(width: Layout.width, height: Layout.height)
         .glassEffect(.regular.interactive(), in: .capsule)
@@ -30,22 +54,10 @@ struct UndoRedoCapsule: View {
         .disabled(!isEnabled)
         .accessibilityLabel(title)
     }
-
-    private func undo() {
-        guard let previous = history.undo(from: planData) else { return }
-        onRestore()
-        planData = previous
-    }
-
-    private func redo() {
-        guard let next = history.redo(from: planData) else { return }
-        onRestore()
-        planData = next
-    }
 }
 
 // 레이아웃 값
-extension UndoRedoCapsule {
+extension UndoRedoButtons {
     private enum Layout {
         static let width: CGFloat = 110
         static let height: CGFloat = 48
@@ -54,7 +66,7 @@ extension UndoRedoCapsule {
 }
 
 // 문구
-extension UndoRedoCapsule {
+extension UndoRedoButtons {
     private enum Copy {
         static let undo = "되돌리기"
         static let redo = "다시 하기"

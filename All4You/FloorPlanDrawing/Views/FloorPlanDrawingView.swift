@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PencilKit
+import Combine
 
 struct FloorPlanDrawingView: View {
     /// 상단 바 부제로 보여 줄 사건 주소
@@ -18,8 +19,8 @@ struct FloorPlanDrawingView: View {
 
     @State private var selectedTool: DrawingTool = .pen
     @State private var selectedEditTool: EditTool?
-
-    private static let toolbarEdgeInset: CGFloat = 32
+    /// PencilKit 기록이 바뀔 때마다 올려, 되돌리기·다시 하기 버튼이 켜졌는지 다시 읽게 한다
+    @State private var undoRefresh = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -35,9 +36,31 @@ struct FloorPlanDrawingView: View {
             customLayout: true,
             barTitle: "도면 스케치",
             barSubtitle: address,
+            trailingAccessory: AnyView(undoRedo),
             onBack: onRetake,
             onDone: onConfirm
         )
+        .onReceive(undoChanges) { _ in undoRefresh += 1 }
+    }
+
+    /// PencilKit 기록(undoManager)에 연결한 되돌리기·다시 하기. undoRefresh는 버튼 상태를 다시 읽게 하려고 읽는다
+    private var undoRedo: some View {
+        let _ = undoRefresh
+        return UndoRedoButtons(
+            canUndo: canvasView.undoManager?.canUndo ?? false,
+            canRedo: canvasView.undoManager?.canRedo ?? false,
+            onUndo: { canvasView.undoManager?.undo() },
+            onRedo: { canvasView.undoManager?.redo() }
+        )
+    }
+
+    /// 기록이 쌓이거나 되돌려질 때마다 오는 알림
+    private var undoChanges: some Publisher<Notification, Never> {
+        Publishers.MergeMany([
+            NotificationCenter.default.publisher(for: .NSUndoManagerDidCloseUndoGroup),
+            NotificationCenter.default.publisher(for: .NSUndoManagerDidUndoChange),
+            NotificationCenter.default.publisher(for: .NSUndoManagerDidRedoChange)
+        ])
     }
 
     // 캔버스 위에 상단 도구와 이동식 툴바를 배치한다.
@@ -52,14 +75,14 @@ struct FloorPlanDrawingView: View {
             }
         }
         .overlay(alignment: .topLeading) {
+            // 2D 수정과 같은 자리·여백
             EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture, .door])
-                .padding(8)
-                .background {
-                    Rectangle()
-                        .fill(.white)
-                        .gesture(DragGesture(minimumDistance: 0).onChanged { _ in })
-                }
-                .padding(Self.toolbarEdgeInset - 8)
+                .padding()
+        }
+        .overlay(alignment: .topTrailing) {
+            // 위쪽이 북쪽이라 방위표가 늘 위를 가리킨다 (2D 수정과 같다)
+            CompassView()
+                .padding()
         }
         .overlay {
             // 펜·지우개·획 선택 막대 (공용 DrawingToolBar)

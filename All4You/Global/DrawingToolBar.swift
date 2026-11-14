@@ -57,13 +57,10 @@ extension DrawingToolBar {
             Image(systemName: tool.icon)
                 .font(.system(size: Layout.iconSize))
                 .frame(width: Layout.toolSize, height: Layout.toolSize)
-                .background {
-                    if isHighlighted(tool) {
-                        Circle().fill(Color.gray200)
-                    }
-                }
+                // 투명한 곳도 눌리게 해서 아이콘 글자 위를 정확히 누르지 않아도 바로 반응하게 한다
+                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ToolButtonStyle(isHighlighted: isHighlighted(tool)))
         .accessibilityLabel(tool.rawValue)
         .accessibilityAddTraits(isHighlighted(tool) ? .isSelected : [])
     }
@@ -71,6 +68,22 @@ extension DrawingToolBar {
     /// 고른 표시를 보일 도구. 스탬프가 켜져 있으면 펜·지우개는 표시하지 않는다
     private func isHighlighted(_ tool: DrawingTool) -> Bool {
         selectedTool == tool && !(isPenAndEraserSuspended && tool != .hand)
+    }
+}
+
+// 누르는 순간 바로 고른 표시를 보이는 버튼 모양. 손을 뗄 때까지 기다리지 않아 반응이 즉각적이다
+extension DrawingToolBar {
+    private struct ToolButtonStyle: ButtonStyle {
+        let isHighlighted: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .background {
+                    if isHighlighted || configuration.isPressed {
+                        Circle().fill(Color.gray200)
+                    }
+                }
+        }
     }
 }
 
