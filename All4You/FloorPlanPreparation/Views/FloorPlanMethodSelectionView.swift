@@ -255,10 +255,16 @@ struct FloorPlanMethodSelectionView: View {
 
     /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
     /// 평면도가 생기면 사건 목록이 이 화면 대신 2D 수정 화면을 띄운다 (공간 스캔과 같은 길)
-    private func saveConvertedFloorPlan(_ conversion: FloorPlanConversion, sourceType: FloorPlanSourceType) -> String? {
+    /// sketch가 있으면(직접 그리기) 스케치 위에 놓은 스탬프를 도면에 옮기고, 옮기지 못한 개수를 사건에 남겨 2D 수정 화면이 알리게 한다
+    private func saveConvertedFloorPlan(_ conversion: FloorPlanConversion, sourceType: FloorPlanSourceType, sketch: SketchImage? = nil) -> String? {
         do {
-            let plan = try PlanData(serverJSON: conversion.json)
+            let server = try ServerFloorPlan.decode(conversion.json)
+            var plan = PlanData(server: server)
             guard !plan.walls.isEmpty else { return Copy.noWalls }
+            if let sketch {
+                let transform = SketchToPlan(imageOrigin: sketch.origin, pixelsPerPoint: sketch.pixelsPerPoint, metersPerPixel: server.metersPerPixel)
+                fireCase.unplacedStampCount = plan.addSketchStamps(sketchStamps, using: transform)
+            }
             try conversion.save()
             try fireCase.replaceFloorPlan(with: plan, sourceType: sourceType)
             return nil
@@ -292,7 +298,7 @@ struct FloorPlanMethodSelectionView: View {
         do {
             let plan = try await FloorPlanConversion.request(image)
             try Task.checkCancellation()
-            drawingError = saveConvertedFloorPlan(plan, sourceType: .iPadDrawing)
+            drawingError = saveConvertedFloorPlan(plan, sourceType: .iPadDrawing, sketch: SketchImage(origin: paddedBounds.origin, pixelsPerPoint: Double(format.scale)))
         } catch {
             guard !Task.isCancelled else { return }
             drawingError = error.localizedDescription
@@ -379,6 +385,14 @@ struct FloorPlanMethodSelectionView: View {
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
         isCameraPresented = true
     }
+}
+
+/// 서버에 보낸 스케치 이미지가 스케치의 어디를 어떤 배율로 담았는지
+private struct SketchImage {
+    /// 이미지 왼쪽 위의 스케치 점
+    let origin: CGPoint
+    /// 스케치 1pt가 이미지 몇 픽셀인지
+    let pixelsPerPoint: Double
 }
 
 // 문구

@@ -21,6 +21,8 @@ struct FloorPlanEdit2DView: View {
     var resetToken = 0
     /// 치수·면적 글자 설정. 2D·3D 전환 화면이 함께 들고 있어서 전환해도 이어진다
     @Binding var dimensions: DimensionDisplay
+    /// 화면에 들어오면 한 번 보여 줄 안내 (예: 변환 뒤 스케치 스탬프를 옮기지 못했다는 알림). nil이면 띄우지 않는다
+    var launchNotice: String? = nil
 
     /// 아래 막대에서 고른 펜·지우개·손. 펜은 벽을 그리고, 지우개는 벽을 지우고, 손은 벽을 골라 옮긴다
     @State private var drawingTool = DrawingTool.pen
@@ -127,6 +129,9 @@ struct FloorPlanEdit2DView: View {
             .padding()
         }
         .onChange(of: resetToken) { clearEditingState() }
+        .task {
+            if let launchNotice { showNotice(launchNotice) }
+        }
         // 키보드 내리기 버튼으로 엔터 없이 키보드를 내려도 이름 고치기를 끝내고 올려 둔 도면을 되돌린다
         .onChange(of: isRoomNameFocused) { _, isFocused in
             if !isFocused, editingRoomId != nil { finishRoomEditing() }

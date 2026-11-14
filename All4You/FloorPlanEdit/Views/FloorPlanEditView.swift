@@ -11,6 +11,8 @@ struct FloorPlanEditView: View {
     @Binding var history: PlanHistory
     let onBack: () -> Void
     let onDone: () -> Void
+    /// 2D 수정 화면이 처음 한 번 보여 줄 안내 (예: 스케치 스탬프를 옮기지 못했다는 알림)
+    var launchNotice: String? = nil
 
     @State private var dimension = PlanDimension.twoD
     /// 켜 둔 스탬프 도구. 전환해도 이어지되, 3D에 없는 도구는 3D로 갈 때 끈다
@@ -28,7 +30,7 @@ struct FloorPlanEditView: View {
 
     var body: some View {
         ZStack {
-            FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool, stampOption: $stampOption, stampDefaults: stampDefaults, resetToken: resetToken, dimensions: $dimensions)
+            FloorPlanEdit2DView(planData: $planData, history: $history, selectedTool: $selectedTool, stampOption: $stampOption, stampDefaults: stampDefaults, resetToken: resetToken, dimensions: $dimensions, launchNotice: launchNotice)
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
             if isThreeDReady {
                 FloorPlanEdit3DView(planData: $planData, history: $history, selectedTool: $selectedTool, stampOption: $stampOption, stampDefaults: stampDefaults, resetToken: resetToken, dimensions: $dimensions)
