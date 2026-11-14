@@ -114,6 +114,10 @@ private struct FloorPlanCanvasView: UIViewRepresentable {
         canvasView.backgroundColor = .white
         canvasView.drawingPolicy = .anyInput
         canvasView.isScrollEnabled = false
+        // 펜을 멈추면 직선으로 바꿔 주는 인식기. 캔버스가 다시 만들어져도 하나만 붙인다
+        if !(canvasView.gestureRecognizers ?? []).contains(where: { $0 is StraightStrokeRecognizer }) {
+            canvasView.addGestureRecognizer(StraightStrokeRecognizer(canvas: canvasView))
+        }
         applyTool(to: canvasView)
         return canvasView
     }
@@ -126,7 +130,13 @@ private struct FloorPlanCanvasView: UIViewRepresentable {
         if let tool {
             canvas.tool = tool
         }
-        canvas.drawingGestureRecognizer.isEnabled = tool != nil
+        let straightener = canvas.gestureRecognizers?.compactMap { $0 as? StraightStrokeRecognizer }.first
+        // 직선으로 바꾸는 중에는 PencilKit의 그리기를 꺼 둔 채로 두고, 손을 뗄 때 인식기가 다시 켠다
+        if straightener?.isStraightening != true {
+            canvas.drawingGestureRecognizer.isEnabled = tool != nil
+        }
+        // 직선 보정은 펜일 때만 쓴다
+        straightener?.isEnabled = tool is PKInkingTool
     }
 }
 
