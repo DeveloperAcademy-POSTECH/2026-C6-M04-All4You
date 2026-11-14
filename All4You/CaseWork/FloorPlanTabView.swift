@@ -275,11 +275,12 @@ extension FloorPlanTabView {
         return planData?.rooms.first { $0.id == selectedRoomID }
     }
     
-    /// 장소·북마크 선택을 풀어 오른쪽 패널을 닫는다
+    /// 도면 영역을 터치하면 선택 상태와 사진 패널을 해제
     private func clearRoomSelection() {
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = nil
+            isPlacingPhotos = false
         }
     }
     
