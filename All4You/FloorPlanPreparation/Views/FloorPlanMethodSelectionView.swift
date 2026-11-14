@@ -25,6 +25,8 @@ struct FloorPlanMethodSelectionView: View {
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
     @State private var drawingCanvas = PKCanvasView()
+    /// 스케치 위에 놓은 스탬프. 변환이 끝나면 도면으로 옮긴다
+    @State private var sketchStamps: [SketchStamp] = []
     @State private var isConvertingDrawing = false
     @State private var drawingError: String?
     @State private var isImportMenuPresented = false
@@ -226,7 +228,8 @@ struct FloorPlanMethodSelectionView: View {
                 destination = nil
             },
             onConfirm: { isConvertingDrawing = true },
-            canvasView: $drawingCanvas
+            canvasView: $drawingCanvas,
+            sketchStamps: $sketchStamps
         )
         .allowsHitTesting(!isConvertingDrawing)
         .overlay {
