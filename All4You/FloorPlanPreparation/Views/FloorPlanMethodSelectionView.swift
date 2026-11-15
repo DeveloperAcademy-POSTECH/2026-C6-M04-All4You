@@ -234,9 +234,7 @@ struct FloorPlanMethodSelectionView: View {
         .allowsHitTesting(!isConvertingDrawing)
         .overlay {
             if isConvertingDrawing {
-                ProgressView("도면 변환 중")
-                    .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                drawingConversionOverlay
             }
         }
         .task(id: isConvertingDrawing) {
@@ -251,6 +249,17 @@ struct FloorPlanMethodSelectionView: View {
         } message: {
             Text(drawingError ?? "")
         }
+    }
+
+    /// 변환하는 동안 스케치를 흐리게 덮고, 그린 부분 위를 레이저 선이 훑는다 (룸플랜 변환 로딩과 같은 선)
+    private var drawingConversionOverlay: some View {
+        let bounds = drawingCanvas.drawing.bounds
+        // 그린 것이 없으면 범위를 정하지 않아 화면 전체를 훑는다
+        let sweep: ClosedRange<CGFloat>? = (bounds.isEmpty || bounds.isInfinite) ? nil : bounds.minY...bounds.maxY
+        return Color.white.opacity(0.6)
+            .overlay { ScanLaserView(range: sweep) }
+            .accessibilityElement()
+            .accessibilityLabel("도면 변환 중")
     }
 
     /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
