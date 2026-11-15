@@ -299,6 +299,7 @@ struct BookmarkPhotoPanel: View {
         HStack(spacing: Layout.headerSpacing) {
             Text(roomName ?? Copy.unplaced)
                 .font(AppTypography.title2Emphasized)
+                .lineLimit(1)
             Text("#\(number)")
                 .font(AppTypography.subheadlineEmphasized)
                 .monospacedDigit()

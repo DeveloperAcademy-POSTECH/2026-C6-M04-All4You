@@ -153,13 +153,18 @@ extension FloorPlanTabView {
     @ViewBuilder
     private var photoPanelContent: some View {
         if isPlacingPhotos {
-            UnassignedPhotoPanel(photos: photoStore.unassignedPhotos) {
-                withAnimation {
-                    isPlacingPhotos = false
+            UnassignedPhotoPanel(
+                photos: photoStore.unassignedPhotos,
+                onExpand: { id in
+                    viewerContext = PhotoViewerContext(
+                        photoIDs: photoStore.unassignedPhotos.map(\.id),
+                        initialID: id
+                    )
+                },
+                onDragStart: { id in
+                    draggingPhotoID = id
                 }
-            } onDragStart: { id in
-                draggingPhotoID = id
-            }
+            )
             .transition(.move(edge: .trailing))
         } else if let selected = selectedBookmarkPanelPhoto {
             // 기존 북마크 사진 패널 복구: 일반 선택과 위치·방향 편집 중 모두 표시
@@ -202,9 +207,12 @@ extension FloorPlanTabView {
     /// 홈 화면과 동일하게 최소 폭을 지키면서 오른쪽 사진 패널 폭을 계산한다.
     private func panelWidthLimits(in totalWidth: CGFloat) -> (minPanel: CGFloat, maxPanel: CGFloat) {
         let dividerWidth: CGFloat = 14
-        let minPanel: CGFloat = min(280, totalWidth * 0.35)
-        let minCanvas: CGFloat = min(460, totalWidth * 0.5)
-        let maxPanel = max(minPanel, totalWidth - minCanvas - dividerWidth)
+        // 한 줄 안내 문구와 확대 버튼을 모두 담을 수 있도록 패널 최소 폭 확보.
+        // 작은 화면에서는 도면에 최소 220pt를 우선 보장한다.
+        let minCanvas: CGFloat = min(320, totalWidth * 0.32)
+        let availablePanelWidth = max(0, totalWidth - minCanvas - dividerWidth)
+        let minPanel: CGFloat = min(480, availablePanelWidth)
+        let maxPanel = max(minPanel, availablePanelWidth)
         return (minPanel, maxPanel)
     }
     
@@ -914,8 +922,12 @@ private struct RoomPhotoPanel: View {
         HStack(spacing: Layout.headerSpacing) {
             Text(roomName)
                 .font(AppTypography.title2Emphasized)
+                .lineLimit(1)
+            
             Text(Copy.photoCount(photos.count))
                 .font(AppTypography.subheadline)
+                .lineLimit(1)
+            
                 .padding(.horizontal, Layout.countPadding)
                 .padding(.vertical, Layout.countVerticalPadding)
                 .background(.gray100, in: .capsule)
