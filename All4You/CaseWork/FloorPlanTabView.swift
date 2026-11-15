@@ -99,6 +99,8 @@ struct FloorPlanTabView: View {
                         }
                     }
                     .overlay(alignment: .bottom) {
+                        // 토글은 항상 기존 하단 중앙에 둔다.
+                        // 패널 드래그 범위에서 최소 도면 폭을 확보해 초기화 버튼과 겹치지 않게 한다.
                         dimensionPicker
                     }
                     .frame(width: canvasWidth)
@@ -116,7 +118,7 @@ struct FloorPlanTabView: View {
                 if hasPhotoPanel {
                     Rectangle()
                         .fill(Color(uiColor: .separator))
-                        .frame(width: 1, height: geometry.size.height + 140)
+                        .frame(width: 1, height: geometry.size.height + 140 + geometry.safeAreaInsets.bottom)
                         .offset(x: canvasWidth + dividerWidth / 2 - 0.5, y: -140)
                         .allowsHitTesting(false)
                 }
@@ -207,9 +209,11 @@ extension FloorPlanTabView {
     /// 홈 화면과 동일하게 최소 폭을 지키면서 오른쪽 사진 패널 폭을 계산한다.
     private func panelWidthLimits(in totalWidth: CGFloat) -> (minPanel: CGFloat, maxPanel: CGFloat) {
         let dividerWidth: CGFloat = 14
-        // 한 줄 안내 문구와 확대 버튼을 모두 담을 수 있도록 패널 최소 폭 확보.
-        // 작은 화면에서는 도면에 최소 220pt를 우선 보장한다.
-        let minCanvas: CGFloat = min(320, totalWidth * 0.32)
+        // 2D/3D 토글(240pt + 좌우 16pt 패딩)과 우측 시야 초기화 버튼(44pt + 16pt 여백)이
+        // 같은 하단 줄에서 8pt 이상 떨어지도록 도면 최소 폭을 확보한다.
+        // 계산: 도면 반폭 + 120pt + 8pt <= 도면 폭 - (44pt + 16pt)
+        // 따라서 도면 폭은 최소 376pt; 여유를 더해 392pt로 제한한다.
+        let minCanvas: CGFloat = min(392, max(0, totalWidth - dividerWidth))
         let availablePanelWidth = max(0, totalWidth - minCanvas - dividerWidth)
         let minPanel: CGFloat = min(480, availablePanelWidth)
         let maxPanel = max(minPanel, availablePanelWidth)
@@ -845,7 +849,7 @@ struct PhotoPinView: View {
         .buttonStyle(.plain)
         // 미리보기 핀은 끄는 중에만 잠깐 보이는 것이라 누를 수 없게 한다
         .allowsHitTesting(!pin.isPreview)
-        .accessibilityLabel("\\(roomName) 사진 \\(pin.count)장")
+        .accessibilityLabel("\(roomName) 사진 \(pin.count)장")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
     private var capsuleColor: Color {
@@ -957,7 +961,7 @@ private struct RoomPhotoPanel: View {
                 .clipShape(.rect(cornerRadius: Layout.cornerRadius))
                 .overlay(alignment: .topLeading) {
                     if let number = bookmarkNumbers[photo.id] {
-                        Text("#\\(number)")
+                        Text("#\(number)")
                             .font(.caption.bold())
                             .foregroundStyle(.white)
                             .padding(5)
@@ -992,7 +996,7 @@ private struct RoomPhotoPanel: View {
     private enum Copy {
         static let expand = "전체 화면으로 보기"
         static func photoCount(_ count: Int) -> String {
-            "사진 \\(count)장"
+            "사진 \(count)장"
         }
     }
 }
