@@ -4,31 +4,30 @@ import RoomPlan
 import simd
 
 extension PlanData {
-    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을, 없으면(구간 하나, 또는 합치기 실패) 가장 큰 구간 하나를 쓴다.
-    /// 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않는다
+    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을 쓴다.
+    /// 합친 구조가 없으면(구간 하나, 또는 합치기 실패) 모든 구간을 모아 쓴다. 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않으므로,
+    /// 겹치는 벽·같은 문·창문·물체는 하나로 합친다 (ScanSurface+Combine)
     init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
+        self = Self.converted(structure: structure, rooms: rooms).plan
+    }
+
+    /// 도면과, 원본과 맞춰 본 기록(빠진 요소·벽 끝점이 움직인 거리)을 함께 돌려준다
+    static func converted(structure: CapturedStructure?, rooms: [CapturedRoom]) -> (plan: PlanData, report: ScanConversionReport) {
         if let structure {
-            self.init(
+            return converted(
                 scanSurfaces: ScanSurface.surfaces(of: structure),
                 sections: ScanSection.sections(of: structure),
                 objects: structure.objects.map { ScanObject($0) }
             )
-        } else if let largest = rooms.max(by: { $0.walls.totalWidth < $1.walls.totalWidth }) {
-            self.init(
-                scanSurfaces: ScanSurface.surfaces(of: largest),
-                sections: ScanSection.sections(of: largest),
-                objects: largest.objects.map { ScanObject($0) }
+        } else if !rooms.isEmpty {
+            return converted(
+                scanSurfaces: ScanSurface.combined(rooms.map { ScanSurface.surfaces(of: $0) }),
+                sections: rooms.flatMap { ScanSection.sections(of: $0) },
+                objects: ScanObject.combined(rooms.map { room in room.objects.map { ScanObject($0) } })
             )
         } else {
-            self = .empty
+            return (.empty, ScanConversionReport())
         }
-    }
-}
-
-private extension [CapturedRoom.Surface] {
-    /// 벽 폭을 모두 더한 길이. 구간 크기를 비교할 때 쓴다
-    var totalWidth: Float {
-        reduce(0) { $0 + $1.dimensions.x }
     }
 }
 
@@ -65,8 +64,27 @@ extension ScanSurface {
             widthAxis: floorAxis(of: surface.transform),
             width: Double(surface.dimensions.x),
             height: Double(surface.dimensions.y),
-            parentId: surface.parentIdentifier
+            parentId: surface.parentIdentifier,
+            corners: kind == .floor ? floorOutline(of: surface) : []
         )
+    }
+}
+
+/// 바닥 면의 윤곽 꼭짓점을 월드 (x, z)로. RoomPlan이 윤곽을 주지 않으면 폭·높이로 사각형을 만든다.
+/// 윤곽은 면의 로컬 좌표(면 위가 x·y, 수직이 z)이므로 면의 변환 행렬을 곱해 월드로 옮긴다
+private func floorOutline(of surface: CapturedRoom.Surface) -> [SIMD2<Double>] {
+    var local = surface.polygonCorners
+    if local.count < 3 {
+        let halfWidth = surface.dimensions.x / 2
+        let halfHeight = surface.dimensions.y / 2
+        local = [
+            SIMD3(-halfWidth, -halfHeight, 0), SIMD3(halfWidth, -halfHeight, 0),
+            SIMD3(halfWidth, halfHeight, 0), SIMD3(-halfWidth, halfHeight, 0)
+        ]
+    }
+    return local.map { corner in
+        let world = surface.transform * SIMD4(corner.x, corner.y, corner.z, 1)
+        return SIMD2(Double(world.x), Double(world.z))
     }
 }
 

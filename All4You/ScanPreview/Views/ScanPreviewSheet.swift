@@ -14,8 +14,11 @@ struct ScanPreviewSheet: View {
     let rooms: [CapturedRoom]
     let structure: CapturedStructure?
     let revision: Int
+    /// 끄면 "이 도면으로 계속하기"가 눌리지 않는다
+    let isContinueEnabled: Bool
+    /// 있으면 버튼 위에 안내로 보인다
     let statusMessage: String?
-    
+
     let onContinue: () -> Void
     let onChooseOtherMethod: () -> Void
     let onRescan: () -> Void
@@ -35,6 +38,7 @@ struct ScanPreviewSheet: View {
         self.rooms = rooms
         self.structure = structure
         self.revision = revision
+        self.isContinueEnabled = isContinueEnabled
         self.statusMessage = statusMessage
         self.onContinue = onContinue
         self.onChooseOtherMethod = onChooseOtherMethod
@@ -70,7 +74,16 @@ struct ScanPreviewSheet: View {
                 .padding(.top, 32)
                 
                 Spacer(minLength: 12)
-                
+
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(AppTypography.subheadline)
+                        .foregroundStyle(Color("Brand500"))
+                        .multilineTextAlignment(.center)
+                        .frame(width: 355)
+                        .padding(.bottom, 14)
+                }
+
                 VStack(spacing: 14) {
                     Button(action: onContinue) {
                         Text("이 도면으로 계속하기")
@@ -78,8 +91,10 @@ struct ScanPreviewSheet: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
                             .background(.black, in: Capsule())
+                            .opacity(isContinueEnabled ? 1 : 0.3)
                     }
-                    
+                    .disabled(!isContinueEnabled)
+
                     Button(action: onChooseOtherMethod) {
                         Text("다른 방법으로 도면 그리기")
                             .foregroundStyle(.black)

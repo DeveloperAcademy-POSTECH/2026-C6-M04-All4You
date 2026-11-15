@@ -21,6 +21,9 @@ struct ScanSurface {
     let height: Double
     /// 문·창문·개구부가 붙은 벽의 id
     let parentId: UUID?
+    /// 바닥 윤곽의 꼭짓점 (x, z), 돌아가는 순서. 바닥이 아니면 비어 있다.
+    /// 벽이 하나도 없는 스캔에서 이 윤곽으로 방을 만든다
+    let corners: [SIMD2<Double>]
 }
 
 /// 스캔이 알아본 물체 하나 (침대·의자 …). 위치는 상자 가운데

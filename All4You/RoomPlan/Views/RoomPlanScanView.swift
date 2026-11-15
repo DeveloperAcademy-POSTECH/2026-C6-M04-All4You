@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import OSLog
 import RoomPlan
 import SwiftUI
 
@@ -15,10 +16,10 @@ struct RoomPlanScanView: View {
     @State private var skipChecklistOnRescan = false
     @State private var rescanBackdrop: UIImage?
     /// 스캔 결과: usdz 파일, 여러 구간을 합친 구조(구간이 2개 이상일 때만), 구간별 결과
-    /// 마지막 값: 스캔 중 찍은 사진(카메라 자세 포함)
-    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
+    /// 뒤에서 둘째 값: 스캔 중 찍은 사진(카메라 자세 포함). 마지막 값: 미리보기에서 이미 변환한 도면(다시 변환하지 않게 함)
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto], PlanData) -> Void)?
     
-    init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)? = nil) {
+    init(onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto], PlanData) -> Void)? = nil) {
         self.onUseResult = onUseResult
     }
     
@@ -47,10 +48,14 @@ private struct RoomPlanScanSessionView: View {
     @State private var isCameraPreviewReady = false
     @State private var isSegmentAlertPresented = false
     @State private var isRelocalizationAlertPresented = false
+    /// 미리보기 시점에 변환한 도면. 벽이 없으면 "이 도면으로 계속하기"를 끄는 데 쓰고, 계속할 때 그대로 넘긴다
+    @State private var previewPlan: PlanData?
+    /// 그 변환을 원본과 맞춰 본 기록. 도면에 옮기지 못한 문·창문·가구가 있으면 미리보기에 알린다
+    @State private var previewReport: ScanConversionReport?
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
-    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto]) -> Void)?
+    let onUseResult: ((URL, CapturedStructure?, [CapturedRoom], [ScanPhoto], PlanData) -> Void)?
     let onCameraReady: () -> Void
     let onRescan: (UIImage?) -> Void
     
@@ -82,11 +87,11 @@ private struct RoomPlanScanSessionView: View {
                     rooms: scanService.finishedRooms,
                     structure: scanService.mergedPreview,
                     revision: scanService.renderRevision,
-                    isContinueEnabled: scanService.finalModelURL != nil && onUseResult != nil,
-                    statusMessage: scanService.mergeError,
+                    isContinueEnabled: scanService.finalModelURL != nil && onUseResult != nil && previewPlan?.isUsable == true,
+                    statusMessage: previewPlan?.isUsable == false ? Self.emptyPlanMessage : previewReport?.lossMessage,
                     onContinue: {
-                        guard let url = scanService.finalModelURL else { return }
-                        onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms, scanService.scanPhotos)
+                        guard let url = scanService.finalModelURL, let previewPlan, previewPlan.isUsable else { return }
+                        onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms, scanService.scanPhotos, previewPlan)
                     },
                     onChooseOtherMethod: {
                         scanService.detach()
@@ -283,7 +288,11 @@ private struct RoomPlanScanSessionView: View {
         .onChange(of: scanService.phase) { _, phase in
             if phase == .ready { finishedCameraSnapshot = nil }
             if phase == .segmentSaved { presentSegmentAlert() }
+            refreshPreviewPlan()
         }
+        // 구간 합치기가 끝나거나 결과가 바뀌면 미리보기 도면을 다시 변환
+        .onChange(of: scanService.renderRevision) { refreshPreviewPlan() }
+        .onChange(of: scanService.isMergingPreview) { refreshPreviewPlan() }
         .onChange(of: scanService.isRelocalizing) { _, isRelocalizing in
             if !isRelocalizing && scanService.phase == .segmentSaved {
                 presentSegmentAlert()
@@ -309,6 +318,26 @@ private struct RoomPlanScanSessionView: View {
             guard phase == .active else { return }
             Task { await refreshCameraPermission() }
         }
+    }
+    
+    // TEMP: Figma에 없는 화면이라 임시 문구
+    private static let emptyPlanMessage = "벽이 인식되지 않았어요. 벽을 비추며 다시 스캔해 주세요"
+    
+    // 스캔이 끝난 뒤에만 변환한다. 합치는 중에는 결과가 바뀔 수 있어 기다린다
+    private func refreshPreviewPlan() {
+        guard scanService.phase == .finished, !scanService.isMergingPreview else {
+            if scanService.phase != .finished {
+                previewPlan = nil
+                previewReport = nil
+            }
+            return
+        }
+        let converted = PlanData.converted(structure: scanService.mergedPreview, rooms: scanService.finishedRooms)
+        previewPlan = converted.plan
+        previewReport = converted.report
+        #if DEBUG
+        Logger(subsystem: "All4You", category: "ScanConversion").notice("\(converted.report.logText, privacy: .public)")
+        #endif
     }
     
     // 시스템 카메라 권한 확인 및 최초 접근 요청

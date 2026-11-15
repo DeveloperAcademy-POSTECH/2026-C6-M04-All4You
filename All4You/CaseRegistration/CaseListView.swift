@@ -128,9 +128,10 @@ struct CaseListView: View {
                 Text(saveErrorMessage)
             }
         }
-        // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다
+        // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다.
+        // 열 때 이미 저장돼 있던 평면도가 쓸 수 없는 것(벽이 없음)이면, 다른 도면으로 바뀌기 전까지 없는 것으로 본다
         .fullScreenCover(item: $openedCase) { opened in
-            if opened.fireCase.floorPlan != nil {
+            if let floorPlan = opened.fireCase.floorPlan, floorPlan.planData != opened.unusablePlanData {
                 CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, startTab: opened.startTab, onClose: { openedCase = nil })
             } else {
                 NavigationStack {
@@ -150,7 +151,14 @@ struct CaseListView: View {
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
     private func open(_ fireCase: FireCase, at startTab: CaseStartTab = .floorPlan) {
         fireCase.lastViewedAt = .now
-        openedCase = OpenedCase(fireCase: fireCase, startsAtMain: fireCase.floorPlan != nil, startTab: startTab)
+        // 평면도는 있어도 벽이 없거나 읽을 수 없으면(예전 빌드가 저장한 빈 도면 등) 도면 방식 선택으로 보낸다
+        let unusablePlanData = fireCase.floorPlan.flatMap { $0.loadPlanData()?.isUsable == true ? nil : $0.planData }
+        openedCase = OpenedCase(
+            fireCase: fireCase,
+            startsAtMain: fireCase.floorPlan != nil && unusablePlanData == nil,
+            startTab: startTab,
+            unusablePlanData: unusablePlanData
+        )
     }
 }
 
@@ -162,6 +170,9 @@ private struct OpenedCase: Identifiable {
     let startsAtMain: Bool
     /// 메인에서 처음 보여 줄 탭 (미리보기의 앨범·메모 버튼으로 열면 그 탭)
     let startTab: CaseStartTab
+    /// 열 때 평면도가 있었지만 쓸 수 없었다면 그 도면의 JSON. 평면도 JSON이 이 값과 다르면 새 도면으로 바뀐 것이다.
+    /// (열기 전에 한 번만 판정해 두면, 사건 작업 중 벽을 다 지워도 방식 선택으로 되돌아가지 않는다)
+    let unusablePlanData: Data?
     
     var id: UUID { fireCase.id }
 }

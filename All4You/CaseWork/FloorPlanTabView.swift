@@ -764,7 +764,8 @@ extension FloorPlanTabView {
 extension FloorPlanTabView {
     private enum Layout {
         /// 화면에서 도면이 차지하는 몫
-        static let planFill = 0.85
+        // TEMP: 도면 수정 화면(FloorPlanEdit2DView)과 같은 값. 룸플랜 도면이 처음에 크게 느껴져 0.85에서 줄임
+        static let planFill = 0.7
         /// 북마크 핀을 골랐을 때 나머지 도면·장소 핀을 흐리게 하는 정도
         static let focusDimmedOpacity = 0.35
         /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)

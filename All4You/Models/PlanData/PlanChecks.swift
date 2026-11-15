@@ -2,6 +2,11 @@
 // 가로·세로 벽끼리만 본다. 비스듬한 벽은 이 검사에서 뺀다
 
 extension PlanData {
+    /// 도면으로 쓸 수 있으면 true. 벽이 가상 경계선까지 합쳐 하나도 없으면 그릴 것도, 방도 없는 빈 도면이다.
+    /// (벽 없는 스캔이 바닥 윤곽으로 만든 가상 경계선 방은 쓸 수 있는 도면으로 본다)
+    /// 평면도는 변환이 끝날 때 만들고 "평면도가 있으면 항상 내용이 있다"는 결정을 지키려고, 저장하거나 열기 전에 이 값을 본다
+    var isUsable: Bool { !walls.isEmpty }
+
     /// 벽 겹침·교차가 없으면 true
     var hasNoCrossingWalls: Bool {
         let eps = WallMoveRules.eps
