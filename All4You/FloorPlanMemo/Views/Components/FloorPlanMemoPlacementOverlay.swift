@@ -19,6 +19,10 @@ struct FloorPlanMemoPlacementOverlay: View {
     var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     var highlightedMemoID: UUID? = nil
     var onClearHighlight: () -> Void = {}
+    /// 미리보기의 발화지점 태그 선택을 도면에 전달. nil이면 강조 해제
+    var onFocusMarker: (String?) -> Void = { _ in }
+    /// 선택한 메모만 선명하게 표시하도록 도면에 전달
+    var onSelectMemo: (FloorPlanMemo.ID?) -> Void = { _ in }
     /// 현재 조사 차수의 북마크 사진
     var bookmarkedPhotos: [LoadedPhoto] = []
     /// 도면이 실제로 놓인 화면 자리. 주면 저장된 메모 핀을 이 자리에 맞춰 그려서, 도면을 확대·이동하거나 옆에 사진 모음이 열려 도면이 좁아져도 핀이 따라간다.
@@ -54,6 +58,7 @@ struct FloorPlanMemoPlacementOverlay: View {
                                 finishEditingMemo()
                             } else {
                                 selectedMemoID = nil
+                                onFocusMarker(nil)
                             }
                             onClearHighlight()
                         }
@@ -93,6 +98,9 @@ struct FloorPlanMemoPlacementOverlay: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: isPresented)
+        .onChange(of: selectedMemoID) { _, id in
+            onSelectMemo(id)
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
             keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .null
         }
@@ -161,10 +169,13 @@ private extension FloorPlanMemoPlacementOverlay {
             isTextFieldFocused = false
             if memo.id != highlightedMemoID { onClearHighlight() }
             selectedMemoID = selectedMemoID == memo.id ? nil : memo.id
+            onFocusMarker(nil)
         } label: {
             FloorPlanMemoPinView(
                 number: memoNumber(for: memo),
-                isHighlighted: memo.id == highlightedMemoID || memo.id == selectedMemoID
+                isHighlighted: selectedMemoID == nil
+                ? memo.id == highlightedMemoID
+                : memo.id == selectedMemoID
             )
             .frame(width: Layout.pinHitSize, height: Layout.pinHitSize)
             .contentShape(.interaction, Rectangle())
@@ -173,6 +184,7 @@ private extension FloorPlanMemoPlacementOverlay {
                 LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                     finishEditingMemo()
                     selectedMemoID = nil
+                    onFocusMarker(nil)
                 }
             )
             .memoDeleteMenu {
@@ -182,6 +194,7 @@ private extension FloorPlanMemoPlacementOverlay {
         .buttonStyle(.plain)
         .accessibilityLabel("\(memo.title), \(memo.locationName), 메모 보기")
         .position(pinPosition(for: memo.anchor, in: size))
+        .opacity(selectedMemoID == nil || selectedMemoID == memo.id ? 1 : 0.3)
     }
     
     func savedMemoCard(for memo: FloorPlanMemo, in size: CGSize, keyboardTop: CGFloat?) -> some View {
@@ -202,6 +215,7 @@ private extension FloorPlanMemoPlacementOverlay {
                 Button {
                     finishEditingMemo()
                     selectedMemoID = nil
+                    onFocusMarker(nil)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.body.weight(.semibold))
@@ -236,9 +250,12 @@ private extension FloorPlanMemoPlacementOverlay {
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        FloorPlanMemoTaggedContent(memo: memo, bookmarkedPhotos: bookmarkedPhotos) { photo in
-                            previewPhoto = photo
-                        }
+                        FloorPlanMemoTaggedContent(
+                            memo: memo,
+                            bookmarkedPhotos: bookmarkedPhotos,
+                            onPhotoTap: { previewPhoto = $0 },
+                            onMarkerTap: { onFocusMarker($0) }
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
@@ -262,11 +279,15 @@ private extension FloorPlanMemoPlacementOverlay {
             editingMemoID = nil
             isEditingFocused = false
         }
-        if selectedMemoID == id { selectedMemoID = nil }
+        if selectedMemoID == id {
+            selectedMemoID = nil
+            onFocusMarker(nil)
+        }
         onDeleteMemo(id)
     }
     
     func beginEditingMemo(_ memo: FloorPlanMemo) {
+        onFocusMarker(nil)
         editingContent = memo.content
         editingPhotoTokens = [:]
         for match in FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos) {

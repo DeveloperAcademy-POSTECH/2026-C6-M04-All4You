@@ -13,19 +13,28 @@ struct FloorPlanMemoTaggedContent: View {
     let memo: FloorPlanMemo
     let bookmarkedPhotos: [LoadedPhoto]
     let onPhotoTap: (LoadedPhoto) -> Void
+    let onMarkerTap: (String) -> Void
     
     var body: some View {
         Text(linkedContent)
             .font(AppTypography.headline)
             .tint(Color.brand500)
             .environment(\.openURL, OpenURLAction { url in
-                guard url.scheme == "memo-photo",
-                      let id = UUID(uuidString: url.host ?? ""),
-                      let photo = memo.taggedPhotos.first(where: { $0.id == id }) else {
+                switch url.scheme {
+                case "memo-photo":
+                    guard let id = UUID(uuidString: url.host ?? ""),
+                          let photo = memo.taggedPhotos.first(where: { $0.id == id }) else { return .discarded }
+                    onPhotoTap(photo)
+                    return .handled
+                case "memo-marker":
+                    guard let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?.first(where: { $0.name == "id" })?.value,
+                          memo.taggedMarkerIDs.contains(id) else { return .discarded }
+                    onMarkerTap(id)
+                    return .handled
+                default:
                     return .discarded
                 }
-                onPhotoTap(photo)
-                return .handled
             })
     }
     
@@ -33,9 +42,9 @@ struct FloorPlanMemoTaggedContent: View {
         let source = memo.content as NSString
         let photoMatches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
         let markerMatches = FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs)
-        let matches: [(range: NSRange, photo: LoadedPhoto?, isMarker: Bool)] =
-        photoMatches.map { ($0.range, $0.photo, false) }
-        + markerMatches.map { ($0.range, nil, true) }
+        let matches: [(range: NSRange, photo: LoadedPhoto?, markerID: String?)] =
+        photoMatches.map { ($0.range, $0.photo, nil) }
+        + markerMatches.map { ($0.range, nil, $0.markerID) }
         var result = AttributedString()
         var cursor = 0
         
@@ -50,10 +59,12 @@ struct FloorPlanMemoTaggedContent: View {
                 linkedToken.underlineStyle = .single
                 linkedToken.link = url
                 result += linkedToken
-            } else if match.isMarker {
+            } else if let markerID = match.markerID,
+                      let url = markerURL(for: markerID) {
                 var styledToken = AttributedString(token)
                 styledToken.foregroundColor = Color.brand500
                 styledToken.underlineStyle = .single
+                styledToken.link = url
                 result += styledToken
             } else {
                 result += AttributedString(token)
@@ -63,6 +74,14 @@ struct FloorPlanMemoTaggedContent: View {
         
         result += AttributedString(source.substring(from: cursor))
         return result
+    }
+    
+    private func markerURL(for id: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "memo-marker"
+        components.host = "focus"
+        components.queryItems = [URLQueryItem(name: "id", value: id)]
+        return components.url
     }
 }
 

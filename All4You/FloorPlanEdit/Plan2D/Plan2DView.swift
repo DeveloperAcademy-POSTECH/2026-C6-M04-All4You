@@ -31,6 +31,16 @@ struct Plan2DView: View {
     var showsFurnitureLabels = true
     /// 라벨 글자를 고치는 중이라 라벨 대신 입력칸을 띄울 스탬프 (PlanMarker.id·WallFixture.id). 이 스탬프의 종류 라벨은 그리지 않는다
     var editingKindNoteId: String? = nil
+    /// 메모에서 선택한 발화지점만 선명하게 표시할 때 사용하는 스탬프 ID
+    var focusedMarkerID: String? = nil
+    /// 메모 미리보기가 열렸을 때 도면을 흐리게 표시
+    var dimsForMemoFocus = false
+    
+    private var unfocusedOpacity: Double { focusedMarkerID == nil && !dimsForMemoFocus ? 1 : 0.3 }
+    
+    private func markerOpacity(for id: String) -> Double {
+        focusedMarkerID == id || (focusedMarkerID == nil && !dimsForMemoFocus) ? 1 : unfocusedOpacity
+    }
     
     /// 지금 이름 캡슐 배율
     private var labelScale: CGFloat {
@@ -70,14 +80,17 @@ struct Plan2DView: View {
                 drawWall(wall, line: line, in: &context)
             }
         }
+        .opacity(unfocusedOpacity)
         // 가구 이름 → 공간 이름 → 스탬프 순으로 깔아, 겹치면 뒤의 것이 위에 보이게 한다
         .overlay(alignment: .topLeading) {
             if showsFurnitureLabels {
                 furnitureLabels
+                    .opacity(unfocusedOpacity)
             }
         }
         .overlay(alignment: .topLeading) {
             roomLabels
+                .opacity(unfocusedOpacity)
         }
         .overlay(alignment: .topLeading) {
             stamps
@@ -85,6 +98,7 @@ struct Plan2DView: View {
         // 치수 글자는 누르지 않고 보기만 한다
         .overlay {
             dimensionLayer
+                .opacity(unfocusedOpacity)
         }
     }
 }
@@ -334,15 +348,19 @@ extension Plan2DView {
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
                     .position(screen.point(marker.position))
+                    .opacity(markerOpacity(for: marker.id))
                 // 종류 글자는 스탬프를 돌려도 바로 서고, 스탬프 아래에 놓인다
                 kindLabel(marker.kindLabel, id: marker.id, isBoxed: marker.isKindOther && selection == .marker(marker.id), at: marker.position, iconSize: Self.iconSize(of: marker))
+                    .opacity(markerOpacity(for: marker.id))
             }
             ForEach(planData.wallFixtures) { fixture in
                 if let point = planData.point(of: fixture) {
                     stampIcon(EditTool.outlet.iconName)
                         .overlay { selectionBorder(isSelected: selection == .wallFixture(fixture.id)) }
                         .position(screen.point(point))
+                        .opacity(unfocusedOpacity)
                     kindLabel(fixture.kindLabel, id: fixture.id, isBoxed: fixture.isKindOther && selection == .wallFixture(fixture.id), at: point, iconSize: screen.outletSize)
+                        .opacity(unfocusedOpacity)
                 }
             }
         }
