@@ -160,8 +160,9 @@ extension CaseMainView {
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
             memos: isAddingMemo ? [] : memoSections.allMemos,
             highlightedMemoID: justAddedMemoID,
+            onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
-            onUpdateMemo: updateMemo
+            onUpdateMemo: updateMemoWithTags
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -174,7 +175,7 @@ extension CaseMainView {
                 onSave: addMemo,
                 onCancel: cancelAddingMemo,
                 onDeleteMemo: deleteMemo,
-                onUpdateMemo: updateMemo,
+                onUpdateMemo: updateMemoWithTags,
                 highlightedMemoID: justAddedMemoID,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
@@ -304,21 +305,11 @@ extension CaseMainView {
         if justAddedMemoID == id { justAddedMemoID = nil }
     }
     
-    /// 수정한 본문과 남아 있는 사진 태그를 기존 사건 메모에 반영
-    private func updateMemo(_ id: FloorPlanMemo.ID, content: String) {
-        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
-        memo.taggedPhotoIDs = FloorPlanMemoPhotoTagReconciler.retainedPhotoIDs(
-            from: memo.content,
-            to: content,
-            taggedPhotoIDs: memo.taggedPhotoIDs
-        )
-        memo.content = content
-    }
-    
-    /// 메모 탭에서 수정한 본문과 사진 태그를 함께 저장
-    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID]) {
+    /// 메모 수정 결과와 사진·발화지점 태그를 사건 메모에 함께 저장
+    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID], markerIDs: [String]) {
         guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
         memo.taggedPhotoIDs = photoIDs
+        memo.taggedMarkerIDs = markerIDs
         memo.content = content
     }
     
@@ -344,7 +335,9 @@ extension CaseMainView {
                 locationID: memo.targetKey,
                 locationName: planData.rooms.first { $0.id == memo.targetKey }?.name ?? memo.locationName,
                 anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY),
-                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] }
+                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] },
+                taggedMarkerIDs: memo.taggedMarkerIDs,
+                ignitionMarkers: planData.markers.filter { $0.kind == .ignitionPoint }
             ))
         }
         

@@ -17,8 +17,9 @@ struct FloorPlanTabView: View {
     /// 도면에 띄울 저장된 메모. 2D는 도면 위에, 3D는 3D 자리에 핀을 띄운다 (메모 위치를 고르는 동안은 메인의 메모 오버레이가 그린다)
     var memos: [FloorPlanMemo] = []
     var highlightedMemoID: UUID? = nil
+    var onClearMemoHighlight: () -> Void = {}
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
-    var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
     /// 도면 영역의 크기. 처음 시야로 되돌릴 때 이 크기에 맞춰 다시 놓는다
@@ -35,6 +36,10 @@ struct FloorPlanTabView: View {
     @State private var hoveredRoomID: String?
     /// 누른 북마크 번호 핀의 사진 (LoadedPhoto.id). 나머지 도면·핀은 흐려지고 오른쪽에 그 사진이 열린다
     @State private var selectedBookmarkID: UUID?
+    /// 메모의 발화지점 태그를 눌렀을 때 강조할 스탬프
+    @State private var focusedIgnitionMarkerID: String?
+    /// 미리보기가 열린 메모. 다른 말풍선과 도면 표시를 흐리게 하는 기준
+    @State private var focusedMemoID: FloorPlanMemo.ID?
     /// 편집 중에는 저장하지 않고 체크를 누를 때만 실제 위치·방향을 변경한다
     @State private var bookmarkEdit: BookmarkEditDraft?
     /// 북마크 필터의 사진을 도면으로 끌어오는 중인지 구분
@@ -151,6 +156,8 @@ struct FloorPlanTabView: View {
             if isPlacing {
                 selectedRoomID = nil
                 selectedBookmarkID = nil
+                focusedIgnitionMarkerID = nil
+                focusedMemoID = nil
             }
         }
     }
@@ -283,8 +290,14 @@ extension FloorPlanTabView {
                         }
                         // 핀이 있는 장소는 핀 캡슐이 이름 라벨을 대신하므로 도면의 이름 라벨은 숨긴다.
                         // 북마크 핀을 고르면 도면·장소 핀을 흐리게 하고, 그 사진의 장소 라벨만 위에 진하게 다시 그린다
-                        Plan2DView(planData: planData, screen: screen, hiddenLabelRoomIds: Set(pins.keys).union(focusedRoom.map { [$0.id] } ?? []))
-                            .opacity(selectedBookmark == nil ? 1 : Layout.focusDimmedOpacity)
+                        Plan2DView(
+                            planData: planData,
+                            screen: screen,
+                            hiddenLabelRoomIds: Set(pins.keys).union(focusedRoom.map { [$0.id] } ?? []),
+                            focusedMarkerID: focusedIgnitionMarkerID,
+                            dimsForMemoFocus: focusedMemoID != nil
+                        )
+                        .opacity(selectedBookmark == nil ? 1 : Layout.focusDimmedOpacity)
                         PhotoPinLayer(
                             planData: planData,
                             screen: screen,
@@ -292,7 +305,7 @@ extension FloorPlanTabView {
                             selectedRoomID: selectedRoomID,
                             onTapRoom: selectRoom
                         )
-                        .opacity(selectedBookmark == nil ? 1 : Layout.focusDimmedOpacity)
+                        .opacity(selectedBookmark == nil && focusedMemoID == nil ? 1 : Layout.focusDimmedOpacity)
                         if let focusedRoom {
                             RoomLabelView(name: focusedRoom.name)
                                 .position(screen.point(SIMD2(focusedRoom.labelX, focusedRoom.labelY)))
@@ -316,6 +329,7 @@ extension FloorPlanTabView {
                                 onSaveEditing: saveBookmarkEditing,
                                 onTap: selectBookmark
                             )
+                            .opacity(focusedMemoID == nil ? 1 : Layout.focusDimmedOpacity)
                         }
                         // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
                         FloorPlanMemoPlacementOverlay(
@@ -328,6 +342,9 @@ extension FloorPlanTabView {
                             onDeleteMemo: onDeleteMemo,
                             onUpdateMemo: onUpdateMemo,
                             highlightedMemoID: highlightedMemoID,
+                            onClearHighlight: onClearMemoHighlight,
+                            onFocusMarker: focusIgnitionMarker,
+                            onSelectMemo: focusMemo,
                             bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                             screen: screen
                         )
@@ -389,9 +406,9 @@ extension FloorPlanTabView {
                 isThreeDReady = true
             }
             .onChange(of: dimension) {
-                if dimension == .threeD {
-                    isThreeDReady = true
-                }
+                if dimension == .threeD { isThreeDReady = true }
+                focusedIgnitionMarkerID = nil
+                focusedMemoID = nil
             }
         } else {
             Text(Copy.placeholder)
@@ -441,35 +458,66 @@ extension FloorPlanTabView {
     private func clearRoomSelection() {
         // 편집 중 바깥 영역을 눌러도 임시 좌표를 저장하거나 버리지 않는다
         guard bookmarkEdit == nil else { return }
+        onClearMemoHighlight()
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = nil
+            focusedIgnitionMarkerID = nil
+            focusedMemoID = nil
             isPlacingPhotos = false
         }
     }
     private func selectRoom(_ room: Room) {
+        onClearMemoHighlight()
         withAnimation {
             selectedBookmarkID = nil
+            focusedIgnitionMarkerID = nil
+            focusedMemoID = nil
             selectedRoomID = room.id
         }
     }
-    /// 일반 모드에서는 사진 패널을 선택/해제하고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
+    /// 일반 모드에서는 사진 패널을 열고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
+    /// 같은 마커를 다시 누르면 현재 사진 미리보기와 편집 상태를 유지한다.
     private func selectBookmark(_ id: UUID) {
         if isPhotoPositionEditMode {
-            // 같은 마커를 다시 누르면 현재 편집 상태 유지
-            if bookmarkEdit?.id == id {
-                return
-            }
-            // 다른 마커를 누르면 이전 임시 수정은 저장하지 않고
-            // 새 마커의 위치 및 방향 수정을 시작
+            guard bookmarkEdit?.id != id else { return }
+        } else {
+            guard selectedBookmarkID != id else { return }
+        }
+
+        onClearMemoHighlight()
+        focusedIgnitionMarkerID = nil
+        focusedMemoID = nil
+        if isPhotoPositionEditMode {
+            // 다른 마커를 누르면 이전 임시 수정은 저장하지 않고 새 마커 편집 시작
             bookmarkEdit = nil
             beginBookmarkEditing(id)
-        } else {
-            withAnimation {
-                selectedRoomID = nil
-                selectedBookmarkID = id
-            }
+            return
         }
+        withAnimation {
+            selectedRoomID = nil
+            selectedBookmarkID = id
+        }
+    }
+    
+    /// 메모에 연결된 실제 발화지점만 강조하고 다른 패널 선택은 해제
+    private func focusIgnitionMarker(_ id: String?) {
+        guard let id else {
+            focusedIgnitionMarkerID = nil
+            return
+        }
+        guard planData?.markers.contains(where: { $0.id == id && $0.kind == .ignitionPoint }) == true else { return }
+        selectedRoomID = nil
+        selectedBookmarkID = nil
+        focusedIgnitionMarkerID = id
+    }
+    
+    private func focusMemo(_ id: FloorPlanMemo.ID?) {
+        focusedMemoID = id
+        focusedIgnitionMarkerID = nil
+        guard id != nil else { return }
+        selectedRoomID = nil
+        selectedBookmarkID = nil
     }
     /// 기존 북마크 마커에서 편집 시작. AR로 계산한 위치도 여기서 수동 위치로 덮어쓸 수 있다
     private func beginBookmarkEditing(_ id: UUID) {

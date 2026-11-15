@@ -27,14 +27,26 @@ struct Plan2DView: View {
     var scalesLabels = false
     /// 발화지점·전기 스탬프 아래에 종류 글자를 보일지. 내보내기 도면은 바닥 스탬프를 비우고 그려서 벽 전기 글자만 남지 않게 끈다
     var showsStampKinds = true
+    /// 가구 라벨 숨김 여부
+    var showsFurnitureLabels = true
     /// 라벨 글자를 고치는 중이라 라벨 대신 입력칸을 띄울 스탬프 (PlanMarker.id·WallFixture.id). 이 스탬프의 종류 라벨은 그리지 않는다
     var editingKindNoteId: String? = nil
-
+    /// 메모에서 선택한 발화지점만 선명하게 표시할 때 사용하는 스탬프 ID
+    var focusedMarkerID: String? = nil
+    /// 메모 미리보기가 열렸을 때 도면을 흐리게 표시
+    var dimsForMemoFocus = false
+    
+    private var unfocusedOpacity: Double { focusedMarkerID == nil && !dimsForMemoFocus ? 1 : 0.3 }
+    
+    private func markerOpacity(for id: String) -> Double {
+        focusedMarkerID == id || (focusedMarkerID == nil && !dimsForMemoFocus) ? 1 : unfocusedOpacity
+    }
+    
     /// 지금 이름 캡슐 배율
     private var labelScale: CGFloat {
         scalesLabels ? screen.labelScale : 1
     }
-
+    
     /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라 2D와 3D 크기가 비슷하다.
     /// 사람은 몸 길이(누운 몸), 발화지점은 지름이다. 서 있는 사람 아이콘은 이 길이만큼 키로 그린다
     static func iconSize(of marker: PlanMarker) -> Double {
@@ -56,7 +68,7 @@ struct Plan2DView: View {
     static let kindLabelGap: CGFloat = 2
     /// 종류 라벨과 그 사각 테두리 사이 (pt)
     static let kindLabelBoxPadding: CGFloat = 4
-
+    
     var body: some View {
         Canvas { context, _ in
             // 가구를 먼저 그려 벽에 붙은 가구 가장자리가 벽 아래로 들어가게 한다
@@ -68,12 +80,17 @@ struct Plan2DView: View {
                 drawWall(wall, line: line, in: &context)
             }
         }
+        .opacity(unfocusedOpacity)
         // 가구 이름 → 공간 이름 → 스탬프 순으로 깔아, 겹치면 뒤의 것이 위에 보이게 한다
         .overlay(alignment: .topLeading) {
-            furnitureLabels
+            if showsFurnitureLabels {
+                furnitureLabels
+                    .opacity(unfocusedOpacity)
+            }
         }
         .overlay(alignment: .topLeading) {
             roomLabels
+                .opacity(unfocusedOpacity)
         }
         .overlay(alignment: .topLeading) {
             stamps
@@ -81,6 +98,7 @@ struct Plan2DView: View {
         // 치수 글자는 누르지 않고 보기만 한다
         .overlay {
             dimensionLayer
+                .opacity(unfocusedOpacity)
         }
     }
 }
@@ -120,14 +138,14 @@ extension Plan2DView {
         let isSelected = selection == .wall(wall.id) || selectedWallIds.contains(wall.id)
         context.stroke(wallPath, with: .color(isSelected ? .brand500 : .gray900), style: StrokeStyle(lineWidth: width, lineCap: .butt))
     }
-
+    
     /// 벽 시작점에서 from~to(m) 구간을 선으로 더한다
     private func addSegment(_ line: WallLine, from: Double, to: Double, to path: inout Path) {
         guard to > from else { return }
         path.move(to: screen.point(line.point(along: from)))
         path.addLine(to: screen.point(line.point(along: to)))
     }
-
+    
     /// 문은 문짝과 열리는 호, 창문은 벽 두께 안의 두 줄. 개구부는 비워 둔다.
     /// 고른 창문·문은 벽 두께만큼 옅은 주황 띠를 깔고 기호를 주황으로 그린다
     private func drawOpening(_ opening: DoorWindow, wall: Wall, line: WallLine, in context: inout GraphicsContext) {
@@ -200,7 +218,7 @@ extension Plan2DView {
             style: StrokeStyle(lineWidth: isSelected ? Layout.selectionLineWidth : Layout.furnitureLineWidth, dash: isFloating ? Layout.floatingDash : [])
         )
     }
-
+    
     /// 가구 가운데의 이름 캡슐. 가구를 돌려도 글자는 바로 선다. 고른 가구의 캡슐은 공간 이름처럼 주황 테두리.
     /// 테두리까지 함께 키우고 줄인다
     private var furnitureLabels: some View {
@@ -210,7 +228,7 @@ extension Plan2DView {
                     FurnitureLabelView(label: furniture.label)
                         .overlay { selectionBorder(isSelected: selection == .furniture(furniture.id)) }
                         .scaleEffect(labelScale)
-                        // 누르기는 화면이 판정한다 (Plan2DHitTest). 스탬프가 가구 이름 위에 겹치면 스탬프가 먼저 눌리게 하려고 캡슐 자체는 누르지 않는다
+                    // 누르기는 화면이 판정한다 (Plan2DHitTest). 스탬프가 가구 이름 위에 겹치면 스탬프가 먼저 눌리게 하려고 캡슐 자체는 누르지 않는다
                         .allowsHitTesting(false)
                         .position(screen.point(furniture.center))
                 }
@@ -259,7 +277,7 @@ extension Plan2DView {
         }
         .allowsHitTesting(false)
     }
-
+    
     /// 보조선 둘, 치수선, 양 끝 눈금, 가운데 글자
     private func drawDimensionLine(_ line: DimensionLine, in context: inout GraphicsContext) {
         let start = screen.point(line.start)
@@ -294,7 +312,7 @@ extension Plan2DView {
         context.stroke(main, with: .color(color), lineWidth: Layout.dimensionLineWidth)
         drawDimensionText(line.text, at: CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2), color: color, in: &context)
     }
-
+    
     /// at을 가운데로 흰 윤곽이 있는 주황 글자를 그린다. 글자는 도면 배율에 맞춰 키우고 줄인다
     private func drawDimensionText(_ text: String, at point: CGPoint, color: Color, in context: inout GraphicsContext) {
         let font = AppTypography.label.weight(.semibold)
@@ -308,7 +326,7 @@ extension Plan2DView {
         }
         scaled.draw(main, at: .zero)
     }
-
+    
     /// 이름 캡슐 아래로 내릴 거리 (pt). 캡슐도 함께 커지고 줄어 같은 배율을 곱한다
     private func belowOffset(of area: DimensionArea) -> CGFloat {
         switch area.below {
@@ -326,24 +344,28 @@ extension Plan2DView {
         ZStack(alignment: .topLeading) {
             ForEach(planData.markers) { marker in
                 stampIcon(Self.iconName(of: marker.kind), size: Self.iconSize(of: marker))
-                    // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
+                // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
                     .rotationEffect(.degrees(marker.yaw))
                     .position(screen.point(marker.position))
+                    .opacity(markerOpacity(for: marker.id))
                 // 종류 글자는 스탬프를 돌려도 바로 서고, 스탬프 아래에 놓인다
                 kindLabel(marker.kindLabel, id: marker.id, isBoxed: marker.isKindOther && selection == .marker(marker.id), at: marker.position, iconSize: Self.iconSize(of: marker))
+                    .opacity(markerOpacity(for: marker.id))
             }
             ForEach(planData.wallFixtures) { fixture in
                 if let point = planData.point(of: fixture) {
                     stampIcon(EditTool.outlet.iconName)
                         .overlay { selectionBorder(isSelected: selection == .wallFixture(fixture.id)) }
                         .position(screen.point(point))
+                        .opacity(unfocusedOpacity)
                     kindLabel(fixture.kindLabel, id: fixture.id, isBoxed: fixture.isKindOther && selection == .wallFixture(fixture.id), at: point, iconSize: screen.outletSize)
+                        .opacity(unfocusedOpacity)
                 }
             }
         }
     }
-
+    
     /// 스탬프 아래의 종류 글자 캡슐. 종류가 없으면 그리지 않는다. 고른 테두리 바로 아래에 두고, 눌리지 않는다.
     /// 고른 기타 스탬프(isBoxed)는 라벨에만 따로 주황 사각 테두리를 쳐서, 이 테두리를 누르면 글자를 고칠 수 있음을 보인다.
     /// 캡슐은 가운데 기준으로 키우고 줄므로, 키운 높이의 절반만큼 더 내려서 스탬프와 겹치지 않게 한다
@@ -363,7 +385,7 @@ extension Plan2DView {
                 .position(screen.kindLabelCenter(at: point, iconSize: iconSize, labelScale: labelScale))
         }
     }
-
+    
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
     private func stampIcon(_ systemName: String, size meters: Double? = nil) -> some View {
         let size = screen.length(meters ?? screen.outletSize)
@@ -372,7 +394,7 @@ extension Plan2DView {
             .foregroundStyle(.brand500)
             .frame(width: size, height: size)
     }
-
+    
     /// 고른 스탬프 둘레의 주황 사각 테두리
     @ViewBuilder
     private func selectionBorder(isSelected: Bool) -> some View {
@@ -382,7 +404,7 @@ extension Plan2DView {
                 .padding(-Self.selectionPadding)
         }
     }
-
+    
     /// 공간 이름 캡슐. 글자는 확대해도 같은 크기다
     private var roomLabels: some View {
         ZStack(alignment: .topLeading) {
@@ -391,14 +413,14 @@ extension Plan2DView {
                     roomLabel(room)
                         .overlay { selectionBorder(isSelected: room.id == selectedRoomId) }
                         .overlay(alignment: .topLeading) { roomDeleteHandle(room) }
-                        // 테두리·✕ 자리까지 한 덩어리로 키우고 줄인다
+                    // 테두리·✕ 자리까지 한 덩어리로 키우고 줄인다
                         .scaleEffect(labelScale)
                         .position(screen.point(SIMD2(room.labelX, room.labelY)))
                 }
             }
         }
     }
-
+    
     /// 고른 공간 이름 캡슐 왼쪽 위 모서리의 ✕. 스탬프의 ✕ 손잡이와 같은 모양
     @ViewBuilder
     private func roomDeleteHandle(_ room: Room) -> some View {
@@ -418,7 +440,7 @@ extension Plan2DView {
             .offset(x: -Layout.deleteHandleSize / 2, y: -Layout.deleteHandleSize / 2)
         }
     }
-
+    
     /// 공간 이름 캡슐. 받을 곳이 있으면 누르면 이름 고치기, 끌면 자리 옮기기를 알린다
     @ViewBuilder
     private func roomLabel(_ room: Room) -> some View {
