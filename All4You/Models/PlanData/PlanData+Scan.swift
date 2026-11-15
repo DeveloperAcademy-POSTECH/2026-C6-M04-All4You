@@ -93,6 +93,7 @@ extension PlanData {
             let wall = surface.parentId.flatMap { wallIdOfSurface[$0] }.flatMap { self.wall(id: $0) }
                 ?? walls.min { distance(from: point, to: $0) < distance(from: point, to: $1) }
                     .flatMap { distance(from: point, to: $0) <= ScanRule.openingSearchDistance ? $0 : nil }
+                ?? wallBeneath(point)
             guard let wall, let line = line(of: wall) else { continue }
             let kind: DoorWindowKind = switch surface.kind {
             case .door: .door
@@ -139,6 +140,20 @@ extension PlanData {
                 elevation: max(0, object.center.y - object.height / 2 - floorY)
             )
         }
+    }
+
+    /// 점을 벽 위로 내렸을 때 벽 안(양 끝 사이)에 들어오는 벽 중 가장 가까운 벽. 거리 제한은 없다.
+    /// 속한 벽도 가까운 벽도 없는 문·창문을 살리되, 벽 옆으로 한참 벗어난 곳에는 붙이지 않는다
+    private func wallBeneath(_ point: SIMD2<Double>) -> Wall? {
+        walls
+            .compactMap { wall -> (wall: Wall, distance: Double)? in
+                guard let line = line(of: wall) else { return nil }
+                let along = simd_dot(point - line.start, line.direction)
+                guard along >= 0, along <= line.length else { return nil }
+                return (wall, line.distance(to: point))
+            }
+            .min { $0.distance < $1.distance }?
+            .wall
     }
 
     /// 점에서 벽 선분까지 거리. 벽을 찾지 못하면 무한대
@@ -358,7 +373,7 @@ private enum ScanRule {
     static let vertexMergeDistance = 0.1
     /// 합친 뒤 가로·세로 벽의 양 끝이 이만큼 안 어긋났으면 반듯하게 맞춘다
     static let axisSnapTolerance = 0.05
-    /// 속한 벽이 없는 문·창문은 이 거리 안의 가장 가까운 벽에 붙인다
+    /// 속한 벽이 없는 문·창문은 먼저 이 거리 안의 가장 가까운 벽에 붙인다 (없으면 벽 위로 내린 점이 벽 안에 드는 가장 가까운 벽)
     static let openingSearchDistance = 0.5
     /// 가구의 가로·세로·높이가 이보다 작으면 이 값으로 (너무 작아 고를 수 없는 가구를 막음)
     static let minFurnitureSize = 0.05
