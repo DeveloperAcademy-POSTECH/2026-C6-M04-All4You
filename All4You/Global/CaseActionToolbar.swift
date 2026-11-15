@@ -12,6 +12,8 @@ extension View {
         onTakePhoto: @escaping () -> Void,
         onImportPhoto: @escaping () -> Void,
         onEdit: @escaping () -> Void,
+        onEditPhotoPositions: (() -> Void)? = nil,
+        isPhotoPositionEditMode: Bool = false,
         onExport: @escaping () -> Void
     ) -> some View {
         toolbar {
@@ -21,7 +23,20 @@ extension View {
             }
             ToolbarSpacer(.fixed, placement: .primaryAction)
             ToolbarItem(placement: .primaryAction) {
-                Button(CaseActionCopy.edit, systemImage: "pencil", action: onEdit)
+                if let onEditPhotoPositions {
+                    Menu {
+                        Button("평면도 수정하기", systemImage: "square.and.pencil", action: onEdit)
+                        Button(
+                            isPhotoPositionEditMode ? "사진위치 수정 종료" : "사진위치 수정하기",
+                            systemImage: isPhotoPositionEditMode ? "checkmark" : "mappin.and.ellipse",
+                            action: onEditPhotoPositions
+                        )
+                    } label: {
+                        Label(CaseActionCopy.edit, systemImage: "pencil")
+                    }
+                } else {
+                    Button(CaseActionCopy.edit, systemImage: "pencil", action: onEdit)
+                }
             }
             ToolbarSpacer(.fixed, placement: .primaryAction)
             ToolbarItem(placement: .primaryAction) {
@@ -36,9 +51,9 @@ extension View {
 private struct AddPhotoButton: View {
     let onTakePhoto: () -> Void
     let onImportPhoto: () -> Void
-
+    
     @State private var isOpen = false
-
+    
     var body: some View {
         Button(CaseActionCopy.addPhoto, systemImage: "photo.badge.plus") {
             isOpen = true
@@ -47,7 +62,7 @@ private struct AddPhotoButton: View {
             photoOptions
         }
     }
-
+    
     /// 팝오버 안의 캡슐 버튼 두 개. 하나를 고르면 창을 닫고 화면이 넘겨준 일을 한다
     private var photoOptions: some View {
         VStack(spacing: Layout.optionSpacing) {
@@ -66,7 +81,7 @@ private struct AddPhotoButton: View {
         // 좁은 화면에서도 아래에서 올라오는 시트로 바뀌지 않고 작은 창으로 뜨게 한다
         .presentationCompactAdaptation(.popover)
     }
-
+    
     private func optionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button {
             isOpen = false

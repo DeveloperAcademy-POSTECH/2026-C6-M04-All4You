@@ -33,19 +33,19 @@ struct LoadedPhoto: Identifiable {
     fileprivate var record: EvidencePhoto?
     /// 저장하지 않는 사진(미리보기용 저장소)의 원본
     fileprivate var memoryImage: UIImage?
-
+    
     /// 마크업 편집 화면의 배경 사진. 원본이 남아 있으면 원본을 사용한다.
     var markupBaseImage: UIImage {
         record?.originalImageData.flatMap { UIImage(data: $0) } ?? memoryBaseImage ?? image
     }
-
+    
     /// 기존에 저장한 PencilKit 획. 편집을 다시 열 때 복원한다.
     var markupDrawingData: Data? { record?.markupDrawingData ?? memoryDrawingData }
-
+    
     /// 저장하지 않는 미리보기 사진의 드로잉 데이터.
     fileprivate var memoryDrawingData: Data?
     fileprivate var memoryBaseImage: UIImage?
-
+    
     /// 원본(마크업하면 마크업이 그려진 사진으로 바뀐다). 읽지 못하면 작은 사진
     var image: UIImage {
         memoryImage ?? record.flatMap { UIImage(data: $0.imageData) } ?? thumbnail
@@ -55,7 +55,7 @@ struct LoadedPhoto: Identifiable {
 extension LoadedPhoto {
     /// 목록용 작은 사진의 긴 변 길이 (px)
     private nonisolated static let thumbnailLength: CGFloat = 480
-
+    
     /// 원본에서 목록용 작은 사진을 만든다. 시간이 걸려서 메인 스레드 밖에서 부른다.
     /// 그래서 메인 전용이 아니라고(nonisolated) 표시한다
     nonisolated static func makeThumbnail(from image: UIImage) -> UIImage {
@@ -65,13 +65,13 @@ extension LoadedPhoto {
         let size = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
         return image.preparingThumbnail(of: size) ?? image
     }
-
+    
     /// 저장된 사진 기록에서 화면용 사진을 만든다. 작은 사진을 읽지 못하면 nil
     fileprivate init?(record: EvidencePhoto) {
         guard let thumbnail = UIImage(data: record.thumbnailData) else { return nil }
         self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, cameraPose: record.cameraPose, manualPlacement: record.manualPlacement, record: record)
     }
-
+    
     /// 도면 위 촬영 위치·방향. 사용자가 놓은 위치를 먼저 쓰고, 없으면 카메라 자세로 계산한다.
     /// 둘 다 없으면(일반 카메라·사진 앱 사진을 아직 놓지 않았거나, 도면에 스캔 변환이 없으면) nil
     func placement(in plan: PlanData) -> PhotoPlacement? {
@@ -91,14 +91,14 @@ final class PhotoStore {
     private let fireCase: FireCase?
     /// 지금 고른 조사 차수. 사건 메인 상단의 차수 메뉴가 바꾼다. nil이면 차수를 가리지 않는다
     var sessionNumber: Int?
-
+    
     init(fireCase: FireCase? = nil) {
         self.fireCase = fireCase
         allPhotos = (fireCase?.photos ?? [])
             .sorted { $0.takenAt < $1.takenAt }
             .compactMap(LoadedPhoto.init(record:))
     }
-
+    
     /// 고른 차수의 사진. 차수 없이 들어온 사진은 모든 차수에서 보인다
     var photos: [LoadedPhoto] {
         allPhotos.filter { photo in
@@ -106,21 +106,21 @@ final class PhotoStore {
             return photoSession == sessionNumber
         }
     }
-
+    
     /// 위치 미지정 사진
     var unassignedPhotos: [LoadedPhoto] {
         photos.filter { $0.roomKey == nil }
     }
-
+    
     func photo(id: UUID) -> LoadedPhoto? {
         photos.first { $0.id == id }
     }
-
+    
     /// 장소의 사진. roomKey가 nil이면 위치 미지정 사진
     func photos(inRoom roomKey: String?) -> [LoadedPhoto] {
         photos.filter { $0.roomKey == roomKey }
     }
-
+    
     /// 사진을 더하고 새 id를 돌려준다. 새 사진은 위치 미지정으로 들어온다
     // TODO: 촬영 위치로 장소를 자동 지정하는 단계가 생기면 roomKey를 함께 받기
     @discardableResult
@@ -137,26 +137,26 @@ final class PhotoStore {
         allPhotos.append(photo)
         return photo.id
     }
-
+    
     func delete(id: UUID) {
         guard let index = index(of: id) else { return }
         removeRecord(of: allPhotos[index])
         allPhotos.remove(at: index)
     }
-
+    
     /// 장소의 사진을 모두 지운다. roomKey가 nil이면 위치 미지정 사진
     func deleteAll(inRoom roomKey: String?) {
         let removed = Set(photos(inRoom: roomKey).map(\.id))
         allPhotos.filter { removed.contains($0.id) }.forEach(removeRecord(of:))
         allPhotos.removeAll { removed.contains($0.id) }
     }
-
+    
     func toggleBookmark(id: UUID) {
         guard let index = index(of: id) else { return }
         allPhotos[index].isBookmarked.toggle()
         allPhotos[index].record?.isBookmarked = allPhotos[index].isBookmarked
     }
-
+    
     /// 완성된 이미지를 갱신하되 원본과 편집 가능한 PencilKit 획을 별도로 보관한다.
     func replaceImage(id: UUID, with image: UIImage, thumbnail: UIImage, drawingData: Data) {
         guard let index = index(of: id) else { return }
@@ -180,7 +180,7 @@ final class PhotoStore {
             allPhotos[index].memoryDrawingData = drawingData
         }
     }
-
+    
     /// 촬영 위치가 있는데 장소가 없는 사진을, 그 위치를 품은 장소에 놓는다. 놓은 사진 수를 돌려준다.
     /// 스캔 때 방을 못 나눴다가 나중에 벽을 고치거나 장소를 나누면 자동으로 들어간다.
     /// 장소가 지워져 가리키는 곳이 없어진 사진도 다시 놓는다. 사람이 직접 놓은 사진(있는 장소)은 건드리지 않는다
@@ -198,14 +198,14 @@ final class PhotoStore {
         }
         return assigned
     }
-
+    
     /// 사진을 장소에 놓는다
     func assign(id: UUID, toRoom roomKey: String) {
         guard let index = index(of: id) else { return }
         allPhotos[index].roomKey = roomKey
         allPhotos[index].record?.roomKey = roomKey
     }
-
+    
     /// 사용자가 놓은 사진의 촬영 위치·방향을 저장한다. 위치가 어느 장소 안이면 사진도 그 장소로 옮기고,
     /// 어느 장소 밖이면 장소는 그대로 둔다
     func setManualPlacement(id: UUID, _ placement: ManualPlacement, in plan: PlanData) {
@@ -217,22 +217,22 @@ final class PhotoStore {
             allPhotos[index].record?.roomKey = room.id
         }
     }
-
+    
     private func index(of id: UUID) -> Int? {
         allPhotos.firstIndex { $0.id == id }
     }
-
+    
     /// 사진 기록을 저장소에서 지운다 (이미지 파일도 함께 지워진다)
     private func removeRecord(of photo: LoadedPhoto) {
         guard let record = photo.record else { return }
         record.modelContext?.delete(record)
     }
-
+    
     /// 저장할 JPEG. 사진을 거의 그대로 남기려고 높은 품질로
     private static func jpegData(_ image: UIImage) -> Data? {
         image.jpegData(compressionQuality: Self.jpegQuality)
     }
-
+    
     private static let jpegQuality: CGFloat = 0.9
 }
 
@@ -241,9 +241,9 @@ struct PhotoDateSection<Item>: Identifiable {
     /// 묶은 기간(그 달·그날)의 시작 시각
     let startDate: Date
     let items: [Item]
-
+    
     var id: Date { startDate }
-
+    
     /// 이미 시간 순서로 놓인 항목을 그 순서 그대로 기간(.month, .day)별로 묶는다
     static func group(
         _ items: [Item],
