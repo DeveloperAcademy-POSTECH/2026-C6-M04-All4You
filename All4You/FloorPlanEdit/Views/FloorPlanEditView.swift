@@ -97,7 +97,7 @@ extension FloorPlanEditView {
         /// 2D 수정 화면이 처음 도면을 맞출 때 도구 막대를 피해 위·아래로 남기는 높이 (pt). FloorPlanEdit2DView의 toolBarInset과 같은 값
         static let fitBarInset: CGFloat = 90
         /// 맞출 때 도면이 영역에서 차지하는 몫. FloorPlanEdit2DView의 planFill과 같은 값
-        static let planFill = 0.85
+        static let planFill = 0.7
         /// 이보다 작은 크기는 아직 자리를 잡는 중인 값으로 보고 무시한다 (pt)
         static let minimumFitSide: CGFloat = 200
     }
