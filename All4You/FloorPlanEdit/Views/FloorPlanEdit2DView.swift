@@ -34,6 +34,8 @@ struct FloorPlanEdit2DView: View {
     @State private var screen: PlanScreen?
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
     @State private var lastMagnification = 1.0
+    /// 돌리는 동안 직전까지 적용한 각 (라디안). 바뀐 만큼만 screen에 더한다
+    @State private var lastRotation = 0.0
     /// 고른 스탬프
     @State private var selection: PlanSelection?
     /// 고른 스탬프를 끄는 중이면, 끌기를 시작할 때 스탬프가 있던 도면 점
@@ -46,6 +48,8 @@ struct FloorPlanEdit2DView: View {
     @State private var pressLocation: CGPoint?
     /// 한 번 눌러 고른 공간 이름 캡슐 (Room.id). 고른 캡슐만 끌어 옮기고, 한 번 더 누르면 이름을 고친다
     @State private var selectedRoomId: String?
+    /// 방위표를 끄는 동안 미리 보여 주는 북쪽 각 (라디안). 손을 떼면 planData를 한 번만 바꾼다
+    @State private var compassPreview: Double?
     /// 이름을 고치는 중인 방 (Room.id)
     @State private var editingRoomId: String?
     /// 고치는 중인 이름. 끝낼 때 도면에 한 번 넣는다
@@ -108,8 +112,15 @@ struct FloorPlanEdit2DView: View {
         }
         // 위 도구 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (3D와 같다). 처음 맞출 때만 막대를 피해 놓는다
         .background(.white)
-        .gesture(zoomGesture)
+        .gesture(zoomGesture.simultaneously(with: rotateGesture))
         .gesture(TwoFingerPanGesture(onChanged: panPlan))
+        // 되돌리기·다시 하기로 저장된 회전각이 바뀌면 화면의 도면도 그 각으로 맞춘다
+        .onChange(of: planData.planRotation) { _, saved in
+            guard let screen, abs(atan2(sin((saved ?? 0) - screen.rotation), cos((saved ?? 0) - screen.rotation))) > Layout.rotationSyncTolerance else { return }
+            withAnimation(.easeInOut(duration: Layout.resetDuration)) {
+                self.screen = screen.rotated(to: saved ?? 0, around: canvasCenter)
+            }
+        }
         .overlay(alignment: .topLeading) {
             toolBar
         }
@@ -117,9 +128,14 @@ struct FloorPlanEdit2DView: View {
             DrawingToolBar(selectedTool: $drawingTool, isPenAndEraserSuspended: isStampActive, onSelect: pickDrawingTool)
         }
         .overlay(alignment: .topTrailing) {
-            // 2D는 도면 위쪽이 북쪽이라 방위표가 늘 위를 가리킨다
-            CompassView()
-                .padding()
+            // 도면은 돌지 않고 방위표만 끌어 돌려 북쪽을 정한다. 정한 북쪽은 3D·메인 화면 방위표에도 같이 쓰인다
+            CompassView(
+                // 북쪽은 도면 위쪽에서 잰 각이라, 도면을 돌려 놓은 만큼 화면에서 더 돌아 보인다
+                northAngle: .radians(compassPreview ?? ((planData.northAngle ?? 0) + (screen?.rotation ?? 0))),
+                onRotate: { compassPreview = $0.radians },
+                onRotateEnd: finishCompassRotation
+            )
+            .padding()
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(alignment: .trailing, spacing: Layout.cornerButtonSpacing) {
@@ -230,6 +246,7 @@ extension FloorPlanEdit2DView {
                     center: center,
                     halfSize: halfSize,
                     yaw: handleYaw(of: selection, in: plan),
+                    screenRotation: screen.rotationDegrees,
                     scale: marker?.drawScale,
                     coordinateSpace: Layout.planSpace,
                     onDelete: { handleEdit(.delete(selection)) },
@@ -603,6 +620,25 @@ extension FloorPlanEdit2DView {
         editingKindNoteId = nil
         isKindNoteFocused = false
         labelEditY = nil
+    }
+}
+
+// 방위표 돌리기
+extension FloorPlanEdit2DView {
+    /// 방위표에서 손을 뗐다. 화면에서 정한 북쪽 각에서 도면을 돌려 놓은 만큼을 빼 도면 위쪽 기준 각으로 도면에 한 번 넣는다 (되돌리기 한 칸).
+    /// 도면 위쪽이나 가로·세로 방향에 가까우면 그 방향으로 맞춘다
+    private func finishCompassRotation(_ angle: Angle) {
+        compassPreview = nil
+        let relative = angle.radians - (screen?.rotation ?? 0)
+        let snapped = Self.snappedToRightAngle(atan2(sin(relative), cos(relative)))
+        planData.northAngle = snapped == 0 ? nil : snapped
+    }
+
+    /// 90° 단위 방향에 몇 도 안으로 가까우면 그 방향으로 맞춘다. 손으로 정확히 맞추기 어려워서다
+    private static func snappedToRightAngle(_ radians: Double) -> Double {
+        let quarter = Double.pi / 2
+        let nearest = (radians / quarter).rounded() * quarter
+        return abs(radians - nearest) <= Layout.compassSnapRadians ? nearest : radians
     }
 }
 
@@ -1104,6 +1140,38 @@ extension FloorPlanEdit2DView {
             }
     }
 
+    /// 두 손가락이 비틀린 만큼 도면을 돌린다. 손가락 사이가 제자리에 있고, 손을 떼면 90° 방향에 붙여 도면에 저장한다
+    private var rotateGesture: some Gesture {
+        RotateGesture()
+            .onChanged { value in
+                guard let screen else { return }
+                // 두 손가락이 정확히 세로·가로가 되는 순간 시스템이 NaN을 줄 때가 있다. 그 값을 넣으면 도면이 사라지므로 건너뛴다
+                let radians = value.rotation.radians
+                guard radians.isFinite else { return }
+                let delta = radians - lastRotation
+                lastRotation = radians
+                self.screen = screen.rotated(by: delta, around: value.startLocation)
+            }
+            .onEnded { _ in
+                lastRotation = 0
+                finishPlanRotation()
+            }
+    }
+
+    /// 손을 뗐다. 도면을 90° 방향 가까이면 그 방향으로 붙이고, 돌린 각을 도면에 한 번 넣는다 (되돌리기 한 칸)
+    private func finishPlanRotation() {
+        guard let screen else { return }
+        withAnimation(.easeOut(duration: Layout.rotationSettleDuration)) {
+            self.screen = screen.settled(around: canvasCenter)
+        }
+        planData.planRotation = screen.savedRotation
+    }
+
+    /// 도면 영역의 가운데. 돌린 각을 맞출 때 이 점이 제자리에 있게 한다
+    private var canvasCenter: CGPoint {
+        CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+    }
+
     /// 두 손가락으로 끈 만큼 도면을 옮긴다
     private func panPlan(to location: CGPoint, from previous: CGPoint) {
         screen = screen?.moved(by: CGSize(width: location.x - previous.x, height: location.y - previous.y))
@@ -1140,6 +1208,12 @@ extension FloorPlanEdit2DView {
         static let noticeHorizontalPadding: CGFloat = 20
         /// 안내 캡슐이 떠 있는 시간
         static let noticeDuration = Duration.seconds(2)
+        /// 저장된 회전각과 화면의 각이 이보다 (라디안) 다르면 화면을 저장된 각에 맞춘다
+        static let rotationSyncTolerance = 1e-4
+        /// 돌린 도면을 90° 방향에 붙이는 시간 (초)
+        static let rotationSettleDuration = 0.15
+        /// 방위표를 90° 방향에 맞추는 범위 (라디안, 약 4°)
+        static let compassSnapRadians = Double.pi / 45
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
         /// 꼭짓점을 끌 때 붙은 벽이 가로·세로가 되는 자리에서 딱 붙는 화면 거리 (pt)
