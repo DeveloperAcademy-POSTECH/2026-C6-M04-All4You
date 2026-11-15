@@ -293,9 +293,6 @@ extension FloorPlanTabView {
             .onChange(of: dimension) {
                 if dimension == .threeD {
                     isThreeDReady = true
-                    isPhotoPositionEditMode = false
-                    bookmarkEdit = nil
-                    editingSourceRoomID = nil
                 }
             }
         } else {
