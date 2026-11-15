@@ -77,7 +77,7 @@ struct BookmarkPhotoMarkerLayer: View {
         Button {
             onTap(marker.id)
         } label: {
-            Text(style == .compact ? "\(marker.number)" : "#\(marker.number)")
+            Text("#\(marker.number)")
                 .font(style == .compact ? AppTypography.subheadlineEmphasized : AppTypography.headlineEmphasized)
                 .monospacedDigit()
                 .foregroundStyle(.white)
