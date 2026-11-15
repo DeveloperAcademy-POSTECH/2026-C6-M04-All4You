@@ -31,6 +31,8 @@ struct CaseMainView: View {
     @State private var isCapturingPhoto = false
     @State private var isImportingPhoto = false
     @State private var isPlacingPhotos = false
+    /// 도면의 모든 사진 마커를 탭 한 번으로 수정하는 모드
+    @State private var isPhotoPositionEditMode = false
     // 사진 불러오기 시트를 화면 크기에 맞추려고 잰 이 화면의 크기
     @State private var screenSize: CGSize = .zero
     @State private var isExportSheetPresented = false
@@ -154,6 +156,7 @@ extension CaseMainView {
             planData: planData,
             photoStore: photoStore,
             isPlacingPhotos: $isPlacingPhotos,
+            isPhotoPositionEditMode: $isPhotoPositionEditMode,
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
             memos: isAddingMemo ? [] : memoSections.allMemos,
             highlightedMemoID: justAddedMemoID,
@@ -182,13 +185,22 @@ extension CaseMainView {
     /// 앨범 전체 보기에는 오른쪽 작업 버튼을 숨기고, 장소별 보기에는 뒤로가기만 표시
     @ViewBuilder
     private var albumTab: some View {
-        CaseAlbumView(
+        let album = CaseAlbumView(
             photoStore: photoStore,
             rooms: planData.rooms,
             selection: $selection,
             onPlaceUnassigned: showPhotoPlacement
         )
-        .navigationBarTitleDisplayMode(.inline)
+        if case .album = selection {
+            album
+                .navigationBarTitleDisplayMode(.inline)
+                .backOnlyToolbar {
+                    selection = .albumOverview
+                }
+        } else {
+            album
+                .navigationBarTitleDisplayMode(.inline)
+        }
     }
     
     // 사이드바 앨범 구역의 줄: 위치 미지정, 그다음 도면의 장소 순서. 숫자는 그 장소의 사진 수
@@ -351,13 +363,22 @@ extension CaseMainView {
                 onTakePhoto: takePhoto,
                 onImportPhoto: importPhoto,
                 onEdit: onEdit,
+                onEditPhotoPositions: {
+                    // 사진위치 수정은 2D 북마크 마커에서만 가능
+                    selection = .floorPlan2D
+                    isPlacingPhotos = false
+                    photoFilter.scope = .bookmarked
+                    photoFilter.isPhotoVisible = true
+                    isPhotoPositionEditMode.toggle()
+                },
+                isPhotoPositionEditMode: isPhotoPositionEditMode,
                 onExport: {
                     isExportSheetPresented = true
                 }
             )
     }
     
-    /// 사건 화면 상단의 뒤로가기·사건명·조사 차수
+    /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
     private var titleHeader: some View {
         CaseTitleHeader(
             title: fireCase.title,
@@ -367,17 +388,7 @@ extension CaseMainView {
                 sessionNumber = number
             },
             onAddSession: addSession,
-            onBack: {
-                if case .album = selection {
-                    // 장소별 앨범에서는 앨범 전체 화면으로 복귀
-                    withAnimation {
-                        selection = .albumOverview
-                    }
-                } else {
-                    // 나머지 화면에서는 기존처럼 사건 목록으로 복귀
-                    onBack()
-                }
-            },
+            onBack: onBack,
             onRename: { fireCase.caseName = $0 }
         )
     }
