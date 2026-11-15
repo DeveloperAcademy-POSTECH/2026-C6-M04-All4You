@@ -20,9 +20,7 @@ struct FloorPlanExternalImportResultView: View {
             .background(.white)
             .overlay {
                 if isConverting {
-                    ProgressView("도면 변환 중")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    conversionOverlay
                 }
             }
             .preferredColorScheme(.light)
@@ -62,5 +60,26 @@ struct FloorPlanExternalImportResultView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+    }
+}
+
+// 서브 뷰
+extension FloorPlanExternalImportResultView {
+    /// 변환하는 동안 이미지를 흐리게 덮고, 이미지 위를 레이저 선이 훑는다 (룸플랜 변환 로딩과 같은 선)
+    private var conversionOverlay: some View {
+        GeometryReader { proxy in
+            Color.white.opacity(0.6)
+                .overlay { ScanLaserView(range: imageVerticalRange(in: proxy.size)) }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("도면 변환 중")
+    }
+
+    /// scaledToFit으로 가운데에 놓인 이미지의 위·아래 끝. 비율이 세로로 긴 이미지는 화면 위아래를 꽉 채운다
+    private func imageVerticalRange(in size: CGSize) -> ClosedRange<CGFloat> {
+        guard image.size.width > 0, size.width > 0 else { return 0...size.height }
+        let fittedHeight = min(size.height, size.width * image.size.height / image.size.width)
+        let top = (size.height - fittedHeight) / 2
+        return top...(top + fittedHeight)
     }
 }
