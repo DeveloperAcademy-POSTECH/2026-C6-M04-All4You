@@ -1184,7 +1184,8 @@ extension FloorPlanEdit2DView {
         /// 오른쪽 아래 버튼들 사이 (pt)
         static let cornerButtonSpacing: CGFloat = 8
         /// 처음 맞출 때 화면에서 도면이 차지하는 몫
-        static let planFill = 0.85
+        // TEMP: 룸플랜 도면이 처음에 크게 느껴져 0.85에서 줄임. 실기기에서 보고 정함. FloorPlanEditView·FloorPlanTabView와 같은 값
+        static let planFill = 0.7
         /// 도구 막대가 차지하는 위·아래 높이 (pt)
         static let toolBarInset: CGFloat = 90
         /// 이만큼(pt) 움직여야 끌기로 본다. 그보다 짧으면 누르기

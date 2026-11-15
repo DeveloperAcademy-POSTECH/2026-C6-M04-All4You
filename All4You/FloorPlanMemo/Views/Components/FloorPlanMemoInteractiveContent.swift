@@ -45,6 +45,12 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
                 .underlineStyle: NSUnderlineStyle.single.rawValue
             ], range: match.range)
         }
+        for match in FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs) {
+            text.addAttributes([
+                .foregroundColor: UIColor(Color.brand500),
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ], range: match.range)
+        }
         view.attributedText = text
         view.accessibilityLabel = memo.content
         context.coordinator.view = view

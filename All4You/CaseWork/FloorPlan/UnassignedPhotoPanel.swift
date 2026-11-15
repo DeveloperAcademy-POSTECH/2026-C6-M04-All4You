@@ -12,7 +12,8 @@ import SwiftUI
 /// 위치 미지정 사진 목록. 고른 사진을 크게 보여 주고, 나머지는 아래 3열로 늘어놓는다
 struct UnassignedPhotoPanel: View {
     let photos: [LoadedPhoto]
-    let onClose: () -> Void
+    /// 현재 선택한 미리보기 사진을 전체 화면으로 연다
+    let onExpand: (UUID) -> Void
     /// 사진을 끌기 시작하면 그 사진 id를 알린다. 도면이 끄는 동안 미리보기 핀을 보여 주는 데 쓴다
     var onDragStart: (UUID) -> Void = { _ in }
     
@@ -48,51 +49,46 @@ struct UnassignedPhotoPanel: View {
 
 // 서브 뷰
 extension UnassignedPhotoPanel {
-    /// "위치 미확인 사진 120" 제목과 안내 문구, 오른쪽 닫기
+    /// "위치 미확인 사진 120" 제목과 안내 문구, 오른쪽 확대 버튼
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: Layout.headerSpacing) {
                 HStack(spacing: Layout.badgeSpacing) {
                     Text(Copy.title)
                         .font(AppTypography.title2Emphasized)
+                        .lineLimit(1)
                     CountBadge(count: photos.count)
                 }
                 Text(Copy.guide)
                     .font(AppTypography.headline)
+                    .lineLimit(1)
             }
             Spacer()
-            // TEMP: Figma에 패널을 닫는 버튼이 없어 임의로 둠 — 팀 확인 필요
-            Button(Copy.close, systemImage: "xmark", action: onClose)
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
+            Button {
+                guard let previewPhoto else { return }
+                onExpand(previewPhoto.id)
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .accessibilityLabel("사진 크게 보기")
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .disabled(previewPhoto == nil)
         }
     }
     
     /// 크게 보여 주는 고른 사진. 주황빛으로 둘러 지금 옮길 사진임을 보여 준다
     private func preview(_ photo: LoadedPhoto) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Color.clear
-                .aspectRatio(
-                    Layout.previewAspectRatio,
-                    contentMode: .fit
-                )
-                .overlay {
-                    Image(uiImage: photo.thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                }
-                .clipShape(
-                    .rect(cornerRadius: Layout.cornerRadius)
-                )
-                .shadow(
-                    color: .brand500.opacity(Layout.glowOpacity),
-                    radius: Layout.glowRadius
-                )
-                .draggablePhoto(photo, onDragStart: onDragStart)
-            
-            PhotoTakenAtLabel(date: photo.takenAt)
-        }
+        Color.clear
+            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
+            .overlay {
+                Image(uiImage: photo.thumbnail)
+                    .resizable()
+                    .scaledToFill()
+            }
+            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+            .shadow(color: .brand500.opacity(Layout.glowOpacity), radius: Layout.glowRadius)
+            .draggablePhoto(photo, onDragStart: onDragStart)
     }
     
     /// 누르면 크게 보여 주고, 길게 누르면 바로 끌 수 있다
@@ -173,7 +169,6 @@ extension UnassignedPhotoPanel {
     private enum Copy {
         static let title = "위치 미확인 사진"
         static let guide = "사진을 길게 눌러 도면 위치로 드래그하세요"
-        static let close = "닫기"
         // TEMP: Figma에 모두 옮긴 뒤의 화면이 없어 임의로 작성한 문구
         static let emptyTitle = "모든 사진의 위치를 정했어요"
         static let emptyMessage = "앨범에서 장소별 사진을 볼 수 있어요."
@@ -181,5 +176,5 @@ extension UnassignedPhotoPanel {
 }
 
 #Preview {
-    UnassignedPhotoPanel(photos: [], onClose: {})
+    UnassignedPhotoPanel(photos: [], onExpand: { _ in })
 }

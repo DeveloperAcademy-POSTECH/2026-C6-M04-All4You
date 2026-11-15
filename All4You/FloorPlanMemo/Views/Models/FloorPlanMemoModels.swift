@@ -42,6 +42,9 @@ struct FloorPlanMemo: Identifiable {
     let anchor: FloorPlanMemoAnchor
     /// 메모에 태그된 사진
     let taggedPhotos: [LoadedPhoto]
+    /// 메모에 연결된 발화지점 ID와 현재 도면의 발화지점 목록
+    let taggedMarkerIDs: [String]
+    let ignitionMarkers: [PlanMarker]
     
     init(
         id: UUID = UUID(),
@@ -51,7 +54,9 @@ struct FloorPlanMemo: Identifiable {
         locationID: String?,
         locationName: String,
         anchor: FloorPlanMemoAnchor,
-        taggedPhotos: [LoadedPhoto] = []
+        taggedPhotos: [LoadedPhoto] = [],
+        taggedMarkerIDs: [String] = [],
+        ignitionMarkers: [PlanMarker] = []
     ) {
         self.id = id
         self.title = title
@@ -61,6 +66,8 @@ struct FloorPlanMemo: Identifiable {
         self.locationName = locationName
         self.anchor = anchor
         self.taggedPhotos = taggedPhotos
+        self.taggedMarkerIDs = taggedMarkerIDs
+        self.ignitionMarkers = ignitionMarkers
     }
     
     var detailTitle: String { title }
@@ -78,6 +85,69 @@ struct FloorPlanMemo: Identifiable {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: createdAt)
+    }
+}
+
+/// 발화지점 순서를 a...z, aa...로 설정 & 저장된 ID를 메모 본문과 연결
+enum FloorPlanMemoIgnitionTags {
+    struct Match {
+        let range: NSRange
+        let markerID: String
+    }
+    
+    static func label(at index: Int) -> String {
+        var value = index + 1
+        var result = ""
+        repeat {
+            value -= 1
+            result = String(UnicodeScalar(97 + value % 26)!) + result
+            value /= 26
+        } while value > 0
+        return result
+    }
+    
+    static func marker(at label: String, in markers: [PlanMarker]) -> PlanMarker? {
+        var index = 0
+        for character in label.utf8 {
+            guard (97...122).contains(character) else { return nil }
+            index = index * 26 + Int(character - 96)
+        }
+        guard index > 0, markers.indices.contains(index - 1) else { return nil }
+        return markers[index - 1]
+    }
+    
+    static func matches(in content: String, markers: [PlanMarker], taggedIDs: [String]) -> [Match] {
+        let source = content as NSString
+        let matches = (try? NSRegularExpression(pattern: "#[a-z]+(?![a-z0-9])"))?
+            .matches(in: content, range: NSRange(location: 0, length: source.length)) ?? []
+        return matches.compactMap { match in
+            let label = String(source.substring(with: match.range).dropFirst())
+            guard let marker = marker(at: label, in: markers), taggedIDs.contains(marker.id) else { return nil }
+            return Match(range: match.range, markerID: marker.id)
+        }
+    }
+    
+    static func markerIDs(in content: String, tokenByMarkerID: [String: String]) -> [String] {
+        let source = content as NSString
+        let matches = (try? NSRegularExpression(pattern: "#[a-z]+(?![a-z0-9])"))?
+            .matches(in: content, range: NSRange(location: 0, length: source.length)) ?? []
+        var markerIDByToken: [String: String] = [:]
+        for (id, token) in tokenByMarkerID where markerIDByToken[token] == nil {
+            markerIDByToken[token] = id
+        }
+        var seen = Set<String>()
+        return matches.compactMap { markerIDByToken[source.substring(with: $0.range)] }
+            .filter { seen.insert($0).inserted }
+    }
+    
+    static func retainedMarkerIDs(from oldContent: String, to newContent: String, markers: [PlanMarker], taggedIDs: [String]) -> [String] {
+        let tokens = matches(in: oldContent, markers: markers, taggedIDs: taggedIDs)
+        let source = oldContent as NSString
+        var byID: [String: String] = [:]
+        for token in tokens where byID[token.markerID] == nil {
+            byID[token.markerID] = source.substring(with: token.range)
+        }
+        return markerIDs(in: newContent, tokenByMarkerID: byID)
     }
 }
 

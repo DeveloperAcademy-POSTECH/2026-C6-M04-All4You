@@ -50,7 +50,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
             view.textStorage.beginEditing()
             view.textStorage.setAttributes(baseAttributes, range: fullRange)
             for token in taggedTokens {
-                let pattern = NSRegularExpression.escapedPattern(for: token) + "(?![0-9])"
+                let pattern = NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])"
                 let matches = (try? NSRegularExpression(pattern: pattern))?
                     .matches(in: text, range: fullRange) ?? []
                 if let match = matches.first {

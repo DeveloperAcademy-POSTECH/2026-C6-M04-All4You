@@ -5,9 +5,9 @@ import Foundation
 
 /// 도면이 화면 어디에 어떤 배율로 놓였는지. 확대·이동하면 새 값을 만들어 화면의 @State에 넣는다
 struct PlanScreen: Equatable {
-    /// 꼭짓점을 모두 감싸는 사각형의 왼쪽 위 (도면 좌표, m)
+    /// 꼭짓점과 가구를 모두 감싸는 사각형의 왼쪽 위 (도면 좌표, m)
     let minPoint: SIMD2<Double>
-    /// 꼭짓점을 모두 감싸는 가로·세로 (m)
+    /// 꼭짓점과 가구를 모두 감싸는 가로·세로 (m)
     let planSize: SIMD2<Double>
     /// 화면에 처음 맞췄을 때의 배율. 확대·축소 한계의 기준
     let fitScale: Double
@@ -21,7 +21,7 @@ struct PlanScreen: Equatable {
     /// 도면을 비율 그대로 화면 가운데에 놓는다. fill은 가로·세로 중 꽉 차는 쪽에서 도면이 차지하는 몫.
     /// 도면에 저장된 회전각(planRotation)으로 돌린 모양이 화면에 맞는다
     init(plan: PlanData, in size: CGSize, fill: Double = 1) {
-        let bounds = plan.bounds
+        let bounds = plan.fitBounds
         minPoint = bounds.min
         // 꼭짓점이 없거나 한 줄로만 있어도 0으로 나누지 않게 아주 작은 크기를 둔다
         planSize = SIMD2(max(bounds.max.x - bounds.min.x, 0.1), max(bounds.max.y - bounds.min.y, 0.1))
@@ -93,7 +93,7 @@ struct PlanScreen: Equatable {
         meters * scale
     }
 
-    /// anchor(손가락 사이 화면 점)가 제자리에 있도록 factor배 확대·축소한 값. 맞춤 배율의 0.5~5배로 제한한다
+    /// anchor(손가락 사이 화면 점)가 제자리에 있도록 factor배 확대·축소한 값. 맞춤 배율의 0.2~15배로 제한한다
     func zoomed(by factor: Double, around anchor: CGPoint) -> PlanScreen {
         var next = self
         next.scale = min(max(scale * factor, fitScale * Limit.minZoom), fitScale * Limit.maxZoom)
@@ -146,8 +146,9 @@ extension PlanScreen {
 // 확대 한계
 extension PlanScreen {
     private enum Limit {
-        static let minZoom = 0.5
-        static let maxZoom = 5.0
+        // TEMP: 실기기에서 줄이고 키워 보고 정함. 룸플랜 도면은 처음 맞춘 화면이 크게 느껴져 더 멀리 줄일 수 있게 넓힘 (전엔 0.5~5배)
+        static let minZoom = 0.2
+        static let maxZoom = 15.0
         /// 돌린 도면을 90° 방향에 붙이는 범위 (라디안, 약 4°)
         static let snapRadians = Double.pi / 45
         /// 이보다 작은 각은 돌리지 않은 것으로 본다

@@ -14,7 +14,7 @@ struct FloorPlanExportView: View {
     @State private var photoDisplay: PhotoDisplayOption = .bookmarked
     @State private var showsCaptureDirection = true
     @State private var showsRoomNames = true
-    @State private var showsFurniture = true
+    @State private var showsFurnitureLabels = true
     @State private var showsStamps = true
     @State private var isSaving = false
     @State private var isSavedToastVisible = false
@@ -38,7 +38,7 @@ struct FloorPlanExportView: View {
                     photoDisplay: $photoDisplay,
                     showsCaptureDirection: $showsCaptureDirection,
                     showsRoomNames: $showsRoomNames,
-                    showsFurniture: $showsFurniture,
+                    showsFurnitureLabels: $showsFurnitureLabels,
                     showsStamps: $showsStamps
                 )
                 .frame(width: 370)
@@ -122,8 +122,8 @@ struct FloorPlanExportView: View {
         do {
             // 2D는 같은 그림을 큰 이미지로 다시 그리고, 3D는 미리보기 화면을 그대로 찍는다
             let image = planType == .twoD
-                ? FloorPlanExporter.render2D(content)
-                : FloorPlanExporter.captureScreen(in: previewFrame)
+            ? FloorPlanExporter.render2D(content)
+            : FloorPlanExporter.captureScreen(in: previewFrame)
             guard let image else { throw FloorPlanExporter.ExportError.imageFailed }
             try await FloorPlanExporter.saveToPhotoLibrary(image)
             showSavedToast()
@@ -158,7 +158,7 @@ struct FloorPlanExportView: View {
             photoDisplay: photoDisplay,
             showsCaptureDirection: showsCaptureDirection,
             showsRoomNames: showsRoomNames,
-            showsFurniture: showsFurniture,
+            showsFurnitureLabels: showsFurnitureLabels,
             showsStamps: showsStamps
         )
     }
@@ -190,7 +190,8 @@ private struct FloorPlanSavePreview: View {
                     onTap: { _ in },
                     onEdit: { _ in },
                     pins: pins3D,
-                    pinView: pinView3D
+                    pinView: pinView3D,
+                    showsFurnitureLabels: content.showsFurnitureLabels
                 )
             }
         }
@@ -210,14 +211,14 @@ extension FloorPlanSavePreview {
         }
         return plan
     }
-
+    
     /// 사진 핀을 장소 이름 자리에 띄운다 (도면 탭 3D와 같은 높이)
     private var pins3D: [Plan3DPin] {
         content.planData.rooms
             .filter { content.pins[$0.id] != nil }
             .map { Plan3DPin(id: $0.id, point: SIMD2($0.labelX, $0.labelY), height: Self.photoPinHeight) }
     }
-
+    
     private func pinView3D(_ roomID: String) -> AnyView {
         guard let room = content.planData.rooms.first(where: { $0.id == roomID }),
               let pin = content.pins[roomID] else { return AnyView(EmptyView()) }
@@ -226,7 +227,7 @@ extension FloorPlanSavePreview {
                 .allowsHitTesting(false)
         )
     }
-
+    
     /// 사진 핀을 띄우는 높이 (m)
     private static let photoPinHeight = 1.5
 }
@@ -236,7 +237,7 @@ private struct FloorPlanSaveOptions: View {
     @Binding var photoDisplay: PhotoDisplayOption
     @Binding var showsCaptureDirection: Bool
     @Binding var showsRoomNames: Bool
-    @Binding var showsFurniture: Bool
+    @Binding var showsFurnitureLabels: Bool
     @Binding var showsStamps: Bool
     
     var body: some View {
@@ -258,7 +259,7 @@ private struct FloorPlanSaveOptions: View {
                     .tint(Color("Brand500"))
                 Toggle("공간 이름", isOn: $showsRoomNames)
                     .tint(Color("Brand500"))
-                Toggle("가구", isOn: $showsFurniture)
+                Toggle("가구 이름", isOn: $showsFurnitureLabels)
                     .tint(Color("Brand500"))
                 Toggle("스탬프", isOn: $showsStamps)
                     .tint(Color("Brand500"))
@@ -298,7 +299,7 @@ struct FloorPlanSaveConfiguration {
     let photoDisplay: PhotoDisplayOption
     let showsCaptureDirection: Bool
     let showsRoomNames: Bool
-    let showsFurniture: Bool
+    let showsFurnitureLabels: Bool
     let showsStamps: Bool
 }
 
