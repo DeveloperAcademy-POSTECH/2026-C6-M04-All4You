@@ -15,14 +15,14 @@ struct UnassignedPhotoPanel: View {
     let onClose: () -> Void
     /// 사진을 끌기 시작하면 그 사진 id를 알린다. 도면이 끄는 동안 미리보기 핀을 보여 주는 데 쓴다
     var onDragStart: (UUID) -> Void = { _ in }
-
+    
     /// 크게 보여 줄 사진. 고른 적이 없거나 고른 사진이 장소로 옮겨지면 첫 사진을 보여 준다
     @State private var previewID: UUID?
-
+    
     private var previewPhoto: LoadedPhoto? {
         photos.first { $0.id == previewID } ?? photos.first
     }
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
@@ -68,21 +68,33 @@ extension UnassignedPhotoPanel {
                 .buttonBorderShape(.circle)
         }
     }
-
+    
     /// 크게 보여 주는 고른 사진. 주황빛으로 둘러 지금 옮길 사진임을 보여 준다
     private func preview(_ photo: LoadedPhoto) -> some View {
-        Color.clear
-            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
-            .overlay {
-                Image(uiImage: photo.thumbnail)
-                    .resizable()
-                    .scaledToFill()
-            }
-            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
-            .shadow(color: .brand500.opacity(Layout.glowOpacity), radius: Layout.glowRadius)
-            .draggablePhoto(photo, onDragStart: onDragStart)
+        VStack(alignment: .leading, spacing: 8) {
+            Color.clear
+                .aspectRatio(
+                    Layout.previewAspectRatio,
+                    contentMode: .fit
+                )
+                .overlay {
+                    Image(uiImage: photo.thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipShape(
+                    .rect(cornerRadius: Layout.cornerRadius)
+                )
+                .shadow(
+                    color: .brand500.opacity(Layout.glowOpacity),
+                    radius: Layout.glowRadius
+                )
+                .draggablePhoto(photo, onDragStart: onDragStart)
+            
+            PhotoTakenAtLabel(date: photo.takenAt)
+        }
     }
-
+    
     /// 누르면 크게 보여 주고, 길게 누르면 바로 끌 수 있다
     private func tile(_ photo: LoadedPhoto) -> some View {
         Button {
@@ -122,7 +134,7 @@ extension View {
 /// 빨간 캡슐 안의 흰 숫자. 위치 미지정 사진 수에 쓴다
 struct CountBadge: View {
     let count: Int
-
+    
     var body: some View {
         Text(count, format: .number)
             .font(AppTypography.subheadline)
@@ -131,7 +143,7 @@ struct CountBadge: View {
             .padding(.vertical, Layout.verticalPadding)
             .background(.red, in: .capsule)
     }
-
+    
     private enum Layout {
         static let horizontalPadding: CGFloat = 8
         static let verticalPadding: CGFloat = 1

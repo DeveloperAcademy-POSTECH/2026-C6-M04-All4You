@@ -629,6 +629,34 @@ struct PhotoPinView: View {
     }
 }
 
+// 공통 날짜, 시간 컴포넌트 추가
+struct PhotoTakenAtLabel: View {
+    let date: Date
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(Self.dateFormatter.string(from: date))
+            Text(Self.timeFormatter.string(from: date))
+        }
+        .font(AppTypography.subheadline)
+        .foregroundStyle(.secondary)
+    }
+    
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy. M. d."
+        return formatter
+    }()
+    
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "a h:mm"
+        return formatter
+    }()
+}
+
 /// 3D 도면 위 메모 핀. 2D 메모 핀(FloorPlanMemoPlacementOverlay)과 같은 말풍선에 메모 번호
 private struct MemoPin3DView: View {
     let number: Int
@@ -663,14 +691,23 @@ private struct RoomPhotoPanel: View {
             ScrollView {
                 VStack(spacing: Layout.sectionSpacing) {
                     if let selectedPhoto {
-                        Color.clear
-                            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
-                            .overlay {
-                                Image(uiImage: selectedPhoto.image)
-                                    .resizable()
-                                    .scaledToFill()
-                            }
-                            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Color.clear
+                                .aspectRatio(
+                                    Layout.previewAspectRatio,
+                                    contentMode: .fit
+                                )
+                                .overlay {
+                                    Image(uiImage: selectedPhoto.image)
+                                        .resizable()
+                                        .scaledToFill()
+                                }
+                                .clipShape(
+                                    .rect(cornerRadius: Layout.cornerRadius)
+                                )
+                            
+                            PhotoTakenAtLabel(date: selectedPhoto.takenAt)
+                        }
                     }
                     LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                         ForEach(photos) { photo in

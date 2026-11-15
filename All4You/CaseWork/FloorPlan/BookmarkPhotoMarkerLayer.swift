@@ -28,7 +28,7 @@ extension BookmarkPhotoMarker {
             .sorted { $0.takenAt < $1.takenAt }
             .compactMap { photo in photo.placement(in: plan).map { (photo.id, $0) } })
     }
-
+    
     /// 저장된 사진 기록으로 같은 번호를 매긴다 (사건 목록 미리보기처럼 PhotoStore 없이 그릴 때)
     static func markers(for records: [EvidencePhoto], in plan: PlanData) -> [BookmarkPhotoMarker] {
         numbered(records
@@ -36,7 +36,7 @@ extension BookmarkPhotoMarker {
             .sorted { $0.takenAt < $1.takenAt }
             .compactMap { record in record.placement(in: plan).map { (record.id, $0) } })
     }
-
+    
     private static func numbered(_ items: [(UUID, PhotoPlacement)]) -> [BookmarkPhotoMarker] {
         items.enumerated().map { BookmarkPhotoMarker(id: $0.element.0, number: $0.offset + 1, placement: $0.element.1) }
     }
@@ -54,11 +54,11 @@ struct BookmarkPhotoMarkerLayer: View {
     var style: Style = .regular
     /// 핀을 누르면 그 사진 id를 알린다
     var onTap: (UUID) -> Void = { _ in }
-
+    
     enum Style {
         case regular, compact
     }
-
+    
     var body: some View {
         ZStack(alignment: .topLeading) {
             if showsDirection {
@@ -72,7 +72,7 @@ struct BookmarkPhotoMarkerLayer: View {
             }
         }
     }
-
+    
     private func markerButton(_ marker: BookmarkPhotoMarker) -> some View {
         Button {
             onTap(marker.id)
@@ -91,15 +91,15 @@ struct BookmarkPhotoMarkerLayer: View {
         .accessibilityLabel(Copy.markerLabel(marker.number))
         .accessibilityAddTraits(marker.id == selectedID ? .isSelected : [])
     }
-
+    
     private var markerSize: CGFloat {
         style == .compact ? Layout.compactMarkerSize : Layout.markerSize
     }
-
+    
     private func isDimmed(_ marker: BookmarkPhotoMarker) -> Bool {
         selectedID != nil && marker.id != selectedID
     }
-
+    
     /// 핀마다 바라본 쪽으로 화각만큼 벌어진 부채꼴. 도면 좌표로 점을 찍고 screen으로 옮겨 확대해도 길이가 도면과 맞는다
     private var directionCones: some View {
         Canvas { context, _ in
@@ -129,7 +129,7 @@ struct BookmarkPhotoMarkerLayer: View {
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
-
+    
     private enum Layout {
         static let markerSize: CGFloat = 40
         /// 사건 목록 미리보기의 작은 핀 지름
@@ -145,7 +145,7 @@ struct BookmarkPhotoMarkerLayer: View {
         /// 다른 핀을 골랐을 때 흐린 정도
         static let dimmedOpacity = 0.3
     }
-
+    
     private enum Copy {
         static func markerLabel(_ number: Int) -> String {
             "북마크 사진 \(number)번"
@@ -162,25 +162,34 @@ struct BookmarkPhotoPanel: View {
     let photo: LoadedPhoto
     /// 확대 버튼: 전체 화면 사진 보기
     let onExpand: () -> Void
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
-            Color.clear
-                .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
-                .overlay {
-                    Image(uiImage: photo.image)
-                        .resizable()
-                        .scaledToFill()
-                }
-                .clipShape(.rect(cornerRadius: Layout.cornerRadius))
-                .onTapGesture(perform: onExpand)
-                .accessibilityAddTraits(.isButton)
+            VStack(alignment: .leading, spacing: 8) {
+                Color.clear
+                    .aspectRatio(
+                        Layout.previewAspectRatio,
+                        contentMode: .fit
+                    )
+                    .overlay {
+                        Image(uiImage: photo.image)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                    .clipShape(
+                        .rect(cornerRadius: Layout.cornerRadius)
+                    )
+                    .onTapGesture(perform: onExpand)
+                    .accessibilityAddTraits(.isButton)
+                
+                PhotoTakenAtLabel(date: photo.takenAt)
+            }
             Spacer(minLength: 0)
         }
         .padding(Layout.padding)
     }
-
+    
     private var header: some View {
         HStack(spacing: Layout.headerSpacing) {
             Text(roomName ?? Copy.unplaced)
@@ -198,7 +207,7 @@ struct BookmarkPhotoPanel: View {
                 .buttonBorderShape(.circle)
         }
     }
-
+    
     private enum Layout {
         static let padding: CGFloat = 28
         static let sectionSpacing: CGFloat = 24
@@ -208,7 +217,7 @@ struct BookmarkPhotoPanel: View {
         static let cornerRadius: CGFloat = 8
         static let previewAspectRatio: CGFloat = 1.55
     }
-
+    
     private enum Copy {
         static let unplaced = "위치 미확인"
         static let expand = "전체 화면으로 보기"
