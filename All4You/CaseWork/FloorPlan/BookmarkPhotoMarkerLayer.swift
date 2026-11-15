@@ -137,7 +137,7 @@ struct BookmarkPhotoMarkerLayer: View {
         static let shadowOpacity = 0.25
         static let shadowRadius: CGFloat = 3
         /// 부채꼴 길이 (도면 m)
-        static let coneLength = 1.5
+        static let coneLength = 0.5
         /// 광각 사진도 부채꼴이 너무 벌어지지 않게
         static let maxConeAngle = 90.0
         static let coneOpacity = 0.45
