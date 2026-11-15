@@ -46,6 +46,8 @@ struct FloorPlanMethodSelectionView: View {
     @State private var scannedPhotos: [ScanPhoto] = []
     /// 스캔 원본(JSON). 변환한 도면과 함께 저장한다
     @State private var scannedOriginal: Data?
+    /// 스캔 도면을 저장하지 못했을 때의 알림 문구
+    @State private var scanSaveError: String?
     
     private enum ImportMethod {
         case camera, album, file
@@ -117,18 +119,23 @@ struct FloorPlanMethodSelectionView: View {
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
-                RoomPlanScanView(onUseResult: { _, structure, rooms, photos in
+                RoomPlanScanView(onUseResult: { _, structure, rooms, photos, plan in
                     scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
                     scannedPhotos = photos
-                    scannedPlan = PlanData(structure: structure, rooms: rooms)
+                    scannedPlan = plan
                 })
                     .navigationDestination(item: $scannedPlan) { plan in
                         ConversionLoadingView(planData: plan) {
-                            try? fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
-                            // 도면과 같은 시점에 저장해야 다음 화면(PhotoStore)이 사진을 함께 읽는다
-                            fireCase.addScanPhotos(scannedPhotos, plan: plan)
-                            scannedPhotos = []
+                            saveScannedPlan(plan)
                         }
+                    }
+                    .alert("도면 저장 실패", isPresented: Binding(
+                        get: { scanSaveError != nil },
+                        set: { if !$0 { scanSaveError = nil } }
+                    )) {
+                        Button("확인", role: .cancel) {}
+                    } message: {
+                        Text(scanSaveError ?? "")
                     }
             case .iPadDrawing:
                 drawingFlow
@@ -253,6 +260,30 @@ struct FloorPlanMethodSelectionView: View {
         }
     }
 
+    /// 스캔한 도면을 사건의 평면도로 저장한다. 쓸 수 없는 도면(벽이 없음)이거나 저장에 실패하면 저장하지 않고 변환 화면을 닫아 알린다.
+    /// 평면도는 "있으면 항상 내용이 있다"여야 하므로 빈 도면은 replaceFloorPlan을 부르지 않는다
+    private func saveScannedPlan(_ plan: PlanData) {
+        guard plan.isUsable else {
+            failScannedPlanSave(Copy.emptyScan)
+            return
+        }
+        do {
+            try fireCase.replaceFloorPlan(with: plan, sourceType: .roomPlan, roomPlanData: scannedOriginal)
+        } catch {
+            failScannedPlanSave(error.localizedDescription)
+            return
+        }
+        // 도면과 같은 시점에 저장해야 다음 화면(PhotoStore)이 사진을 함께 읽는다
+        fireCase.addScanPhotos(scannedPhotos, plan: plan)
+        scannedPhotos = []
+    }
+
+    /// 변환 화면(뒤로가기 없음)에 갇히지 않게 닫고 알림을 띄운다. 도면을 저장하지 않으므로 사진도 저장하지 않는다
+    private func failScannedPlanSave(_ message: String) {
+        scannedPlan = nil
+        scanSaveError = message
+    }
+
     /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
     /// 평면도가 생기면 사건 목록이 이 화면 대신 2D 수정 화면을 띄운다 (공간 스캔과 같은 길)
     /// sketch가 있으면(직접 그리기) 스케치 위에 놓은 스탬프를 도면에 옮기고, 옮기지 못한 개수를 사건에 남겨 2D 수정 화면이 알리게 한다
@@ -260,7 +291,7 @@ struct FloorPlanMethodSelectionView: View {
         do {
             let server = try ServerFloorPlan.decode(conversion.json)
             var plan = PlanData(server: server)
-            guard !plan.walls.isEmpty else { return Copy.noWalls }
+            guard plan.isUsable else { return Copy.noWalls }
             if let sketch {
                 let transform = SketchToPlan(imageOrigin: sketch.origin, pixelsPerPoint: sketch.pixelsPerPoint, metersPerPixel: server.metersPerPixel)
                 fireCase.unplacedStampCount = plan.addSketchStamps(sketchStamps, using: transform)
@@ -400,6 +431,8 @@ extension FloorPlanMethodSelectionView {
     private enum Copy {
         // TEMP: Figma에 변환 결과에 벽이 없을 때의 문구가 없어 임의로 작성
         static let noWalls = "도면에서 벽을 찾지 못했어요. 다시 그리거나 다른 도면으로 시도해 주세요."
+        // TEMP: Figma에 없는 화면이라 임의로 작성
+        static let emptyScan = "벽이 인식되지 않아 도면을 저장하지 못했어요. 벽을 비추며 다시 스캔해 주세요."
     }
 }
 
