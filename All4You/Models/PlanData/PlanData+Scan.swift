@@ -2,7 +2,7 @@
 //
 // 1) 바닥 높이  2) 벽 양 끝점  3) 가장 긴 벽이 가로가 되게 돌리고, 조금 비뚤어진 벽은 가로·세로로 바로잡기
 // 4) 스캔한 면은 방 안쪽 면이라 벽을 바깥으로 두께/2 밀고, 모서리는 이웃 벽 선과의 교점으로 잇기
-// 5) 도면 왼쪽 위에 여백을 두고 옮기기  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
+// 5) 도면 왼쪽 위에 여백을 두고 옮기기 (벽 끝과 가구 모서리가 모두 여백 안쪽에 오게)  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
 // 8) 방 나누기 (PlanData+ScanRooms)  9) 물체를 사각형 가구로
 //
 // 벽이 하나도 없는 스캔은 바닥 윤곽을 가상 경계선(isVirtual)으로 삼아 바닥마다 방 하나를 만든다 (겹치는 바닥은 가장 넓은 것만).
@@ -39,8 +39,17 @@ extension PlanData {
         // 4) 바깥으로 밀고 모서리 잇기. 바닥 윤곽은 벽이 아니라 밀지 않는다
         let lines = ScanImport.joinedCorners(usesFloorOutline ? rotated : ScanImport.pushedOutward(rotated), original: rotated)
 
-        // 5) 왼쪽 위 여백
-        let lowest = lines.flatMap { [$0.a, $0.b] }.reduce(SIMD2(Double.infinity, .infinity)) { simd_min($0, $1) }
+        // 5) 왼쪽 위 여백. 벽 끝뿐 아니라 가구 모서리도 넣는다 (스캔이 덜 닫혀 가구가 벽 밖에 있어도 도면 밖(음수 좌표)으로 나가지 않게)
+        let furnitureCorners = objects.flatMap { object in
+            let axis = rotation.apply(object.widthAxis)
+            let angle = ScanImport.squaredAngle(atan2(axis.y, axis.x))
+            let along = SIMD2(cos(angle), sin(angle)) * (max(ScanRule.minFurnitureSize, object.width) / 2)
+            let across = SIMD2(-sin(angle), cos(angle)) * (max(ScanRule.minFurnitureSize, object.depth) / 2)
+            let center = rotation.apply(SIMD2(object.center.x, object.center.z))
+            return [center + along + across, center + along - across, center - along + across, center - along - across]
+        }
+        let lowest = (lines.flatMap { [$0.a, $0.b] } + furnitureCorners)
+            .reduce(SIMD2(Double.infinity, .infinity)) { simd_min($0, $1) }
         let shift = SIMD2(repeating: ScanRule.margin) - lowest
         let shifted = lines.map { Segment(a: $0.a + shift, b: $0.b + shift) }
         func planPoint(_ world: SIMD3<Double>) -> SIMD2<Double> {
