@@ -62,13 +62,13 @@ struct FloorPlanTabView: View {
                 .overlay(alignment: .topLeading) {
                     HStack(spacing: 8) {
                         PhotoFilterMenu(filter: $photoFilter)
-
+                        
                         if isPhotoPositionEditMode {
                             HStack(spacing: 12) {
                                 Text("사진위치 수정 중")
                                     .font(AppTypography.subheadline)
                                     .foregroundStyle(.primary)
-
+                                
                                 Button("완료") {
                                     if bookmarkEdit != nil {
                                         cancelBookmarkEditing()
@@ -368,13 +368,15 @@ extension FloorPlanTabView {
     /// 일반 모드에서는 사진 패널을 선택/해제하고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
     private func selectBookmark(_ id: UUID) {
         if isPhotoPositionEditMode {
-            // 미저장 편집을 다른 마커 탭으로 덮어쓰지 않는다.
+            // 편집 중에는 같은 마커를 다시 눌러도 유지
             guard bookmarkEdit == nil else { return }
             beginBookmarkEditing(id)
         } else {
             withAnimation {
                 selectedRoomID = nil
-                selectedBookmarkID = selectedBookmarkID == id ? nil : id
+                
+                // 같은 마커를 다시 눌러도 선택 유지
+                selectedBookmarkID = id
             }
         }
     }
