@@ -476,14 +476,19 @@ extension FloorPlanTabView {
             selectedRoomID = room.id
         }
     }
-    /// 일반 모드에서는 사진 패널을 선택/해제하고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
+    /// 일반 모드에서는 사진 패널을 열고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
+    /// 같은 마커를 다시 누르면 현재 사진 미리보기와 편집 상태를 유지한다.
     private func selectBookmark(_ id: UUID) {
+        if isPhotoPositionEditMode {
+            guard bookmarkEdit?.id != id else { return }
+        } else {
+            guard selectedBookmarkID != id else { return }
+        }
+
         onClearMemoHighlight()
         focusedIgnitionMarkerID = nil
         focusedMemoID = nil
         if isPhotoPositionEditMode {
-            // 같은 마커를 다시 누르면 현재 편집 상태 유지
-            if bookmarkEdit?.id == id { return }
             // 다른 마커를 누르면 이전 임시 수정은 저장하지 않고 새 마커 편집 시작
             bookmarkEdit = nil
             beginBookmarkEditing(id)
@@ -491,7 +496,7 @@ extension FloorPlanTabView {
         }
         withAnimation {
             selectedRoomID = nil
-            selectedBookmarkID = selectedBookmarkID == id ? nil : id
+            selectedBookmarkID = id
         }
     }
     
