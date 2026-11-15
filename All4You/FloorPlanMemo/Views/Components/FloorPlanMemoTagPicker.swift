@@ -5,7 +5,7 @@
 //  Created by 채유성 on 11/13/26.
 //
 
-// 메모 작성과 상세 수정에서 북마크 사진 및 발화지점을 선택하는 공통 목록
+// 북마크 사진과 발화지점을 각각의 번호 체계로 보여주는 공통 태그 목록
 import SwiftUI
 
 struct FloorPlanMemoTagPicker: View {
@@ -19,98 +19,125 @@ struct FloorPlanMemoTagPicker: View {
     
     private let tileSize: CGFloat = 116
     
-    private var availableMarkers: [(offset: Int, element: PlanMarker)] {
-        Array(markers.enumerated()).filter { !taggedMarkerIDs.contains($0.element.id) }
+    private var availablePhotos: [(Int, LoadedPhoto)] {
+        photos.enumerated().compactMap { index, photo in
+            taggedPhotoIDs.contains(photo.id) ? nil : (index + 1, photo)
+        }
+    }
+    
+    private var availableMarkers: [(Int, PlanMarker)] {
+        markers.enumerated().compactMap { index, marker in
+            taggedMarkerIDs.contains(marker.id) ? nil : (index + 1, marker)
+        }
     }
     
     var body: some View {
-        Group {
-            if photos.isEmpty && availableMarkers.isEmpty {
-                Text(markers.isEmpty
+        VStack(alignment: .leading, spacing: 10) {
+            if availablePhotos.isEmpty && availableMarkers.isEmpty {
+                Text(photos.isEmpty && markers.isEmpty
                      ? "발화지점이나 북마크한 사진이 없어요"
                      : "모든 발화지점과 북마크한 사진을 태그했어요")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollViewReader { scrollProxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(availableMarkers.indices, id: \.self) { index in
-                                let entry = availableMarkers[index]
-                                Button {
-                                    onSelectMarker(entry.element, entry.offset + 1)
-                                } label: {
-                                    tile(number: entry.offset + 1) {
-                                        Image(systemName: "flame.fill")
-                                            .font(.system(size: 40))
-                                            .foregroundStyle(.orange)
-                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                            .background(Color(uiColor: .systemGray4))
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("발화지점 \(entry.offset + 1) 태그")
-                            }
-                            
-                            ForEach(photos.indices, id: \.self) { index in
-                                let photo = photos[index]
-                                let isTagged = taggedPhotoIDs.contains(photo.id)
-                                
-                                Button {
-                                    onSelectPhoto(photo, index + 1)
-                                } label: {
-                                    tile(number: index + 1) {
-                                        Image(uiImage: photo.thumbnail)
-                                            .resizable()
-                                            .scaledToFill()
-                                            .frame(width: tileSize, height: tileSize)
-                                            .clipped()
-                                            .overlay {
-                                                if photo.id == activePhotoID && !isTagged {
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .strokeBorder(Color.brand500, lineWidth: 3)
+                if !availablePhotos.isEmpty {
+                    groupTitle("북마크한 사진")
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(availablePhotos.indices, id: \.self) { index in
+                                    let (number, photo) = availablePhotos[index]
+                                    Button {
+                                        onSelectPhoto(photo, number)
+                                    } label: {
+                                        tile(label: "#\(number)") {
+                                            Image(uiImage: photo.thumbnail)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: tileSize, height: tileSize)
+                                                .clipped()
+                                                .overlay {
+                                                    if photo.id == activePhotoID {
+                                                        RoundedRectangle(cornerRadius: 8)
+                                                            .strokeBorder(Color.brand500, lineWidth: 3)
+                                                    }
                                                 }
-                                            }
+                                        }
                                     }
+                                    .buttonStyle(.plain)
+                                    .id(photo.id)
+                                    .accessibilityLabel("북마크 사진 \(number) 태그")
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(isTagged)
-                                .opacity(isTagged ? 0.45 : 1)
-                                .id(photo.id)
-                                .accessibilityLabel(isTagged
-                                                    ? "북마크 사진 \(index + 1), 이미 태그됨"
-                                                    : "북마크 사진 \(index + 1) 태그")
                             }
+                            .padding(.horizontal, 16)
                         }
-                        .padding(16)
-                    }
-                    .onAppear {
-                        if let activePhotoID { scrollProxy.scrollTo(activePhotoID, anchor: .center) }
-                    }
-                    .onChange(of: activePhotoID) { _, photoID in
-                        guard let photoID else { return }
-                        Task { @MainActor in
+                        .onAppear {
+                            if let activePhotoID { proxy.scrollTo(activePhotoID, anchor: .center) }
+                        }
+                        .onChange(of: activePhotoID) { _, id in
+                            guard let id else { return }
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                scrollProxy.scrollTo(photoID, anchor: .center)
+                                proxy.scrollTo(id, anchor: .center)
                             }
                         }
                     }
                 }
+                
+                if !availableMarkers.isEmpty {
+                    groupTitle("발화지점")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(availableMarkers.indices, id: \.self) { index in
+                                let (number, marker) = availableMarkers[index]
+                                Button {
+                                    onSelectMarker(marker, number)
+                                } label: {
+                                    tile(label: "#\(FloorPlanMemoIgnitionTags.label(at: number - 1))") {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: "flame.fill")
+                                                .font(.system(size: 38))
+                                                .foregroundStyle(Color.brand500)
+                                            Text(marker.kindLabel ?? "발화지점")
+                                                .font(.caption)
+                                                .lineLimit(1)
+                                                .padding(.horizontal, 8)
+                                                .padding(.vertical, 3)
+                                                .foregroundStyle(.white)
+                                                .background(Color.brand500, in: Capsule())
+                                        }
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .background(Color(uiColor: .systemGray4))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("발화지점 \(FloorPlanMemoIgnitionTags.label(at: number - 1)) 태그")
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
             }
         }
-        .frame(height: 184)
+        .padding(.vertical, 12)
+        .frame(height: 320)
         .background(Color(uiColor: .systemGray5), in: RoundedRectangle(cornerRadius: 16))
     }
     
-    private func tile<Content: View>(number: Int, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            content()
-                .frame(width: tileSize, height: tileSize)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            Text("#\(number)")
-                .font(AppTypography.headlineEmphasized)
-                .foregroundStyle(.primary)
-        }
-        .frame(width: tileSize)
+    private func groupTitle(_ title: String) -> some View {
+        Text(title)
+            .font(AppTypography.headlineEmphasized)
+            .padding(.horizontal, 16)
+    }
+    
+    private func tile<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(width: tileSize, height: tileSize)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .topLeading) {
+                Text(label)
+                    .font(.caption.bold())
+                    .padding(7)
+            }
+            .frame(width: tileSize)
     }
 }

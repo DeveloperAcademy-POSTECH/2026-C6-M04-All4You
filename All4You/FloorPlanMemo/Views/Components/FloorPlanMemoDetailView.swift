@@ -16,7 +16,7 @@ struct FloorPlanMemoDetailView: View {
     let memo: FloorPlanMemo
     let presentation: Presentation
     let bookmarkedPhotos: [LoadedPhoto]
-    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID]) -> Void = { _, _, _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     
     @State private var isEditing = false
     @State private var editedContent = ""
@@ -24,6 +24,7 @@ struct FloorPlanMemoDetailView: View {
     @State private var selectedPhotoIndex = 0
     @State private var photoNavigationRequest = 0
     @State private var taggedPhotoTokens: [UUID: String] = [:]
+    @State private var taggedMarkerTokens: [String: String] = [:]
     @State private var isTagPickerPresented = false
     @State private var confirmedPhotoTagInput: String?
     
@@ -52,9 +53,10 @@ struct FloorPlanMemoDetailView: View {
             guard isEditing else { return }
             let content = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
             let photoIDs = editedPhotoIDs(in: content)
-            guard content != memo.content || photoIDs != memo.taggedPhotos.map(\.id) else { return }
+            let markerIDs = editedMarkerIDs(in: content)
+            guard content != memo.content || photoIDs != memo.taggedPhotos.map(\.id) || markerIDs != memo.taggedMarkerIDs else { return }
             let id = memo.id
-            Task { @MainActor in onUpdateMemo(id, content, photoIDs) }
+            Task { @MainActor in onUpdateMemo(id, content, photoIDs, markerIDs) }
         }
     }
     
@@ -181,7 +183,7 @@ struct FloorPlanMemoDetailView: View {
                     FloorPlanMemoInputField(
                         text: Binding(get: { editedContent }, set: updateEditedContent),
                         isFocused: $isEditorFocused,
-                        taggedTokens: Set(taggedPhotoTokens.values),
+                        taggedTokens: Set(taggedPhotoTokens.values).union(taggedMarkerTokens.values),
                         onSubmit: submitEditing,
                         textColor: .label
                     )
@@ -199,11 +201,11 @@ struct FloorPlanMemoDetailView: View {
                     FloorPlanMemoTagPicker(
                         photos: numberedPhotos,
                         taggedPhotoIDs: Set(taggedPhotoTokens.keys),
-                        markers: [],
-                        taggedMarkerIDs: [],
+                        markers: memo.ignitionMarkers,
+                        taggedMarkerIDs: Set(taggedMarkerTokens.keys),
                         activePhotoID: pendingPhoto(in: editedContent)?.photo.id,
                         onSelectPhoto: { photo, number in tagPhoto(photo, number: number) },
-                        onSelectMarker: { _, _ in }
+                        onSelectMarker: { marker, number in tagMarker(marker, number: number) }
                     )
                     .id(editPickerID)
                     .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
@@ -243,6 +245,10 @@ struct FloorPlanMemoDetailView: View {
             tokens[photo.id] = (memo.content as NSString).substring(with: match.range)
         }
         taggedPhotoTokens = tokens
+        taggedMarkerTokens = [:]
+        for match in FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs) {
+            taggedMarkerTokens[match.markerID] = (memo.content as NSString).substring(with: match.range)
+        }
         isTagPickerPresented = false
         confirmedPhotoTagInput = nil
         isEditing = true
@@ -266,14 +272,21 @@ struct FloorPlanMemoDetailView: View {
         FloorPlanMemoPhotoTagReconciler.photoIDs(in: content, tokenByPhotoID: taggedPhotoTokens)
     }
     
+    private func editedMarkerIDs(in content: String) -> [String] {
+        FloorPlanMemoIgnitionTags.markerIDs(in: content, tokenByMarkerID: taggedMarkerTokens)
+    }
+    
     private func updateEditedContent(_ newValue: String) {
         if confirmedPhotoTagInput != newValue { confirmedPhotoTagInput = nil }
         editedContent = newValue
         taggedPhotoTokens = taggedPhotoTokens.filter { _, token in
             newValue.range(
-                of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])",
+                of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])",
                 options: .regularExpression
             ) != nil
+        }
+        taggedMarkerTokens = taggedMarkerTokens.filter { _, token in
+            newValue.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])", options: .regularExpression) != nil
         }
         
         // #1 뒤에 공백이나 글자가 이어지면 해당 사진을 태그로 확정
@@ -288,7 +301,15 @@ struct FloorPlanMemoDetailView: View {
             guard taggedPhotoTokens[photo.id] == nil else { continue }
             taggedPhotoTokens[photo.id] = token
         }
-        isTagPickerPresented = pendingTagNumber(in: newValue) != nil
+        let markerMatches = (try? NSRegularExpression(pattern: "#([a-z]+)(?=[^a-z0-9])"))?
+            .matches(in: newValue, range: range) ?? []
+        for match in markerMatches {
+            let token = source.substring(with: match.range)
+            guard let marker = FloorPlanMemoIgnitionTags.marker(at: String(token.dropFirst()), in: memo.ignitionMarkers),
+                  taggedMarkerTokens[marker.id] == nil else { continue }
+            taggedMarkerTokens[marker.id] = token
+        }
+        isTagPickerPresented = pendingTagNumber(in: newValue) != nil || pendingMarker(in: newValue) != nil
     }
     
     private func pendingTagNumber(in content: String) -> Int? {
@@ -304,10 +325,20 @@ struct FloorPlanMemoDetailView: View {
         return (number, numberedPhotos[number - 1])
     }
     
+    private func pendingMarker(in content: String) -> (number: Int, marker: PlanMarker)? {
+        guard let hashIndex = content.lastIndex(of: "#") else { return nil }
+        let suffix = String(content[content.index(after: hashIndex)...])
+        guard !suffix.isEmpty, suffix.allSatisfy({ ("a"..."z").contains(String($0)) }),
+              let marker = FloorPlanMemoIgnitionTags.marker(at: suffix, in: memo.ignitionMarkers),
+              let index = memo.ignitionMarkers.firstIndex(where: { $0.id == marker.id }) else { return nil }
+        return (index + 1, marker)
+    }
+    
     private func tagPhoto(_ photo: LoadedPhoto, number: Int) {
         guard taggedPhotoTokens[photo.id] == nil else { return }
         let token = "#\(number)"
-        if let hashIndex = editedContent.lastIndex(of: "#"), pendingTagNumber(in: editedContent) != nil {
+        if let hashIndex = editedContent.lastIndex(of: "#"),
+           pendingTagNumber(in: editedContent) != nil || pendingMarker(in: editedContent) != nil {
             editedContent = String(editedContent[..<hashIndex]) + token
         } else {
             if !editedContent.isEmpty && !editedContent.hasSuffix(" ") { editedContent += " " }
@@ -322,12 +353,33 @@ struct FloorPlanMemoDetailView: View {
         }
     }
     
+    private func tagMarker(_ marker: PlanMarker, number: Int) {
+        guard taggedMarkerTokens[marker.id] == nil else { return }
+        let token = "#\(FloorPlanMemoIgnitionTags.label(at: number - 1))"
+        if let hashIndex = editedContent.lastIndex(of: "#"),
+           pendingTagNumber(in: editedContent) != nil || pendingMarker(in: editedContent) != nil {
+            editedContent = String(editedContent[..<hashIndex]) + token
+        } else {
+            if !editedContent.isEmpty && !editedContent.hasSuffix(" ") { editedContent += " " }
+            editedContent += token
+        }
+        taggedMarkerTokens[marker.id] = token
+        isTagPickerPresented = false
+        confirmedPhotoTagInput = editedContent
+        Task { @MainActor in
+            guard isEditing else { return }
+            isEditorFocused = true
+        }
+    }
+    
     private func submitEditing(_ inputText: String) {
         if editedContent != inputText { updateEditedContent(inputText) }
         if confirmedPhotoTagInput == inputText {
             finishEditing()
         } else if let pending = pendingPhoto(in: inputText), taggedPhotoTokens[pending.photo.id] == nil {
             tagPhoto(pending.photo, number: pending.number)
+        } else if let pending = pendingMarker(in: inputText), taggedMarkerTokens[pending.marker.id] == nil {
+            tagMarker(pending.marker, number: pending.number)
         } else if pendingTagNumber(in: inputText) != nil {
             confirmedPhotoTagInput = inputText
             isTagPickerPresented = false
@@ -340,10 +392,11 @@ struct FloorPlanMemoDetailView: View {
         guard isEditing else { return }
         let content = editedContent.trimmingCharacters(in: .whitespacesAndNewlines)
         let photoIDs = editedPhotoIDs(in: content)
+        let markerIDs = editedMarkerIDs(in: content)
         isEditing = false
         isEditorFocused = false
         isTagPickerPresented = false
-        guard content != memo.content || photoIDs != memo.taggedPhotos.map(\.id) else { return }
-        onUpdateMemo(memo.id, content, photoIDs)
+        guard content != memo.content || photoIDs != memo.taggedPhotos.map(\.id) || markerIDs != memo.taggedMarkerIDs else { return }
+        onUpdateMemo(memo.id, content, photoIDs, markerIDs)
     }
 }

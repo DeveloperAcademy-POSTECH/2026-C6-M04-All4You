@@ -300,13 +300,20 @@ extension CaseMainView {
             to: content,
             taggedPhotoIDs: memo.taggedPhotoIDs
         )
+        memo.taggedMarkerIDs = FloorPlanMemoIgnitionTags.retainedMarkerIDs(
+            from: memo.content,
+            to: content,
+            markers: planData.markers.filter { $0.kind == .ignitionPoint },
+            taggedIDs: memo.taggedMarkerIDs
+        )
         memo.content = content
     }
     
     /// 메모 탭에서 수정한 본문과 사진 태그를 함께 저장
-    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID]) {
+    private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID], markerIDs: [String]) {
         guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
         memo.taggedPhotoIDs = photoIDs
+        memo.taggedMarkerIDs = markerIDs
         memo.content = content
     }
     
@@ -332,7 +339,9 @@ extension CaseMainView {
                 locationID: memo.targetKey,
                 locationName: planData.rooms.first { $0.id == memo.targetKey }?.name ?? memo.locationName,
                 anchor: FloorPlanMemoAnchor(x: memo.anchorX, y: memo.anchorY),
-                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] }
+                taggedPhotos: memo.taggedPhotoIDs.compactMap { photosByID[$0] },
+                taggedMarkerIDs: memo.taggedMarkerIDs,
+                ignitionMarkers: planData.markers.filter { $0.kind == .ignitionPoint }
             ))
         }
         

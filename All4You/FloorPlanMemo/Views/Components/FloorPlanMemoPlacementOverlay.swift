@@ -287,7 +287,7 @@ private extension FloorPlanMemoPlacementOverlay {
                 FloorPlanMemoInputField(
                     text: draftContent,
                     isFocused: $isTextFieldFocused,
-                    taggedTokens: Set(taggedPhotoTokens.values),
+                    taggedTokens: Set(taggedPhotoTokens.values).union(taggedMarkerTokens.values),
                     onSubmit: submitDraft
                 )
                 if draft.content.isEmpty {
@@ -351,7 +351,7 @@ private extension FloorPlanMemoPlacementOverlay {
                 confirmCompletedPhotoTags(in: &updated)
                 draft = updated
                 // 숫자를 입력하는 동안 후보 표시, 숫자 뒤에 공백·글자가 오면 사진 태그 확정
-                isTagPickerPresented = pendingTagNumber(in: newValue) != nil
+                isTagPickerPresented = pendingTagNumber(in: newValue) != nil || pendingMarker(in: newValue) != nil
             }
         )
     }
@@ -370,12 +370,22 @@ private extension FloorPlanMemoPlacementOverlay {
         return (number, photos[number - 1])
     }
     
+    func pendingMarker(in content: String) -> (number: Int, marker: PlanMarker)? {
+        guard let hashIndex = content.lastIndex(of: "#") else { return nil }
+        let suffix = String(content[content.index(after: hashIndex)...])
+        guard !suffix.isEmpty, suffix.allSatisfy({ ("a"..."z").contains(String($0)) }) else { return nil }
+        let markers = planData.markers.filter { $0.kind == .ignitionPoint }
+        guard let marker = FloorPlanMemoIgnitionTags.marker(at: suffix, in: markers),
+              let index = markers.firstIndex(where: { $0.id == marker.id }) else { return nil }
+        return (index + 1, marker)
+    }
+    
     func reconcileTags(in draft: inout FloorPlanMemoDraft) {
         taggedPhotoTokens = taggedPhotoTokens.filter { _, token in
-            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])", options: .regularExpression) != nil
         }
         taggedMarkerTokens = taggedMarkerTokens.filter { _, token in
-            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9])", options: .regularExpression) != nil
+            draft.content.range(of: NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])", options: .regularExpression) != nil
         }
         draft.taggedPhotoIDs.removeAll { taggedPhotoTokens[$0] == nil }
         draft.taggedMarkerIDs.removeAll { taggedMarkerTokens[$0] == nil }
@@ -397,6 +407,17 @@ private extension FloorPlanMemoPlacementOverlay {
             draft.taggedPhotoIDs.append(photo.id)
             taggedPhotoTokens[photo.id] = token
         }
+        
+        let markerMatches = (try? NSRegularExpression(pattern: "#([a-z]+)(?=[^a-z0-9])"))?
+            .matches(in: draft.content, range: NSRange(location: 0, length: source.length)) ?? []
+        let markers = planData.markers.filter { $0.kind == .ignitionPoint }
+        for match in markerMatches {
+            let token = source.substring(with: match.range)
+            guard let marker = FloorPlanMemoIgnitionTags.marker(at: String(token.dropFirst()), in: markers),
+                  !draft.taggedMarkerIDs.contains(marker.id) else { continue }
+            draft.taggedMarkerIDs.append(marker.id)
+            taggedMarkerTokens[marker.id] = token
+        }
     }
     
     var tagPicker: some View {
@@ -415,7 +436,7 @@ private extension FloorPlanMemoPlacementOverlay {
         guard var updated = draft, !updated.taggedPhotoIDs.contains(photo.id) else { return }
         let token = "#\(number)"
         if let hashIndex = updated.content.lastIndex(of: "#"),
-           pendingTagNumber(in: updated.content) != nil {
+           pendingTagNumber(in: updated.content) != nil || pendingMarker(in: updated.content) != nil {
             // 키보드에서 입력한 #번호 또는 #을 탭한 사진 번호로 확정
             updated.content = String(updated.content[..<hashIndex]) + token
         } else {
@@ -433,12 +454,19 @@ private extension FloorPlanMemoPlacementOverlay {
     func tagMarker(_ marker: PlanMarker, number: Int) {
         guard var updated = draft else { return }
         guard !updated.taggedMarkerIDs.contains(marker.id) else { return }
+        let token = "#\(FloorPlanMemoIgnitionTags.label(at: number - 1))"
+        if let hashIndex = updated.content.lastIndex(of: "#"),
+           pendingTagNumber(in: updated.content) != nil || pendingMarker(in: updated.content) != nil {
+            updated.content = String(updated.content[..<hashIndex]) + token
+        } else {
+            appendTag(token, to: &updated)
+        }
+        reconcileTags(in: &updated)
         updated.taggedMarkerIDs.append(marker.id)
-        let token = "#발화지점\(number)"
-        appendTag(token, to: &updated)
         taggedMarkerTokens[marker.id] = token
         draft = updated
         isTagPickerPresented = false
+        confirmedPhotoTagInput = updated.content
         Task { @MainActor in isTextFieldFocused = true }
     }
     
@@ -468,6 +496,12 @@ private extension FloorPlanMemoPlacementOverlay {
                 saveDraft()
             } else {
                 tagPhoto(pendingPhoto.photo, number: pendingPhoto.number)
+            }
+        } else if let pendingMarker = pendingMarker(in: inputText) {
+            if updated.taggedMarkerIDs.contains(pendingMarker.marker.id) {
+                saveDraft()
+            } else {
+                tagMarker(pendingMarker.marker, number: pendingMarker.number)
             }
         } else if pendingTagNumber(in: inputText) != nil {
             // #만 있거나 없는 번호라면 첫 Enter에서는 후보 목록만 닫음
@@ -574,7 +608,7 @@ private extension FloorPlanMemoPlacementOverlay {
         static let editorCornerRadius: CGFloat = 12
         static let editorBorderWidth: CGFloat = 1.5
         static let tagPickerWidth: CGFloat = 464
-        static let tagPickerHeight: CGFloat = 184
+        static let tagPickerHeight: CGFloat = 320
         static let tagPickerGap: CGFloat = 8
         static let edgePadding: CGFloat = 16
     }

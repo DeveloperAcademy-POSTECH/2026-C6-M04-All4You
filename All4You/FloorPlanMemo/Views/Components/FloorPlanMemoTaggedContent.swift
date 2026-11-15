@@ -31,11 +31,15 @@ struct FloorPlanMemoTaggedContent: View {
     
     private var linkedContent: AttributedString {
         let source = memo.content as NSString
-        let matches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
+        let photoMatches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
+        let markerMatches = FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs)
+        let matches: [(range: NSRange, photo: LoadedPhoto?, isMarker: Bool)] =
+        photoMatches.map { ($0.range, $0.photo, false) }
+        + markerMatches.map { ($0.range, nil, true) }
         var result = AttributedString()
         var cursor = 0
         
-        for match in matches {
+        for match in matches.sorted(by: { $0.range.location < $1.range.location }) {
             result += AttributedString(source.substring(with: NSRange(location: cursor, length: match.range.location - cursor)))
             let token = source.substring(with: match.range)
             
@@ -46,6 +50,11 @@ struct FloorPlanMemoTaggedContent: View {
                 linkedToken.underlineStyle = .single
                 linkedToken.link = url
                 result += linkedToken
+            } else if match.isMarker {
+                var styledToken = AttributedString(token)
+                styledToken.foregroundColor = Color.brand500
+                styledToken.underlineStyle = .single
+                result += styledToken
             } else {
                 result += AttributedString(token)
             }
