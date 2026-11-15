@@ -5,7 +5,7 @@
 // 5) 도면 왼쪽 위에 여백을 두고 옮기기  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
 // 8) 방 나누기 (PlanData+ScanRooms)  9) 물체를 사각형 가구로
 //
-// 벽이 하나도 없는 스캔은 가장 큰 바닥의 윤곽을 가상 경계선(isVirtual)으로 삼아 방 하나를 만든다.
+// 벽이 하나도 없는 스캔은 바닥 윤곽을 가상 경계선(isVirtual)으로 삼아 바닥마다 방 하나를 만든다 (겹치는 바닥은 가장 넓은 것만).
 // 이때 4)의 바깥으로 밀기와 7)의 문·창문 붙이기는 하지 않는다 (밀 벽도, 붙일 벽도 없음)
 
 import Foundation
@@ -196,15 +196,23 @@ private enum ScanImport {
         return ScanRotation(angle: -(axis + quarter * .pi / 2))
     }
 
-    /// 벽이 없는 스캔에서 쓸 바닥 윤곽의 변들. 바닥이 여럿이면 가장 넓은 하나만 쓴다
-    /// (여러 바닥의 변은 서로 겹치거나 가로질러 방 찾기가 깨진다). 너무 짧은 변은 버린다
+    /// 벽이 없는 스캔에서 쓸 바닥 윤곽의 변들. 바닥마다 방 하나가 된다.
+    /// 서로 겹치는 바닥은 가장 넓은 것만 쓴다 (겹치거나 가로지르는 변은 방 찾기가 깨진다). 방이 될 수 없이 좁은 바닥과 너무 짧은 변은 버린다
     static func floorOutline(of surfaces: [ScanSurface]) -> [Segment] {
-        let floors = surfaces.filter { $0.kind == .floor && $0.corners.count >= 3 }
-        guard let largest = floors.max(by: { area(of: $0.corners) < area(of: $1.corners) }) else { return [] }
-        let corners = largest.corners
-        return corners.indices
-            .map { Segment(a: corners[$0], b: corners[($0 + 1) % corners.count]) }
-            .filter { $0.length >= ScanRule.minWallLength }
+        let floors = surfaces
+            .filter { $0.kind == .floor && $0.corners.count >= 3 }
+            .map { $0.corners }
+            .filter { area(of: $0) >= ScanRule.minFloorArea }
+            .sorted { area(of: $0) > area(of: $1) }
+        var accepted: [[SIMD2<Double>]] = []
+        for corners in floors where !accepted.contains(where: { overlaps($0, corners) }) {
+            accepted.append(corners)
+        }
+        return accepted.flatMap { corners in
+            corners.indices
+                .map { Segment(a: corners[$0], b: corners[($0 + 1) % corners.count]) }
+                .filter { $0.length >= ScanRule.minWallLength }
+        }
     }
 
     /// 다각형 넓이 (신발끈 공식)
@@ -216,6 +224,46 @@ private enum ScanImport {
             sum += current.x * next.y - next.x * current.y
         }
         return abs(sum) / 2
+    }
+
+    /// 두 다각형이 겹치면 true. 변을 같이 쓰며 맞닿기만 한 것은 겹침이 아니다
+    private static func overlaps(_ first: [SIMD2<Double>], _ second: [SIMD2<Double>]) -> Bool {
+        // 서로의 안에 든 꼭짓점 (변 위에 놓인 꼭짓점이 안쪽으로 잘못 세이지 않게 자기 가운데 쪽으로 조금 옮겨 본다)
+        for (polygon, other) in [(first, second), (second, first)] {
+            let center = polygon.reduce(.zero, +) / Double(polygon.count)
+            if contains(other, center) { return true }
+            for corner in polygon where contains(other, corner + (center - corner) * 0.02) { return true }
+        }
+        // 변이 서로 가로지름
+        for i in first.indices {
+            for j in second.indices where crosses(first[i], first[(i + 1) % first.count], second[j], second[(j + 1) % second.count]) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// 점이 다각형 안에 있으면 true (반직선이 변을 홀수 번 만남)
+    private static func contains(_ polygon: [SIMD2<Double>], _ point: SIMD2<Double>) -> Bool {
+        var inside = false
+        for i in polygon.indices {
+            let a = polygon[i]
+            let b = polygon[(i + 1) % polygon.count]
+            if (a.y > point.y) != (b.y > point.y), point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x {
+                inside.toggle()
+            }
+        }
+        return inside
+    }
+
+    /// 두 선분이 서로의 안쪽에서 엇갈리면 true (끝이 닿기만 한 것은 아님)
+    private static func crosses(_ a: SIMD2<Double>, _ b: SIMD2<Double>, _ c: SIMD2<Double>, _ d: SIMD2<Double>) -> Bool {
+        func side(_ p: SIMD2<Double>, _ q: SIMD2<Double>, _ r: SIMD2<Double>) -> Double {
+            (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+        }
+        let eps = 1e-9
+        let d1 = side(a, b, c), d2 = side(a, b, d), d3 = side(c, d, a), d4 = side(c, d, b)
+        return ((d1 > eps && d2 < -eps) || (d1 < -eps && d2 > eps)) && ((d3 > eps && d4 < -eps) || (d3 < -eps && d4 > eps))
     }
 
     /// 가로·세로에서 조금 비뚤어진 벽은 가운데를 축으로 돌려 가로·세로로 맞춘다
@@ -359,6 +407,8 @@ private enum ScanRule {
     static let wallThickness = 0.15
     /// 이보다 짧은 벽은 버린다
     static let minWallLength = 0.1
+    /// 벽이 없는 스캔에서 이보다 좁은 바닥은 방으로 보지 않는다 (방 나누기의 최소 방 넓이와 같게, ㎡)
+    static let minFloorArea = 0.5
     static let minWallHeight = 0.5
     static let minOpeningHeight = 0.1
     /// 도면 왼쪽 위 여백
