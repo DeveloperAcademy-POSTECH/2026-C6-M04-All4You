@@ -36,6 +36,14 @@ struct FloorPlanTabView: View {
     @State private var hoveredRoomID: String?
     /// 누른 북마크 번호 핀의 사진 (LoadedPhoto.id). 나머지 도면·핀은 흐려지고 오른쪽에 그 사진이 열린다
     @State private var selectedBookmarkID: UUID?
+    /// 편집 중에는 저장하지 않고 체크를 누를 때만 실제 위치·방향을 변경한다
+    @State private var bookmarkEdit: BookmarkEditDraft?
+    
+    private struct BookmarkEditDraft {
+        let id: UUID
+        var position: SIMD2<Double>
+        var yaw: Double?
+    }
     /// 3D 화면을 만들어 뒀는지. 도면 수정 화면과 같이 2D·3D를 계속 띄워 두고 겹쳐서 바꾸는데, 처음부터 만들면 느려서 잠시 뒤에 만들고 3D를 먼저 누르면 바로 만든다
     @State private var isThreeDReady = false
     
@@ -151,6 +159,14 @@ extension FloorPlanTabView {
                                 screen: screen,
                                 showsDirection: photoFilter.showsDirection,
                                 selectedID: selectedBookmark?.photo.id,
+                                editingID: bookmarkEdit?.id,
+                                editingPosition: bookmarkEdit?.position,
+                                editingYaw: bookmarkEdit?.yaw,
+                                onBeginEditing: beginBookmarkEditing,
+                                onMoveEditing: { bookmarkEdit?.position = $0 },
+                                onRotateEditing: { bookmarkEdit?.yaw = $0 },
+                                onCancelEditing: { bookmarkEdit = nil },
+                                onSaveEditing: saveBookmarkEditing,
                                 onTap: selectBookmark
                             )
                         }
@@ -224,7 +240,10 @@ extension FloorPlanTabView {
                 isThreeDReady = true
             }
             .onChange(of: dimension) {
-                if dimension == .threeD { isThreeDReady = true }
+                if dimension == .threeD {
+                    isThreeDReady = true
+                    bookmarkEdit = nil
+                }
             }
         } else {
             Text(Copy.placeholder)
@@ -277,6 +296,8 @@ extension FloorPlanTabView {
     
     /// 도면 영역을 터치하면 선택 상태와 사진 패널을 해제
     private func clearRoomSelection() {
+        // 편집 중 바깥 영역을 눌러도 임시 좌표를 저장하거나 버리지 않는다
+        guard bookmarkEdit == nil else { return }
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = nil
@@ -297,6 +318,30 @@ extension FloorPlanTabView {
             selectedRoomID = nil
             selectedBookmarkID = selectedBookmarkID == id ? nil : id
         }
+    }
+    
+    /// 기존 북마크 마커에서 편집 시작. AR로 계산한 위치도 여기서 수동 위치로 덮어쓸 수 있다
+    private func beginBookmarkEditing(_ id: UUID) {
+        guard dimension == .twoD, let planData,
+              let marker = bookmarkMarkers(in: planData).first(where: { $0.id == id }) else { return }
+        selectedRoomID = nil
+        selectedBookmarkID = id
+        bookmarkEdit = BookmarkEditDraft(
+            id: id,
+            position: marker.placement.position,
+            yaw: marker.placement.yaw
+        )
+    }
+    
+    /// 체크할 때만 저장. X는 상태를 버리므로 기존 위치·방향은 그대로 남는다
+    private func saveBookmarkEditing() {
+        guard let bookmarkEdit, let planData else { return }
+        photoStore.setManualPlacement(
+            id: bookmarkEdit.id,
+            ManualPlacement(position: bookmarkEdit.position, yaw: bookmarkEdit.yaw),
+            in: planData
+        )
+        self.bookmarkEdit = nil
     }
     
     /// 고른 북마크 핀과 그 사진. 필터를 바꾸거나 북마크를 풀어 핀이 사라지면 고르지 않은 것으로 본다
@@ -629,34 +674,6 @@ struct PhotoPinView: View {
     }
 }
 
-// 공통 날짜, 시간 컴포넌트 추가
-struct PhotoTakenAtLabel: View {
-    let date: Date
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            Text(Self.dateFormatter.string(from: date))
-            Text(Self.timeFormatter.string(from: date))
-        }
-        .font(AppTypography.subheadline)
-        .foregroundStyle(.secondary)
-    }
-    
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "yyyy. M. d."
-        return formatter
-    }()
-    
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "a h:mm"
-        return formatter
-    }()
-}
-
 /// 3D 도면 위 메모 핀. 2D 메모 핀(FloorPlanMemoPlacementOverlay)과 같은 말풍선에 메모 번호
 private struct MemoPin3DView: View {
     let number: Int
@@ -691,23 +708,14 @@ private struct RoomPhotoPanel: View {
             ScrollView {
                 VStack(spacing: Layout.sectionSpacing) {
                     if let selectedPhoto {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Color.clear
-                                .aspectRatio(
-                                    Layout.previewAspectRatio,
-                                    contentMode: .fit
-                                )
-                                .overlay {
-                                    Image(uiImage: selectedPhoto.image)
-                                        .resizable()
-                                        .scaledToFill()
-                                }
-                                .clipShape(
-                                    .rect(cornerRadius: Layout.cornerRadius)
-                                )
-                            
-                            PhotoTakenAtLabel(date: selectedPhoto.takenAt)
-                        }
+                        Color.clear
+                            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
+                            .overlay {
+                                Image(uiImage: selectedPhoto.image)
+                                    .resizable()
+                                    .scaledToFill()
+                            }
+                            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
                     }
                     LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                         ForEach(photos) { photo in

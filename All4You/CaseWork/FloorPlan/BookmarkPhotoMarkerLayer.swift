@@ -50,6 +50,15 @@ struct BookmarkPhotoMarkerLayer: View {
     let showsDirection: Bool
     /// 고른 핀. 고른 핀만 진하게, 나머지는 흐리게 그린다
     var selectedID: UUID? = nil
+    /// 위치 편집 중인 사진과 아직 저장하지 않은 좌표·방향
+    var editingID: UUID? = nil
+    var editingPosition: SIMD2<Double>? = nil
+    var editingYaw: Double? = nil
+    var onBeginEditing: (UUID) -> Void = { _ in }
+    var onMoveEditing: (SIMD2<Double>) -> Void = { _ in }
+    var onRotateEditing: (Double) -> Void = { _ in }
+    var onCancelEditing: () -> Void = {}
+    var onSaveEditing: () -> Void = {}
     /// 도면 탭은 큰 "#1" 핀, 사건 목록 미리보기는 작은 "1" 핀 (누를 수 없음)
     var style: Style = .regular
     /// 핀을 누르면 그 사진 id를 알린다
@@ -65,12 +74,102 @@ struct BookmarkPhotoMarkerLayer: View {
                 directionCones
             }
             ForEach(markers) { marker in
-                markerButton(marker)
-                    .opacity(isDimmed(marker) ? Layout.dimmedOpacity : 1)
-                    .position(screen.point(marker.placement.position))
-                    .transition(.scale.combined(with: .opacity))
+                if marker.id != editingID {
+                    markerButton(marker)
+                        .opacity(isDimmed(marker) ? Layout.dimmedOpacity : 1)
+                        .position(screen.point(marker.placement.position))
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            if let editingID,
+               let editingPosition,
+               let marker = markers.first(where: { $0.id == editingID }),
+               style == .regular {
+                editingControls(number: marker.number, position: editingPosition)
+                    .position(screen.point(editingPosition))
             }
         }
+        .coordinateSpace(name: "bookmarkPhotoMap")
+    }
+    
+    /// 저장 전 미리보기에서도 촬영 방향 부채꼴이 움직이도록 표시 좌표만 대체한다
+    private var displayMarkers: [BookmarkPhotoMarker] {
+        markers.map { marker in
+            guard marker.id == editingID, let editingPosition else { return marker }
+            let old = marker.placement
+            return BookmarkPhotoMarker(
+                id: marker.id,
+                number: marker.number,
+                placement: PhotoPlacement(
+                    position: editingPosition,
+                    yaw: editingYaw,
+                    pitch: old.pitch,
+                    height: old.height,
+                    fieldOfView: old.fieldOfView
+                )
+            )
+        }
+    }
+    
+    /// 기존 가구 편집과 같이 주황 테두리 + 취소·회전·저장 손잡이
+    private func editingControls(number: Int, position: SIMD2<Double>) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.brand500, lineWidth: 2)
+                .frame(width: 80, height: 80)
+                .allowsHitTesting(false)
+            
+            Text("#\(number)")
+                .font(AppTypography.headlineEmphasized)
+                .foregroundStyle(.white)
+                .frame(width: Layout.markerSize, height: Layout.markerSize)
+                .background(.brand500, in: .circle)
+                .contentShape(.circle)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .named("bookmarkPhotoMap"))
+                        .onChanged { value in
+                            onMoveEditing(screen.plan(value.location))
+                        }
+                )
+                .accessibilityLabel("사진 위치 이동")
+            
+            editHandle("xmark", title: "위치 수정 취소", action: onCancelEditing)
+                .offset(x: -43, y: -43)
+            editHandle("checkmark", title: "위치 및 방향 저장", action: onSaveEditing)
+                .offset(x: 43, y: 43)
+            
+            Image(systemName: "arrow.clockwise")
+                .font(AppTypography.title3)
+                .foregroundStyle(.brand500)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular, in: .circle)
+                .contentShape(.circle)
+                .offset(x: 43, y: -43)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 0, coordinateSpace: .named("bookmarkPhotoMap"))
+                        .onChanged { value in
+                            let center = screen.point(position)
+                            let dx = Double(value.location.x - center.x)
+                            let dy = Double(value.location.y - center.y)
+                            onRotateEditing(atan2(dx, -dy) * 180 / .pi)
+                        }
+                )
+                .accessibilityLabel("촬영 방향 회전")
+        }
+        .frame(width: 132, height: 132)
+    }
+    
+    private func editHandle(_ symbol: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(AppTypography.title3)
+                .foregroundStyle(.brand500)
+                .frame(width: 44, height: 44)
+                .contentShape(.circle)
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular, in: .circle)
+        .accessibilityLabel(title)
     }
     
     private func markerButton(_ marker: BookmarkPhotoMarker) -> some View {
@@ -87,6 +186,13 @@ struct BookmarkPhotoMarkerLayer: View {
                 .contentShape(.circle)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if style == .regular {
+                Button("위치 및 촬영 방향 수정", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    onBeginEditing(marker.id)
+                }
+            }
+        }
         .allowsHitTesting(style == .regular)
         .accessibilityLabel(Copy.markerLabel(marker.number))
         .accessibilityAddTraits(marker.id == selectedID ? .isSelected : [])
@@ -103,7 +209,7 @@ struct BookmarkPhotoMarkerLayer: View {
     /// 핀마다 바라본 쪽으로 화각만큼 벌어진 부채꼴. 도면 좌표로 점을 찍고 screen으로 옮겨 확대해도 길이가 도면과 맞는다
     private var directionCones: some View {
         Canvas { context, _ in
-            for marker in markers {
+            for marker in displayMarkers {
                 guard let yaw = marker.placement.yaw else { continue }
                 let center = marker.placement.position
                 let half = min(marker.placement.fieldOfView ?? PhotoPlacement.defaultFieldOfView, Layout.maxConeAngle) / 2
@@ -166,25 +272,16 @@ struct BookmarkPhotoPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
             header
-            VStack(alignment: .leading, spacing: 8) {
-                Color.clear
-                    .aspectRatio(
-                        Layout.previewAspectRatio,
-                        contentMode: .fit
-                    )
-                    .overlay {
-                        Image(uiImage: photo.image)
-                            .resizable()
-                            .scaledToFill()
-                    }
-                    .clipShape(
-                        .rect(cornerRadius: Layout.cornerRadius)
-                    )
-                    .onTapGesture(perform: onExpand)
-                    .accessibilityAddTraits(.isButton)
-                
-                PhotoTakenAtLabel(date: photo.takenAt)
-            }
+            Color.clear
+                .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
+                .overlay {
+                    Image(uiImage: photo.image)
+                        .resizable()
+                        .scaledToFill()
+                }
+                .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                .onTapGesture(perform: onExpand)
+                .accessibilityAddTraits(.isButton)
             Spacer(minLength: 0)
         }
         .padding(Layout.padding)
