@@ -18,6 +18,10 @@ final class EvidencePhoto {
     @Attribute(.externalStorage) var imageData: Data
     /// 목록·도면 핀에 쓰는 작은 이미지(JPEG). 원본을 목록마다 읽으면 느려서 따로 둔다
     @Attribute(.externalStorage) var thumbnailData: Data
+    /// 마크업하기 전 원본 사진. 기존 사진에서는 nil일 수 있다.
+    @Attribute(.externalStorage) var originalImageData: Data?
+    /// 편집 가능한 PencilKit 획 데이터.
+    @Attribute(.externalStorage) var markupDrawingData: Data?
     /// 이 사진이 속한 사건. 반대쪽은 `FireCase.photos`
     var fireCase: FireCase?
     /// 찍은 조사 차수. 없을 수 있다. 반대쪽은 `InvestigationSession.photos`

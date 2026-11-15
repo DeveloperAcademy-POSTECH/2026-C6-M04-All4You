@@ -264,8 +264,6 @@ extension FloorPlanTabView {
     private var dimensionPicker: some View {
         DimensionPicker(selection: $dimension)
             .padding()
-        // 사진을 끌어다 놓을 수 있는 건 2D 도면뿐이라, 패널을 펼친 동안은 3D로 바꿀 수 없게 한다
-            .disabled(isPlacingPhotos)
     }
 }
 
@@ -277,11 +275,12 @@ extension FloorPlanTabView {
         return planData?.rooms.first { $0.id == selectedRoomID }
     }
     
-    /// 장소·북마크 선택을 풀어 오른쪽 패널을 닫는다
+    /// 도면 영역을 터치하면 선택 상태와 사진 패널을 해제
     private func clearRoomSelection() {
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = nil
+            isPlacingPhotos = false
         }
     }
     
@@ -630,6 +629,34 @@ struct PhotoPinView: View {
     }
 }
 
+// 공통 날짜, 시간 컴포넌트 추가
+struct PhotoTakenAtLabel: View {
+    let date: Date
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(Self.dateFormatter.string(from: date))
+            Text(Self.timeFormatter.string(from: date))
+        }
+        .font(AppTypography.subheadline)
+        .foregroundStyle(.secondary)
+    }
+    
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy. M. d."
+        return formatter
+    }()
+    
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "a h:mm"
+        return formatter
+    }()
+}
+
 /// 3D 도면 위 메모 핀. 2D 메모 핀(FloorPlanMemoPlacementOverlay)과 같은 말풍선에 메모 번호
 private struct MemoPin3DView: View {
     let number: Int
@@ -664,14 +691,23 @@ private struct RoomPhotoPanel: View {
             ScrollView {
                 VStack(spacing: Layout.sectionSpacing) {
                     if let selectedPhoto {
-                        Color.clear
-                            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
-                            .overlay {
-                                Image(uiImage: selectedPhoto.image)
-                                    .resizable()
-                                    .scaledToFill()
-                            }
-                            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                        VStack(alignment: .leading, spacing: 8) {
+                            Color.clear
+                                .aspectRatio(
+                                    Layout.previewAspectRatio,
+                                    contentMode: .fit
+                                )
+                                .overlay {
+                                    Image(uiImage: selectedPhoto.image)
+                                        .resizable()
+                                        .scaledToFill()
+                                }
+                                .clipShape(
+                                    .rect(cornerRadius: Layout.cornerRadius)
+                                )
+                            
+                            PhotoTakenAtLabel(date: selectedPhoto.takenAt)
+                        }
                     }
                     LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                         ForEach(photos) { photo in

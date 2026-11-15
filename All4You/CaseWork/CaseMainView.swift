@@ -181,22 +181,13 @@ extension CaseMainView {
     /// 앨범 전체 보기에는 오른쪽 작업 버튼을 숨기고, 장소별 보기에는 뒤로가기만 표시
     @ViewBuilder
     private var albumTab: some View {
-        let album = CaseAlbumView(
+        CaseAlbumView(
             photoStore: photoStore,
             rooms: planData.rooms,
             selection: $selection,
             onPlaceUnassigned: showPhotoPlacement
         )
-        if case .album = selection {
-            album
-                .navigationBarTitleDisplayMode(.inline)
-                .backOnlyToolbar {
-                    selection = .albumOverview
-                }
-        } else {
-            album
-                .navigationBarTitleDisplayMode(.inline)
-        }
+        .navigationBarTitleDisplayMode(.inline)
     }
     
     // 사이드바 앨범 구역의 줄: 위치 미지정, 그다음 도면의 장소 순서. 숫자는 그 장소의 사진 수
@@ -373,7 +364,7 @@ extension CaseMainView {
             )
     }
     
-    /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
+    /// 사건 화면 상단의 뒤로가기·사건명·조사 차수
     private var titleHeader: some View {
         CaseTitleHeader(
             title: fireCase.title,
@@ -383,7 +374,17 @@ extension CaseMainView {
                 sessionNumber = number
             },
             onAddSession: addSession,
-            onBack: onBack,
+            onBack: {
+                if case .album = selection {
+                    // 장소별 앨범에서는 앨범 전체 화면으로 복귀
+                    withAnimation {
+                        selection = .albumOverview
+                    }
+                } else {
+                    // 나머지 화면에서는 기존처럼 사건 목록으로 복귀
+                    onBack()
+                }
+            },
             onRename: { fireCase.caseName = $0 }
         )
     }

@@ -17,9 +17,9 @@ struct CaseAlbumView: View {
     @Binding var selection: CaseTabSelection
     /// 전체 보기의 "위치 미지정 >"를 누르면 도면 탭에서 위치 미확인 사진 패널을 연다
     let onPlaceUnassigned: () -> Void
-
+    
     @State private var viewerContext: PhotoViewerContext?
-
+    
     var body: some View {
         content
             .overlay(alignment: .bottom) {
@@ -32,7 +32,7 @@ struct CaseAlbumView: View {
                 }
             }
     }
-
+    
     @ViewBuilder
     private var content: some View {
         if case .album(let name) = selection {
@@ -75,7 +75,7 @@ extension CaseAlbumView {
             .padding(.bottom, Layout.pickerClearance)
         }
     }
-
+    
     /// "안방 >" 제목과 그 장소 사진의 가로 줄. 사진이 없으면 빈 칸 하나를 둔다. onOpen이 nil이면 제목을 누를 수 없다
     private func overviewSection(title: String, photos: [LoadedPhoto], badge: Int?, onOpen: (() -> Void)?) -> some View {
         VStack(alignment: .leading, spacing: Layout.headerSpacing) {
@@ -98,7 +98,7 @@ extension CaseAlbumView {
             .buttonStyle(.plain)
             .disabled(onOpen == nil)
             .padding(.horizontal, Layout.horizontalPadding)
-
+            
             if photos.isEmpty {
                 EmptyAlbumTile()
                     .frame(width: Layout.rowTileSize, height: Layout.rowTileSize)
@@ -133,7 +133,7 @@ extension CaseAlbumView {
         .padding(Layout.pickerPadding)
         .glassEffect(in: .capsule)
     }
-
+    
     private func pickerItem(_ title: String, value: CaseTabSelection) -> some View {
         let isSelected = selection == value
         return Button {
@@ -163,18 +163,18 @@ extension CaseAlbumView {
 extension CaseAlbumView {
     /// 사이드바·앨범에서 위치 미지정 줄의 이름
     static let unassignedName = "위치 미지정"
-
+    
     /// 장소 이름을 Room.id로 바꾼다. 위치 미지정이거나 없는 장소면 nil
     // TODO: CaseTabSelection이 이름 대신 Room.id를 들게 되면 없앤다
     private func roomKey(of name: String) -> String? {
         rooms.first { $0.name == name }?.id
     }
-
+    
     /// 장소 사진을 최근에 찍은 것부터
     private func sortedPhotos(inRoom roomKey: String?) -> [LoadedPhoto] {
         photoStore.photos(inRoom: roomKey).sorted { $0.takenAt > $1.takenAt }
     }
-
+    
     private func openViewer(photos: [LoadedPhoto], initialID: UUID) {
         viewerContext = PhotoViewerContext(photoIDs: photos.map(\.id), initialID: initialID)
     }
@@ -211,24 +211,39 @@ private struct RoomAlbumView: View {
     let title: String
     let photos: [LoadedPhoto]
     let onOpenPhoto: (_ photos: [LoadedPhoto], _ initialID: UUID) -> Void
-
+    
     @State private var isBookmarkOnly = false
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Layout.titleSpacing) {
                 header
-                LazyVGrid(columns: Layout.columns, alignment: .leading, spacing: Layout.tileSpacing, pinnedViews: .sectionHeaders) {
-                    ForEach(PhotoDateSection<LoadedPhoto>.group(photos, by: .month, date: \.takenAt)) { section in
-                        Section {
-                            ForEach(section.items) { photo in
-                                tile(photo)
+                LazyVGrid(
+                    columns: Layout.columns,
+                    alignment: .leading,
+                    spacing: Layout.tileSpacing,
+                    pinnedViews: .sectionHeaders
+                ) {
+                    if isBookmarkOnly {
+                        // 북마크 사진을 앞에 모으고, 나머지는 뒤에서 흐리게 표시
+                        ForEach(orderedPhotos) { photo in
+                            tile(photo, bookmarkFilterEnabled: true)
+                        }
+                    } else {
+                        // 필터를 끄면 기존 월별 섹션과 촬영 순서로 복귀
+                        ForEach(PhotoDateSection<LoadedPhoto>.group(photos, by: .month, date: \.takenAt)) { section in
+                            Section {
+                                ForEach(section.items) { photo in
+                                    tile(photo, bookmarkFilterEnabled: false)
+                                }
+                            } header: {
+                                monthLabel(section.startDate)
                             }
-                        } header: {
-                            monthLabel(section.startDate)
                         }
                     }
                 }
+                .id(isBookmarkOnly)
+                
             }
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.bottom, Layout.pickerClearance)
@@ -239,12 +254,19 @@ private struct RoomAlbumView: View {
             }
         }
     }
-
-    /// 북마크만 보기를 켜면 북마크하지 않은 사진은 흐려지고 누를 수 없다
+    
+    /// 북마크를 먼저 배치하되, 각 그룹 안의 기존 촬영 순서는 유지
+    private var orderedPhotos: [LoadedPhoto] {
+        let bookmarked = photos.filter { $0.isBookmarked }
+        let others = photos.filter { !$0.isBookmarked }
+        return bookmarked + others
+    }
+    
+    /// 필터 중 전체 화면 보기에서는 북마크 사진만 넘길 수 있다
     private var visiblePhotos: [LoadedPhoto] {
         isBookmarkOnly ? photos.filter(\.isBookmarked) : photos
     }
-
+    
     private var header: some View {
         HStack {
             Text(title)
@@ -271,7 +293,7 @@ private struct RoomAlbumView: View {
         }
         .padding(.top, Layout.titleTopPadding)
     }
-
+    
     /// "2026년 10월" 회색 캡슐. 위에 고정돼도 사진 위에서 읽히도록 바탕을 깐다
     private func monthLabel(_ month: Date) -> some View {
         Text(month, format: .dateTime.year().month())
@@ -281,9 +303,10 @@ private struct RoomAlbumView: View {
             .background(.gray100, in: .capsule)
             .padding(.vertical, Layout.monthVerticalPadding)
     }
-
-    private func tile(_ photo: LoadedPhoto) -> some View {
-        let isDimmed = isBookmarkOnly && !photo.isBookmarked
+    
+    private func tile(_ photo: LoadedPhoto, bookmarkFilterEnabled: Bool) -> some View {
+        let isDimmed = bookmarkFilterEnabled && !photo.isBookmarked
+        
         return AlbumPhotoTile(photo: photo) {
             onOpenPhoto(visiblePhotos, photo.id)
         }
@@ -337,14 +360,14 @@ private struct EmptyAlbumTile: View {
             }
             .accessibilityElement(children: .combine)
     }
-
+    
     private enum Layout {
         static let cornerRadius: CGFloat = 16
         static let borderWidth: CGFloat = 2
         static let dash: [CGFloat] = [8, 6]
         static let spacing: CGFloat = 8
     }
-
+    
     private enum Copy {
         static let empty = "사진 없음"
     }
@@ -354,7 +377,7 @@ private struct EmptyAlbumTile: View {
 private struct AlbumPhotoTile: View {
     let photo: LoadedPhoto
     let action: () -> Void
-
+    
     var body: some View {
         Button(action: action) {
             Color.clear
@@ -378,7 +401,7 @@ private struct AlbumPhotoTile: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text(photo.takenAt, format: .dateTime.month().day().hour().minute()))
     }
-
+    
     private enum Layout {
         static let cornerRadius: CGFloat = 16
         static let iconPadding: CGFloat = 14
@@ -388,7 +411,7 @@ private struct AlbumPhotoTile: View {
 
 #Preview {
     @Previewable @State var selection = CaseTabSelection.albumOverview
-
+    
     CaseAlbumView(
         photoStore: PhotoStore(),
         rooms: DummyFloorPlan.planData.rooms,
