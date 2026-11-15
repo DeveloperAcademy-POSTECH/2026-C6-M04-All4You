@@ -14,6 +14,8 @@ struct FloorPlanTabView: View {
     let photoStore: PhotoStore
     /// 위치 미확인 사진 패널을 펼쳤는지
     @Binding var isPlacingPhotos: Bool
+    /// 상단 수정 메뉴의 사진위치 전체 수정 모드
+    @Binding var isPhotoPositionEditMode: Bool
     /// 도면에 띄울 저장된 메모. 2D는 도면 위에, 3D는 3D 자리에 핀을 띄운다 (메모 위치를 고르는 동안은 메인의 메모 오버레이가 그린다)
     var memos: [FloorPlanMemo] = []
     var highlightedMemoID: UUID? = nil
@@ -38,6 +40,10 @@ struct FloorPlanTabView: View {
     @State private var selectedBookmarkID: UUID?
     /// 편집 중에는 저장하지 않고 체크를 누를 때만 실제 위치·방향을 변경한다
     @State private var bookmarkEdit: BookmarkEditDraft?
+    /// 북마크 필터의 사진을 도면으로 끌어오는 중인지 구분
+    @State private var isDraggingUnplacedBookmark = false
+    /// 최초 위치 지정 취소/저장 후 돌아갈 장소 패널
+    @State private var editingSourceRoomID: String?
     
     private struct BookmarkEditDraft {
         let id: UUID
@@ -68,6 +74,27 @@ struct FloorPlanTabView: View {
                 .overlay(alignment: .bottom) {
                     dimensionPicker
                 }
+                .overlay(alignment: .top) {
+                    if isPhotoPositionEditMode {
+                        HStack(spacing: 12) {
+                            Text("사진위치 수정 중")
+                                .font(AppTypography.subheadline)
+                                .foregroundStyle(.primary)
+                            Button("완료") {
+                                // 저장하지 않은 임시 편집만 취소하고 전체 수정 모드를 종료한다.
+                                if bookmarkEdit != nil { cancelBookmarkEditing() }
+                                isPhotoPositionEditMode = false
+                            }
+                            .font(AppTypography.subheadlineEmphasized)
+                            .buttonStyle(.borderedProminent)
+                            .tint(.brand500)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular, in: .capsule)
+                        .padding(.top, Layout.filterTop)
+                    }
+                }
             if isPlacingPhotos {
                 Divider()
                 UnassignedPhotoPanel(photos: photoStore.unassignedPhotos) {
@@ -79,25 +106,37 @@ struct FloorPlanTabView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .trailing))
-            } else if let selected = selectedBookmark {
+            } else if let selected = selectedBookmarkPanelPhoto {
+                // 기존 북마크 사진 패널 복구: 일반 선택과 위치·방향 편집 중 모두 표시
                 Divider()
                 BookmarkPhotoPanel(
-                    roomName: selected.photo.roomKey.flatMap { key in planData?.rooms.first { $0.id == key }?.name },
-                    number: selected.marker.number,
+                    roomName: selected.photo.roomKey.flatMap { key in
+                        planData?.rooms.first { $0.id == key }?.name
+                    },
+                    number: selected.number,
                     photo: selected.photo
                 ) {
                     openBookmarkViewer(initialID: selected.photo.id)
                 }
-                // 다른 핀을 고르면 사진을 처음부터 보여 준다
                 .id(selected.photo.id)
                 .frame(maxWidth: .infinity)
                 .transition(.move(edge: .trailing))
             } else if let selectedRoom {
                 Divider()
-                let photos = filteredPhotos(inRoom: selectedRoom.id)
-                RoomPhotoPanel(roomName: selectedRoom.name, photos: photos) { id in
-                    viewerContext = PhotoViewerContext(photoIDs: photos.map(\.id), initialID: id)
-                }
+                // 북마크 필터에서는 이미 #마커가 있는 사진을 제외하고 위치 미지정 사진만 표시
+                let photos = roomPanelPhotos(in: selectedRoom.id)
+                RoomPhotoPanel(
+                    roomName: selectedRoom.name,
+                    photos: photos,
+                    onExpand: { id in
+                        viewerContext = PhotoViewerContext(photoIDs: photos.map(\.id), initialID: id)
+                    },
+                    bookmarkNumbers: showsBookmarkMarkers ? bookmarkPhotoNumbers : [:],
+                    onDragStart: showsBookmarkMarkers ? { id in
+                        draggingPhotoID = id
+                        isDraggingUnplacedBookmark = true
+                    } : nil
+                )
                 // 다른 장소를 고르면 큰 사진·스크롤을 처음부터 보여 준다
                 .id(selectedRoom.id)
                 .frame(maxWidth: .infinity)
@@ -110,6 +149,12 @@ struct FloorPlanTabView: View {
             }
         }
         // 위치 미확인 사진 패널을 열면 장소 선택은 푼다 (오른쪽 패널은 하나만)
+        .onChange(of: isPhotoPositionEditMode) { _, enabled in
+            // 전체 수정 모드 종료 시 저장하지 않은 임시 편집은 취소
+            if !enabled && bookmarkEdit != nil {
+                cancelBookmarkEditing()
+            }
+        }
         .onChange(of: isPlacingPhotos) { _, isPlacing in
             if isPlacing {
                 selectedRoomID = nil
@@ -155,17 +200,18 @@ extension FloorPlanTabView {
                         // 북마크 필터: 북마크 사진을 찍은 정확한 자리에 번호 핀 (촬영 방향을 켜면 부채꼴도)
                         if showsBookmarkMarkers {
                             BookmarkPhotoMarkerLayer(
-                                markers: bookmarkMarkers(in: planData),
+                                markers: bookmarkMarkers(in: planData) + provisionalBookmarkMarker(in: planData),
                                 screen: screen,
                                 showsDirection: photoFilter.showsDirection,
                                 selectedID: selectedBookmark?.photo.id,
                                 editingID: bookmarkEdit?.id,
                                 editingPosition: bookmarkEdit?.position,
                                 editingYaw: bookmarkEdit?.yaw,
+                                isGlobalEditMode: isPhotoPositionEditMode,
                                 onBeginEditing: beginBookmarkEditing,
                                 onMoveEditing: { bookmarkEdit?.position = $0 },
                                 onRotateEditing: { bookmarkEdit?.yaw = $0 },
-                                onCancelEditing: { bookmarkEdit = nil },
+                                onCancelEditing: cancelBookmarkEditing,
                                 onSaveEditing: saveBookmarkEditing,
                                 onTap: selectBookmark
                             )
@@ -201,7 +247,9 @@ extension FloorPlanTabView {
                             hoveredRoomID = room?.id
                         }
                     },
-                    onDrop: dropPhoto
+                    onDrop: { room, location in
+                        dropPhoto(on: room, at: location)
+                    }
                 ))
                 // 처음 맞출 때 도면이 위 필터 메뉴·아래 2D/3D 막대와 겹치지 않게 한다
                 .padding(.vertical, Layout.overlayInset)
@@ -242,7 +290,9 @@ extension FloorPlanTabView {
             .onChange(of: dimension) {
                 if dimension == .threeD {
                     isThreeDReady = true
+                    isPhotoPositionEditMode = false
                     bookmarkEdit = nil
+                    editingSourceRoomID = nil
                 }
             }
         } else {
@@ -290,7 +340,7 @@ extension FloorPlanTabView {
 extension FloorPlanTabView {
     /// 고른 장소. 필터로 보이는 사진이 없어지면 고르지 않은 것으로 본다
     private var selectedRoom: Room? {
-        guard let selectedRoomID, photoFilter.isPhotoVisible, !filteredPhotos(inRoom: selectedRoomID).isEmpty else { return nil }
+        guard let selectedRoomID, photoFilter.isPhotoVisible, !roomPanelPhotos(in: selectedRoomID).isEmpty else { return nil }
         return planData?.rooms.first { $0.id == selectedRoomID }
     }
     
@@ -312,11 +362,17 @@ extension FloorPlanTabView {
         }
     }
     
-    /// 북마크 번호 핀을 고른다. 같은 핀을 다시 누르면 푼다
+    /// 일반 모드에서는 사진 패널을 선택/해제하고, 전체 수정 모드에서는 탭으로 편집을 시작한다.
     private func selectBookmark(_ id: UUID) {
-        withAnimation {
-            selectedRoomID = nil
-            selectedBookmarkID = selectedBookmarkID == id ? nil : id
+        if isPhotoPositionEditMode {
+            // 미저장 편집을 다른 마커 탭으로 덮어쓰지 않는다.
+            guard bookmarkEdit == nil else { return }
+            beginBookmarkEditing(id)
+        } else {
+            withAnimation {
+                selectedRoomID = nil
+                selectedBookmarkID = selectedBookmarkID == id ? nil : id
+            }
         }
     }
     
@@ -325,6 +381,7 @@ extension FloorPlanTabView {
         guard dimension == .twoD, let planData,
               let marker = bookmarkMarkers(in: planData).first(where: { $0.id == id }) else { return }
         selectedRoomID = nil
+        editingSourceRoomID = nil
         selectedBookmarkID = id
         bookmarkEdit = BookmarkEditDraft(
             id: id,
@@ -342,6 +399,44 @@ extension FloorPlanTabView {
             in: planData
         )
         self.bookmarkEdit = nil
+        if let editingSourceRoomID {
+            selectedBookmarkID = nil
+            selectedRoomID = editingSourceRoomID
+        } else {
+            // 이미 지정된 북마크는 저장 후에도 사진 패널을 유지한다.
+            selectedBookmarkID = bookmarkEdit.id
+        }
+        editingSourceRoomID = nil
+    }
+    
+    private func cancelBookmarkEditing() {
+        let originalID = bookmarkEdit?.id
+        bookmarkEdit = nil
+        if let editingSourceRoomID {
+            selectedBookmarkID = nil
+            selectedRoomID = editingSourceRoomID
+        } else {
+            selectedBookmarkID = originalID
+        }
+        editingSourceRoomID = nil
+    }
+    
+    /// 아직 저장되지 않은 사진도 편집 중에는 임시 #마커와 조작 핸들로 표시
+    private func provisionalBookmarkMarker(in planData: PlanData) -> [BookmarkPhotoMarker] {
+        guard let bookmarkEdit,
+              !bookmarkMarkers(in: planData).contains(where: { $0.id == bookmarkEdit.id }),
+              let number = bookmarkPhotoNumbers[bookmarkEdit.id] else { return [] }
+        return [BookmarkPhotoMarker(
+            id: bookmarkEdit.id,
+            number: number,
+            placement: PhotoPlacement(
+                position: bookmarkEdit.position,
+                yaw: bookmarkEdit.yaw,
+                pitch: nil,
+                height: nil,
+                fieldOfView: nil
+            )
+        )]
     }
     
     /// 고른 북마크 핀과 그 사진. 필터를 바꾸거나 북마크를 풀어 핀이 사라지면 고르지 않은 것으로 본다
@@ -352,11 +447,40 @@ extension FloorPlanTabView {
         return (marker, photo)
     }
     
+    /// 기존 위치가 있는 북마크와 새로 위치를 지정하는 북마크 모두 사진 패널에서 확인한다.
+    private var selectedBookmarkPanelPhoto: (number: Int, photo: LoadedPhoto)? {
+        if let selected = selectedBookmark {
+            return (selected.marker.number, selected.photo)
+        }
+        // 최초 위치 지정은 저장 전이라 아직 정식 마커 목록에 없다.
+        if let bookmarkEdit,
+           let photo = photoStore.photo(id: bookmarkEdit.id),
+           let number = bookmarkPhotoNumbers[bookmarkEdit.id] {
+            return (number, photo)
+        }
+        return nil
+    }
+    
     /// 장소 사진 중 필터에 맞는 것을 최근에 찍은 것부터. 북마크를 고르면 북마크한 사진만
     private func filteredPhotos(inRoom roomID: String) -> [LoadedPhoto] {
         photoStore.photos(inRoom: roomID)
             .filter { photoFilter.scope == .all || $0.isBookmarked }
             .sorted { $0.takenAt > $1.takenAt }
+    }
+    
+    /// 북마크 모드: 장소에 속하면서 아직 도면 좌표가 없는 사진만 오른쪽에 남긴다.
+    /// 일반 모드에서는 기존 장소 앨범 동작을 그대로 유지한다.
+    private func roomPanelPhotos(in roomID: String) -> [LoadedPhoto] {
+        let photos = filteredPhotos(inRoom: roomID)
+        guard showsBookmarkMarkers, let planData else { return photos }
+        return photos.filter { $0.placement(in: planData) == nil }
+    }
+    
+    /// 위치 지정 전/후에 관계없이 북마크 촬영 시각 기준 번호를 고정한다.
+    private var bookmarkPhotoNumbers: [UUID: Int] {
+        let ordered = photoStore.photos.filter(\.isBookmarked)
+            .sorted { $0.takenAt < $1.takenAt }
+        return Dictionary(uniqueKeysWithValues: ordered.enumerated().map { ($0.element.id, $0.offset + 1) })
     }
 }
 
@@ -444,15 +568,37 @@ extension FloorPlanTabView {
     /// 북마크 사진 패널의 확대 버튼: 그 사진부터 북마크 사진을 번호 순서로 넘겨 본다
     private func openBookmarkViewer(initialID: UUID) {
         guard let planData else { return }
-        viewerContext = PhotoViewerContext(photoIDs: bookmarkMarkers(in: planData).map(\.id), initialID: initialID)
+        var ids = bookmarkMarkers(in: planData).map(\.id)
+        if !ids.contains(initialID) {
+            ids.append(initialID) // 저장 전 위치 지정 중인 북마크 사진
+        }
+        viewerContext = PhotoViewerContext(photoIDs: ids, initialID: initialID)
     }
     
-    /// 끌고 있던 사진을 놓은 장소로 옮긴다
-    private func dropPhoto(on room: Room) -> Bool {
+    /// 일반 사진 드롭은 기존 장소 배정, 북마크 필터 드롭은 임시 위치 편집 시작
+    private func dropPhoto(on room: Room, at location: CGPoint) -> Bool {
         defer {
             draggingPhotoID = nil
+            isDraggingUnplacedBookmark = false
         }
         guard let draggingPhotoID else { return false }
+        
+        if isDraggingUnplacedBookmark {
+            guard let screen, let planData,
+                  let photo = photoStore.photo(id: draggingPhotoID),
+                  photo.isBookmarked,
+                  photo.placement(in: planData) == nil else { return false }
+            editingSourceRoomID = room.id
+            selectedRoomID = nil
+            selectedBookmarkID = nil
+            bookmarkEdit = BookmarkEditDraft(
+                id: draggingPhotoID,
+                position: screen.plan(location),
+                yaw: 0
+            )
+            return true
+        }
+        
         withAnimation {
             photoStore.assign(id: draggingPhotoID, toRoom: room.id)
         }
@@ -538,7 +684,7 @@ private struct PhotoDropDelegate: DropDelegate {
     /// 화면 점 아래의 장소. 장소 밖이면 nil
     let roomAt: (CGPoint) -> Room?
     let onHover: (Room?) -> Void
-    let onDrop: (Room) -> Bool
+    let onDrop: (Room, CGPoint) -> Bool
     
     func dropEntered(info: DropInfo) {
         onHover(roomAt(info.location))
@@ -559,7 +705,7 @@ private struct PhotoDropDelegate: DropDelegate {
         let room = roomAt(info.location)
         onHover(nil)
         guard let room else { return false }
-        return onDrop(room)
+        return onDrop(room, info.location)
     }
 }
 
@@ -693,6 +839,10 @@ private struct RoomPhotoPanel: View {
     let photos: [LoadedPhoto]
     /// 확대 버튼을 누르면 지금 큰 사진의 id를 알린다
     let onExpand: (UUID) -> Void
+    /// 북마크 필터에서만 전달. 위치가 없는 사진의 번호를 함께 보여 준다.
+    var bookmarkNumbers: [UUID: Int] = [:]
+    /// 북마크 필터일 때만 사진을 길게 눌러 도면에 배치 가능
+    var onDragStart: ((UUID) -> Void)? = nil
     
     /// 크게 보여 줄 사진. 고른 적이 없거나 고른 사진이 사라지면 첫 사진
     @State private var selectedID: UUID?
@@ -716,6 +866,7 @@ private struct RoomPhotoPanel: View {
                                     .scaledToFill()
                             }
                             .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                            .modifier(BookmarkPhotoDragModifier(photo: selectedPhoto, onDragStart: onDragStart))
                     }
                     LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                         ForEach(photos) { photo in
@@ -764,6 +915,16 @@ private struct RoomPhotoPanel: View {
                         .scaledToFill()
                 }
                 .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                .overlay(alignment: .topLeading) {
+                    if let number = bookmarkNumbers[photo.id] {
+                        Text("#\(number)")
+                            .font(.caption.bold())
+                            .foregroundStyle(.white)
+                            .padding(5)
+                            .background(.brand500, in: .capsule)
+                            .padding(5)
+                    }
+                }
                 .overlay {
                     if isSelected {
                         RoundedRectangle(cornerRadius: Layout.cornerRadius)
@@ -772,6 +933,7 @@ private struct RoomPhotoPanel: View {
                 }
         }
         .buttonStyle(.plain)
+        .modifier(BookmarkPhotoDragModifier(photo: photo, onDragStart: onDragStart))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
     
@@ -797,16 +959,42 @@ private struct RoomPhotoPanel: View {
     }
 }
 
+/// 위치 없는 북마크 사진에만 드래그를 추가한다. 일반 앨범의 탭 동작은 그대로 둔다.
+private struct BookmarkPhotoDragModifier: ViewModifier {
+    let photo: LoadedPhoto
+    let onDragStart: ((UUID) -> Void)?
+    
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let onDragStart {
+            content.onDrag {
+                onDragStart(photo.id)
+                return NSItemProvider(object: photo.id.uuidString as NSString)
+            } preview: {
+                Image(uiImage: photo.thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 96, height: 96)
+                    .clipShape(.rect(cornerRadius: 8))
+            }
+        } else {
+            content
+        }
+    }
+}
+
 #Preview {
     @Previewable @State var photoFilter = PhotoFilter()
     @Previewable @State var dimension: FloorPlanTabView.Dimension = .twoD
     @Previewable @State var isPlacingPhotos = false
+    @Previewable @State var isPhotoPositionEditMode = false
     
     FloorPlanTabView(
         photoFilter: $photoFilter,
         dimension: $dimension,
         planData: DummyFloorPlan.planData,
         photoStore: PhotoStore(),
-        isPlacingPhotos: $isPlacingPhotos
+        isPlacingPhotos: $isPlacingPhotos,
+        isPhotoPositionEditMode: $isPhotoPositionEditMode
     )
 }

@@ -21,12 +21,15 @@ struct BookmarkPhotoMarker: Identifiable {
 }
 
 extension BookmarkPhotoMarker {
-    /// 북마크 사진 중 촬영 위치가 있는 것을 찍은 시각 순서로 번호를 매긴다
+    /// 북마크 전체에 촬영 시각 순서로 번호를 매기고 위치가 있는 사진만 마커로 표시한다
     static func markers(for photos: [LoadedPhoto], in plan: PlanData) -> [BookmarkPhotoMarker] {
         numbered(photos
             .filter(\.isBookmarked)
             .sorted { $0.takenAt < $1.takenAt }
-            .compactMap { photo in photo.placement(in: plan).map { (photo.id, $0) } })
+            .enumerated()
+            .compactMap { index, photo in
+                photo.placement(in: plan).map { (photo.id, index + 1, $0) }
+            })
     }
     
     /// 저장된 사진 기록으로 같은 번호를 매긴다 (사건 목록 미리보기처럼 PhotoStore 없이 그릴 때)
@@ -34,11 +37,14 @@ extension BookmarkPhotoMarker {
         numbered(records
             .filter(\.isBookmarked)
             .sorted { $0.takenAt < $1.takenAt }
-            .compactMap { record in record.placement(in: plan).map { (record.id, $0) } })
+            .enumerated()
+            .compactMap { index, record in
+                record.placement(in: plan).map { (record.id, index + 1, $0) }
+            })
     }
     
-    private static func numbered(_ items: [(UUID, PhotoPlacement)]) -> [BookmarkPhotoMarker] {
-        items.enumerated().map { BookmarkPhotoMarker(id: $0.element.0, number: $0.offset + 1, placement: $0.element.1) }
+    private static func numbered(_ items: [(UUID, Int, PhotoPlacement)]) -> [BookmarkPhotoMarker] {
+        items.map { BookmarkPhotoMarker(id: $0.0, number: $0.1, placement: $0.2) }
     }
 }
 
@@ -54,12 +60,14 @@ struct BookmarkPhotoMarkerLayer: View {
     var editingID: UUID? = nil
     var editingPosition: SIMD2<Double>? = nil
     var editingYaw: Double? = nil
+    /// 전체 사진위치 수정 모드에서는 마커 탭으로 바로 수정
+    var isGlobalEditMode = false
     var onBeginEditing: (UUID) -> Void = { _ in }
     var onMoveEditing: (SIMD2<Double>) -> Void = { _ in }
     var onRotateEditing: (Double) -> Void = { _ in }
     var onCancelEditing: () -> Void = {}
     var onSaveEditing: () -> Void = {}
-    /// 도면 탭은 큰 "#1" 핀, 사건 목록 미리보기는 작은 "1" 핀 (누를 수 없음)
+    /// 도면 탭은 큰 "#1" 핀, 사건 목록 미리보기는 작은 "#1" 핀 (누를 수 없음)
     var style: Style = .regular
     /// 핀을 누르면 그 사진 id를 알린다
     var onTap: (UUID) -> Void = { _ in }
@@ -187,7 +195,7 @@ struct BookmarkPhotoMarkerLayer: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            if style == .regular {
+            if style == .regular && !isGlobalEditMode {
                 Button("위치 및 촬영 방향 수정", systemImage: "arrow.up.left.and.arrow.down.right") {
                     onBeginEditing(marker.id)
                 }
