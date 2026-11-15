@@ -157,6 +157,7 @@ extension CaseMainView {
             // 메모 위치를 고르는 동안은 아래 메모 오버레이가 핀을 그리므로 겹치지 않게 비운다
             memos: isAddingMemo ? [] : memoSections.allMemos,
             highlightedMemoID: justAddedMemoID,
+            onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
             onUpdateMemo: updateMemo
         )

@@ -17,6 +17,7 @@ struct FloorPlanTabView: View {
     /// 도면에 띄울 저장된 메모. 2D는 도면 위에, 3D는 3D 자리에 핀을 띄운다 (메모 위치를 고르는 동안은 메인의 메모 오버레이가 그린다)
     var memos: [FloorPlanMemo] = []
     var highlightedMemoID: UUID? = nil
+    var onClearMemoHighlight: () -> Void = {}
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     
@@ -165,6 +166,7 @@ extension FloorPlanTabView {
                             onDeleteMemo: onDeleteMemo,
                             onUpdateMemo: onUpdateMemo,
                             highlightedMemoID: highlightedMemoID,
+                            onClearHighlight: onClearMemoHighlight,
                             bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                             screen: screen
                         )
@@ -277,6 +279,7 @@ extension FloorPlanTabView {
     
     /// 도면 영역을 터치하면 선택 상태와 사진 패널을 해제
     private func clearRoomSelection() {
+        onClearMemoHighlight()
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = nil
@@ -285,6 +288,7 @@ extension FloorPlanTabView {
     }
     
     private func selectRoom(_ room: Room) {
+        onClearMemoHighlight()
         withAnimation {
             selectedBookmarkID = nil
             selectedRoomID = room.id
@@ -293,6 +297,7 @@ extension FloorPlanTabView {
     
     /// 북마크 번호 핀을 고른다. 같은 핀을 다시 누르면 푼다
     private func selectBookmark(_ id: UUID) {
+        onClearMemoHighlight()
         withAnimation {
             selectedRoomID = nil
             selectedBookmarkID = selectedBookmarkID == id ? nil : id

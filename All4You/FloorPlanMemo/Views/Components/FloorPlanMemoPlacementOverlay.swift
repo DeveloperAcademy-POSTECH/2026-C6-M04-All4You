@@ -18,6 +18,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
     var highlightedMemoID: UUID? = nil
+    var onClearHighlight: () -> Void = {}
     /// 현재 조사 차수의 북마크 사진
     var bookmarkedPhotos: [LoadedPhoto] = []
     /// 도면이 실제로 놓인 화면 자리. 주면 저장된 메모 핀을 이 자리에 맞춰 그려서, 도면을 확대·이동하거나 옆에 사진 모음이 열려 도면이 좁아져도 핀이 따라간다.
@@ -51,6 +52,7 @@ struct FloorPlanMemoPlacementOverlay: View {
                             } else {
                                 selectedMemoID = nil
                             }
+                            onClearHighlight()
                         }
                 }
                 
@@ -147,6 +149,7 @@ private extension FloorPlanMemoPlacementOverlay {
         Button {
             finishEditingMemo()
             isTextFieldFocused = false
+            if memo.id != highlightedMemoID { onClearHighlight() }
             selectedMemoID = selectedMemoID == memo.id ? nil : memo.id
         } label: {
             FloorPlanMemoPinView(
