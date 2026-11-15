@@ -19,7 +19,7 @@ struct FloorPlanTabView: View {
     var highlightedMemoID: UUID? = nil
     var onClearMemoHighlight: () -> Void = {}
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
-    var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+    var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?

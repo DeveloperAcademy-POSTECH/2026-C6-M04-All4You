@@ -159,7 +159,7 @@ extension CaseMainView {
             highlightedMemoID: justAddedMemoID,
             onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
-            onUpdateMemo: updateMemo
+            onUpdateMemo: updateMemoWithTags
         )
         .id(floorPlanPresentationID)
         .overlay {
@@ -172,7 +172,7 @@ extension CaseMainView {
                 onSave: addMemo,
                 onCancel: cancelAddingMemo,
                 onDeleteMemo: deleteMemo,
-                onUpdateMemo: updateMemo,
+                onUpdateMemo: updateMemoWithTags,
                 highlightedMemoID: justAddedMemoID,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked)
             )
@@ -293,24 +293,7 @@ extension CaseMainView {
         if justAddedMemoID == id { justAddedMemoID = nil }
     }
     
-    /// 수정한 본문과 남아 있는 사진 태그를 기존 사건 메모에 반영
-    private func updateMemo(_ id: FloorPlanMemo.ID, content: String) {
-        guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
-        memo.taggedPhotoIDs = FloorPlanMemoPhotoTagReconciler.retainedPhotoIDs(
-            from: memo.content,
-            to: content,
-            taggedPhotoIDs: memo.taggedPhotoIDs
-        )
-        memo.taggedMarkerIDs = FloorPlanMemoIgnitionTags.retainedMarkerIDs(
-            from: memo.content,
-            to: content,
-            markers: planData.markers.filter { $0.kind == .ignitionPoint },
-            taggedIDs: memo.taggedMarkerIDs
-        )
-        memo.content = content
-    }
-    
-    /// 메모 탭에서 수정한 본문과 사진 태그를 함께 저장
+    /// 메모 수정 결과와 사진·발화지점 태그를 사건 메모에 함께 저장
     private func updateMemoWithTags(_ id: FloorPlanMemo.ID, content: String, photoIDs: [UUID], markerIDs: [String]) {
         guard let memo = fireCase.memos.first(where: { $0.id == id }) else { return }
         memo.taggedPhotoIDs = photoIDs

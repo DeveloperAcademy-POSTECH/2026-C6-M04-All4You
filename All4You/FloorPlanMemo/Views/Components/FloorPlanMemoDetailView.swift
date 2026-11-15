@@ -204,6 +204,7 @@ struct FloorPlanMemoDetailView: View {
                         markers: memo.ignitionMarkers,
                         taggedMarkerIDs: Set(taggedMarkerTokens.keys),
                         activePhotoID: pendingPhoto(in: editedContent)?.photo.id,
+                        activeMarkerID: pendingMarker(in: editedContent)?.marker.id,
                         onSelectPhoto: { photo, number in tagPhoto(photo, number: number) },
                         onSelectMarker: { marker, number in tagMarker(marker, number: number) }
                     )
