@@ -8,20 +8,25 @@ extension PlanData {
     /// 합친 구조가 없으면(구간 하나, 또는 합치기 실패) 모든 구간을 모아 쓴다. 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않으므로,
     /// 겹치는 벽·같은 문·창문·물체는 하나로 합친다 (ScanSurface+Combine)
     init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
+        self = Self.converted(structure: structure, rooms: rooms).plan
+    }
+
+    /// 도면과, 원본과 맞춰 본 기록(빠진 요소·벽 끝점이 움직인 거리)을 함께 돌려준다
+    static func converted(structure: CapturedStructure?, rooms: [CapturedRoom]) -> (plan: PlanData, report: ScanConversionReport) {
         if let structure {
-            self.init(
+            return converted(
                 scanSurfaces: ScanSurface.surfaces(of: structure),
                 sections: ScanSection.sections(of: structure),
                 objects: structure.objects.map { ScanObject($0) }
             )
         } else if !rooms.isEmpty {
-            self.init(
+            return converted(
                 scanSurfaces: ScanSurface.combined(rooms.map { ScanSurface.surfaces(of: $0) }),
                 sections: rooms.flatMap { ScanSection.sections(of: $0) },
                 objects: ScanObject.combined(rooms.map { room in room.objects.map { ScanObject($0) } })
             )
         } else {
-            self = .empty
+            return (.empty, ScanConversionReport())
         }
     }
 }

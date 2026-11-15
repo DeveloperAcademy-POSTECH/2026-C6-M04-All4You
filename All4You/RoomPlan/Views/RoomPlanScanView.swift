@@ -6,6 +6,7 @@
 //
 
 import AVFoundation
+import OSLog
 import RoomPlan
 import SwiftUI
 
@@ -49,6 +50,8 @@ private struct RoomPlanScanSessionView: View {
     @State private var isRelocalizationAlertPresented = false
     /// 미리보기 시점에 변환한 도면. 벽이 없으면 "이 도면으로 계속하기"를 끄는 데 쓰고, 계속할 때 그대로 넘긴다
     @State private var previewPlan: PlanData?
+    /// 그 변환을 원본과 맞춰 본 기록. 도면에 옮기지 못한 문·창문·가구가 있으면 미리보기에 알린다
+    @State private var previewReport: ScanConversionReport?
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
@@ -85,7 +88,7 @@ private struct RoomPlanScanSessionView: View {
                     structure: scanService.mergedPreview,
                     revision: scanService.renderRevision,
                     isContinueEnabled: scanService.finalModelURL != nil && onUseResult != nil && previewPlan?.isUsable == true,
-                    statusMessage: previewPlan?.isUsable == false ? Self.emptyPlanMessage : nil,
+                    statusMessage: previewPlan?.isUsable == false ? Self.emptyPlanMessage : previewReport?.lossMessage,
                     onContinue: {
                         guard let url = scanService.finalModelURL, let previewPlan, previewPlan.isUsable else { return }
                         onUseResult?(url, scanService.mergedPreview, scanService.finishedRooms, scanService.scanPhotos, previewPlan)
@@ -323,10 +326,18 @@ private struct RoomPlanScanSessionView: View {
     // 스캔이 끝난 뒤에만 변환한다. 합치는 중에는 결과가 바뀔 수 있어 기다린다
     private func refreshPreviewPlan() {
         guard scanService.phase == .finished, !scanService.isMergingPreview else {
-            if scanService.phase != .finished { previewPlan = nil }
+            if scanService.phase != .finished {
+                previewPlan = nil
+                previewReport = nil
+            }
             return
         }
-        previewPlan = PlanData(structure: scanService.mergedPreview, rooms: scanService.finishedRooms)
+        let converted = PlanData.converted(structure: scanService.mergedPreview, rooms: scanService.finishedRooms)
+        previewPlan = converted.plan
+        previewReport = converted.report
+        #if DEBUG
+        Logger(subsystem: "All4You", category: "ScanConversion").notice("\(converted.report.logText, privacy: .public)")
+        #endif
     }
     
     // 시스템 카메라 권한 확인 및 최초 접근 요청
