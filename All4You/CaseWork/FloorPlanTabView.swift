@@ -47,6 +47,8 @@ struct FloorPlanTabView: View {
     @State private var photoPanelDragStartWidth: CGFloat?
     /// 홈 화면과 동일하게 드래그 중 이동량을 별도로 관리한다.
     @State private var photoPanelDragOffset: CGFloat = 0
+    /// 필터 칩과 전체 수정 완료 버튼이 한 줄에서 실제 차지하는 너비
+    @State private var topControlsWidth: CGFloat = 0
     
     private struct BookmarkEditDraft {
         let id: UUID
@@ -90,6 +92,11 @@ struct FloorPlanTabView: View {
                         }
                         .padding(.leading, Layout.filterLeading)
                         .padding(.top, Layout.filterTop)
+                        // 필터 칩이 늘어나도 줄어들지 않는 원래 너비를 측정한다.
+                        .fixedSize(horizontal: true, vertical: false)
+                        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { _, width in
+                            topControlsWidth = width
+                        }
                     }
                     .overlay(alignment: .topTrailing) {
                         // 패널을 닫아도 위치를 정하지 않은 사진이 남아 있으면 언제든 다시 열 수 있게 둔다
@@ -209,11 +216,11 @@ extension FloorPlanTabView {
     /// 홈 화면과 동일하게 최소 폭을 지키면서 오른쪽 사진 패널 폭을 계산한다.
     private func panelWidthLimits(in totalWidth: CGFloat) -> (minPanel: CGFloat, maxPanel: CGFloat) {
         let dividerWidth: CGFloat = 14
-        // 2D/3D 토글(240pt + 좌우 16pt 패딩)과 우측 시야 초기화 버튼(44pt + 16pt 여백)이
-        // 같은 하단 줄에서 8pt 이상 떨어지도록 도면 최소 폭을 확보한다.
-        // 계산: 도면 반폭 + 120pt + 8pt <= 도면 폭 - (44pt + 16pt)
-        // 따라서 도면 폭은 최소 376pt; 여유를 더해 392pt로 제한한다.
-        let minCanvas: CGFloat = min(392, max(0, totalWidth - dividerWidth))
+        // 하단 2D/3D 토글과 시야 초기화 버튼의 간격(기존 392pt)을 유지하면서,
+        // 상단 필터 칩 + 사진위치 수정 중/완료 버튼의 실제 너비도 확보한다.
+        // 상단 버튼은 자연 크기 그대로 유지하고 구분선만 더 왼쪽으로 못 가게 막는다.
+        let neededCanvas = max(392, topControlsWidth + 16)
+        let minCanvas: CGFloat = min(neededCanvas, max(0, totalWidth - dividerWidth))
         let availablePanelWidth = max(0, totalWidth - minCanvas - dividerWidth)
         let minPanel: CGFloat = min(480, availablePanelWidth)
         let maxPanel = max(minPanel, availablePanelWidth)
