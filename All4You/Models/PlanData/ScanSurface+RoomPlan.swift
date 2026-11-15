@@ -4,8 +4,9 @@ import RoomPlan
 import simd
 
 extension PlanData {
-    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을, 없으면(구간 하나, 또는 합치기 실패) 가장 큰 구간 하나를 쓴다.
-    /// 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않는다
+    /// RoomPlan 스캔 결과를 도면으로. 합친 구조가 있으면 그것을 쓴다.
+    /// 합친 구조가 없으면(구간 하나, 또는 합치기 실패) 모든 구간을 모아 쓴다. 구간들은 같은 벽을 따로 스캔해 그대로 모으면 벽이 겹치고 방이 닫히지 않으므로,
+    /// 겹치는 벽·같은 문·창문·물체는 하나로 합친다 (ScanSurface+Combine)
     init(structure: CapturedStructure?, rooms: [CapturedRoom]) {
         if let structure {
             self.init(
@@ -13,22 +14,15 @@ extension PlanData {
                 sections: ScanSection.sections(of: structure),
                 objects: structure.objects.map { ScanObject($0) }
             )
-        } else if let largest = rooms.max(by: { $0.walls.totalWidth < $1.walls.totalWidth }) {
+        } else if !rooms.isEmpty {
             self.init(
-                scanSurfaces: ScanSurface.surfaces(of: largest),
-                sections: ScanSection.sections(of: largest),
-                objects: largest.objects.map { ScanObject($0) }
+                scanSurfaces: ScanSurface.combined(rooms.map { ScanSurface.surfaces(of: $0) }),
+                sections: rooms.flatMap { ScanSection.sections(of: $0) },
+                objects: ScanObject.combined(rooms.map { room in room.objects.map { ScanObject($0) } })
             )
         } else {
             self = .empty
         }
-    }
-}
-
-private extension [CapturedRoom.Surface] {
-    /// 벽 폭을 모두 더한 길이. 구간 크기를 비교할 때 쓴다
-    var totalWidth: Float {
-        reduce(0) { $0 + $1.dimensions.x }
     }
 }
 
