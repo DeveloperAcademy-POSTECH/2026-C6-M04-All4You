@@ -11,6 +11,8 @@ struct StampHandles2DView: View {
     let halfSize: CGSize
     /// 스탬프 방향 (도). nil이면 돌리는 손잡이를 두지 않는다
     let yaw: Double?
+    /// 도면을 돌려 놓은 각 (도). 스탬프 방향에 더해 테두리와 손잡이를 돌린다. 돌릴 수 없는 스탬프(yaw nil)는 돌지 않는다
+    var screenRotation: Double = 0
     /// 스탬프 크기 배율. nil이면 크기 손잡이를 두지 않는다
     let scale: Double?
     /// 끄는 손가락 자리를 잴 좌표 공간 이름 (center와 같은 공간)
@@ -53,13 +55,18 @@ struct StampHandles2DView: View {
 
     /// 테두리 모서리의 화면 점. x·y는 -1(왼쪽·위) 또는 1(오른쪽·아래). 스탬프 방향만큼 가운데를 축으로 돌린다
     private func corner(x: CGFloat, y: CGFloat) -> CGPoint {
-        let radians = (yaw ?? 0) * .pi / 180
+        let radians = displayYaw * .pi / 180
         let dx = x * halfSize.width
         let dy = y * halfSize.height
         return CGPoint(
             x: center.x + dx * cos(radians) - dy * sin(radians),
             y: center.y + dx * sin(radians) + dy * cos(radians)
         )
+    }
+
+    /// 화면에 보이는 스탬프 방향 (도). 스탬프 방향에 도면을 돌린 각을 더한다
+    private var displayYaw: Double {
+        yaw.map { $0 + screenRotation } ?? 0
     }
 
     /// 가운데에서 point를 본 각도 (도). 화면은 아래가 +y라 시계 방향으로 커진다
@@ -84,7 +91,7 @@ extension StampHandles2DView {
         Image(systemName: systemName)
             .font(AppTypography.title3)
             .foregroundStyle(.brand500)
-            .rotationEffect(.degrees(yaw ?? 0))
+            .rotationEffect(.degrees(displayYaw))
             .frame(width: Layout.handleSize, height: Layout.handleSize)
             .glassEffect(.regular, in: .circle)
             .contentShape(.circle)
