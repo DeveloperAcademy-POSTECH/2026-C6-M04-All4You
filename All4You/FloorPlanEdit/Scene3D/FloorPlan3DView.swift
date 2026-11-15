@@ -22,6 +22,8 @@ struct FloorPlan3DView: View {
     var showsResetButton = false
     /// 오른쪽 위에 방위표를 띄울지. 카메라를 돌리는 대로 실시간으로 함께 돈다
     var showsCompass = false
+    /// 방위표를 오른쪽 위 기본 자리에서 더 내릴 높이 (pt). 오른쪽 위에 다른 버튼이 있는 화면이 쓴다
+    var compassTopInset: CGFloat = 0
     /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 이름 캡슐은 누르지 않는다
     var isStampToolActive = false
     /// 누른 직선이 가구를 지나쳐 그 뒤 바닥·벽에 닿게 할지. 가구 밑에 있을 수 있는 전기·창문·문 도구가 켜져 있을 때 쓴다
@@ -129,9 +131,10 @@ struct FloorPlan3DView: View {
         // 방위표는 화면을 올려도 움직이지 않게 올리는 층 바깥에 둔다 (카메라가 돌 때 도는 것만 그대로)
         .overlay(alignment: .topTrailing) {
             if showsCompass {
-                // 도면 위쪽이 북쪽이다. 카메라가 도면 둘레를 yaw만큼 돌면 북쪽은 화면 위에서 같은 각만큼 시계 방향으로 돈다
-                CompassView(northAngle: .radians(Double(orbit.yaw)))
+                // 2D에서 정한 북쪽(northAngle, 없으면 도면 위쪽)에서 시작한다. 카메라가 도면 둘레를 yaw만큼 돌면 북쪽은 화면 위에서 같은 각만큼 더 시계 방향으로 돈다
+                CompassView(northAngle: .radians(Double(orbit.yaw) + (planData.northAngle ?? 0)))
                     .padding()
+                    .padding(.top, compassTopInset)
             }
         }
         // 키보드가 올라오고 내려가는 때에 맞춰 올리고 내린다. 이름 고치기를 엔터·키보드 내리기 버튼·바깥 누르기 어느 쪽으로 끝내도 같은 움직임이다
