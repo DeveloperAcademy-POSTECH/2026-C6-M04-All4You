@@ -143,21 +143,52 @@ extension PlanData {
         }
     }
 
-    /// 꼭짓점 하나를 다른 꼭짓점으로 합친다. 두 끝이 같아진 벽과 겹치는 벽은 지운다
+    /// 꼭짓점 하나를 다른 꼭짓점으로 합친다. 두 끝이 같아진 벽은 지운다.
+    /// 이미 같은 두 꼭짓점을 잇는 벽이 있어 겹치게 된 벽도 지우되, 그 벽의 문·창문은 남은 벽으로 옮긴다
     private mutating func merge(_ vertexId: String, into targetId: String) {
         guard vertexId != targetId else { return }
         for i in walls.indices {
             if walls[i].startVertex == vertexId { walls[i].startVertex = targetId }
             if walls[i].endVertex == vertexId { walls[i].endVertex = targetId }
         }
-        var seen = Set<[String]>()
-        let removed = walls.filter { wall in
-            wall.startVertex == wall.endVertex
-                || !seen.insert([wall.startVertex, wall.endVertex].sorted()).inserted
-        }.map(\.id)
+        var keptOfPair: [[String]: Wall] = [:]
+        var removed: [String] = []
+        var overlapped: [String: (removed: Wall, kept: Wall)] = [:]
+        for wall in walls {
+            guard wall.startVertex != wall.endVertex else {
+                removed.append(wall.id)
+                continue
+            }
+            let key = [wall.startVertex, wall.endVertex].sorted()
+            if let kept = keptOfPair[key] {
+                removed.append(wall.id)
+                overlapped[wall.id] = (wall, kept)
+            } else {
+                keptOfPair[key] = wall
+            }
+        }
         walls.removeAll { removed.contains($0.id) }
-        doorWindows.removeAll { removed.contains($0.wallId) }
         vertices.removeAll { $0.id == vertexId }
+        for i in doorWindows.indices {
+            if let pair = overlapped[doorWindows[i].wallId] {
+                doorWindows[i] = movedItem(doorWindows[i], from: pair.removed, to: pair.kept)
+            }
+        }
+        // 두 끝이 같아져 사라진 벽(옮길 곳이 없음)의 문·창문만 지운다
+        doorWindows.removeAll { removed.contains($0.wallId) }
+    }
+
+    /// 겹친 벽(같은 두 끝)의 문·창문을 남은 벽으로 옮긴다. 두 벽의 방향이 반대면 위치를 뒤집고, 벽 길이 안으로 줄인다
+    private func movedItem(_ item: DoorWindow, from old: Wall, to kept: Wall) -> DoorWindow {
+        var moved = item
+        moved.wallId = kept.id
+        guard let length = line(of: kept)?.length else { return moved }
+        if old.startVertex != kept.startVertex {
+            moved.centerAlongWall = length - moved.centerAlongWall
+        }
+        moved.width = min(moved.width, length)
+        moved.centerAlongWall = min(max(moved.centerAlongWall, moved.width / 2), length - moved.width / 2)
+        return moved
     }
 
     private func distance(_ point: SIMD2<Double>, _ wall: Wall) -> Double {

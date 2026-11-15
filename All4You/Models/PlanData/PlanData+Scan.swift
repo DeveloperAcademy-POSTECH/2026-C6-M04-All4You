@@ -53,9 +53,11 @@ extension PlanData {
         let graph = ScanImport.mergedVertices(shifted)
         vertices = graph.points.enumerated().map { Vertex(id: "v\($0.offset + 1)", x: $0.element.x, y: $0.element.y) }
         var wallIdOfSurface: [UUID: String] = [:]
+        var wallIdOfIndex: [Int: String] = [:]
         for (index, ends) in graph.ends.enumerated() {
             guard let ends else { continue }
             let id = "w\(walls.count + 1)"
+            wallIdOfIndex[index] = id
             if usesFloorOutline {
                 // 가상 경계선: 그리지 않는 벽이라 두께·높이가 없다
                 walls.append(Wall(
@@ -78,6 +80,11 @@ extension PlanData {
                 height: max(ScanRule.minWallHeight, surface.center.y + surface.height / 2 - floorY),
                 isVirtual: false
             ))
+        }
+        // 같은 꼭짓점 쌍이 되어 벽으로 남지 못한 면(같은 벽을 두 번 스캔함)에 붙은 문·창문은 남은 벽에 붙인다
+        for (index, kept) in graph.keptIndex.enumerated() where !usesFloorOutline {
+            guard let kept, let id = wallIdOfIndex[kept] else { continue }
+            wallIdOfSurface[wallSurfaces[index].id] = id
         }
 
         // 7) 문·창문·개구부: 속한 벽, 없으면 가까운 벽에 붙인다 (벽이 없으면 붙일 곳이 없다)
@@ -281,8 +288,9 @@ private enum ScanImport {
         return p.a + d1 * s
     }
 
-    /// 가까운 끝점들을 꼭짓점 하나로 합친다. ends[i]는 벽 i의 시작·끝 꼭짓점 번호, 두 끝이 같은 꼭짓점이 되거나 이미 같은 벽이 있으면 nil
-    static func mergedVertices(_ segments: [Segment]) -> (points: [SIMD2<Double>], ends: [(start: Int, end: Int)?]) {
+    /// 가까운 끝점들을 꼭짓점 하나로 합친다. ends[i]는 벽 i의 시작·끝 꼭짓점 번호, 두 끝이 같은 꼭짓점이 되거나 이미 같은 벽이 있으면 nil.
+    /// keptIndex[i]는 벽 i가 이미 있는 벽과 같은 꼭짓점 쌍이라 빠졌을 때 그 남은 벽의 번호 (두 끝이 같은 꼭짓점이 되어 빠졌으면 nil)
+    static func mergedVertices(_ segments: [Segment]) -> (points: [SIMD2<Double>], ends: [(start: Int, end: Int)?], keptIndex: [Int?]) {
         var groups: [[SIMD2<Double>]] = []
         func group(of point: SIMD2<Double>) -> Int {
             if let found = groups.firstIndex(where: { members in
@@ -313,12 +321,20 @@ private enum ScanImport {
             }
         }
 
-        var seen = Set<[Int]>()
-        let ends: [(start: Int, end: Int)?] = pairs.map { start, end in
-            guard start != end, seen.insert([min(start, end), max(start, end)]).inserted else { return nil }
+        var firstOfPair: [[Int]: Int] = [:]
+        var keptIndex = [Int?](repeating: nil, count: pairs.count)
+        let ends: [(start: Int, end: Int)?] = pairs.enumerated().map { index, pair in
+            let (start, end) = pair
+            guard start != end else { return nil }
+            let key = [min(start, end), max(start, end)]
+            if let first = firstOfPair[key] {
+                keptIndex[index] = first
+                return nil
+            }
+            firstOfPair[key] = index
             return (start, end)
         }
-        return (points, ends)
+        return (points, ends, keptIndex)
     }
 }
 
