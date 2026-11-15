@@ -4,34 +4,40 @@
 // 4) 스캔한 면은 방 안쪽 면이라 벽을 바깥으로 두께/2 밀고, 모서리는 이웃 벽 선과의 교점으로 잇기
 // 5) 도면 왼쪽 위에 여백을 두고 옮기기  6) 가까운 끝점을 꼭짓점 하나로 합치기  7) 문·창문·개구부를 벽에 붙이기
 // 8) 방 나누기 (PlanData+ScanRooms)  9) 물체를 사각형 가구로
+//
+// 벽이 하나도 없는 스캔은 가장 큰 바닥의 윤곽을 가상 경계선(isVirtual)으로 삼아 방 하나를 만든다.
+// 이때 4)의 바깥으로 밀기와 7)의 문·창문 붙이기는 하지 않는다 (밀 벽도, 붙일 벽도 없음)
 
 import Foundation
 import simd
 
 extension PlanData {
-    /// 스캔한 면·방 종류·물체로 도면을 만든다. 벽이 없으면 빈 도면
+    /// 스캔한 면·방 종류·물체로 도면을 만든다. 벽이 없으면 바닥 윤곽으로 방을 만들고, 바닥 윤곽으로도 방이 안 되면 빈 도면
     init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = [], objects: [ScanObject] = []) {
         self = .empty
         let wallSurfaces = surfaces.filter { $0.kind == .wall && $0.width >= ScanRule.minWallLength }
-        guard !wallSurfaces.isEmpty else { return }
+        let usesFloorOutline = wallSurfaces.isEmpty
 
         // 1) 바닥 높이: 바닥 면, 없으면 벽 아래 끝 중 가장 낮은 곳
         let floorY = surfaces.first { $0.kind == .floor }?.center.y
             ?? wallSurfaces.map { $0.center.y - $0.height / 2 }.min() ?? 0
 
-        // 2) 벽 양 끝점 (바닥면 x, z)
-        let raw = wallSurfaces.map { surface in
-            let center = SIMD2(surface.center.x, surface.center.z)
-            let half = surface.widthAxis * (surface.width / 2)
-            return Segment(a: center - half, b: center + half)
-        }
+        // 2) 벽 양 끝점 (바닥면 x, z). 벽이 없으면 바닥 윤곽의 변
+        let raw = usesFloorOutline
+            ? ScanImport.floorOutline(of: surfaces)
+            : wallSurfaces.map { surface in
+                let center = SIMD2(surface.center.x, surface.center.z)
+                let half = surface.widthAxis * (surface.width / 2)
+                return Segment(a: center - half, b: center + half)
+            }
+        guard !raw.isEmpty else { return }
 
         // 3) 돌리고 바로잡기
         let rotation = ScanImport.rotation(of: raw)
         let rotated = raw.map { ScanImport.squared(Segment(a: rotation.apply($0.a), b: rotation.apply($0.b))) }
 
-        // 4) 바깥으로 밀고 모서리 잇기
-        let lines = ScanImport.joinedCorners(ScanImport.pushedOutward(rotated), original: rotated)
+        // 4) 바깥으로 밀고 모서리 잇기. 바닥 윤곽은 벽이 아니라 밀지 않는다
+        let lines = ScanImport.joinedCorners(usesFloorOutline ? rotated : ScanImport.pushedOutward(rotated), original: rotated)
 
         // 5) 왼쪽 위 여백
         let lowest = lines.flatMap { [$0.a, $0.b] }.reduce(SIMD2(Double.infinity, .infinity)) { simd_min($0, $1) }
@@ -49,8 +55,20 @@ extension PlanData {
         var wallIdOfSurface: [UUID: String] = [:]
         for (index, ends) in graph.ends.enumerated() {
             guard let ends else { continue }
-            let surface = wallSurfaces[index]
             let id = "w\(walls.count + 1)"
+            if usesFloorOutline {
+                // 가상 경계선: 그리지 않는 벽이라 두께·높이가 없다
+                walls.append(Wall(
+                    id: id,
+                    startVertex: vertices[ends.start].id,
+                    endVertex: vertices[ends.end].id,
+                    thickness: 0,
+                    height: 0,
+                    isVirtual: true
+                ))
+                continue
+            }
+            let surface = wallSurfaces[index]
             wallIdOfSurface[surface.id] = id
             walls.append(Wall(
                 id: id,
@@ -62,8 +80,8 @@ extension PlanData {
             ))
         }
 
-        // 7) 문·창문·개구부: 속한 벽, 없으면 가까운 벽에 붙인다
-        for surface in surfaces where [.door, .window, .opening].contains(surface.kind) {
+        // 7) 문·창문·개구부: 속한 벽, 없으면 가까운 벽에 붙인다 (벽이 없으면 붙일 곳이 없다)
+        for surface in surfaces where !usesFloorOutline && [.door, .window, .opening].contains(surface.kind) {
             let point = planPoint(surface.center)
             let wall = surface.parentId.flatMap { wallIdOfSurface[$0] }.flatMap { self.wall(id: $0) }
                 ?? walls.min { distance(from: point, to: $0) < distance(from: point, to: $1) }
@@ -92,6 +110,11 @@ extension PlanData {
 
         // 8) 떠 있는 벽 끝을 잇고 방을 찾는다
         addScanRooms(sections: sections.map { (name: $0.name, point: planPoint($0.center)) })
+        // 바닥 윤곽이 너무 작아 방이 안 되면 경계선만 남은 도면이 되므로 빈 도면으로 돌려준다
+        if usesFloorOutline, rooms.isEmpty {
+            self = .empty
+            return
+        }
 
         // 9) 물체 → 사각형 가구. 벽처럼 조금 비뚤어진 가구는 가로·세로로 바로잡는다
         furniture = objects.enumerated().map { index, object in
@@ -149,6 +172,28 @@ private enum ScanImport {
         let longest = segments.max { $0.length < $1.length }!
         let quarter = ((longest.angle - axis) / (.pi / 2)).rounded()
         return ScanRotation(angle: -(axis + quarter * .pi / 2))
+    }
+
+    /// 벽이 없는 스캔에서 쓸 바닥 윤곽의 변들. 바닥이 여럿이면 가장 넓은 하나만 쓴다
+    /// (여러 바닥의 변은 서로 겹치거나 가로질러 방 찾기가 깨진다). 너무 짧은 변은 버린다
+    static func floorOutline(of surfaces: [ScanSurface]) -> [Segment] {
+        let floors = surfaces.filter { $0.kind == .floor && $0.corners.count >= 3 }
+        guard let largest = floors.max(by: { area(of: $0.corners) < area(of: $1.corners) }) else { return [] }
+        let corners = largest.corners
+        return corners.indices
+            .map { Segment(a: corners[$0], b: corners[($0 + 1) % corners.count]) }
+            .filter { $0.length >= ScanRule.minWallLength }
+    }
+
+    /// 다각형 넓이 (신발끈 공식)
+    private static func area(of corners: [SIMD2<Double>]) -> Double {
+        var sum = 0.0
+        for index in corners.indices {
+            let current = corners[index]
+            let next = corners[(index + 1) % corners.count]
+            sum += current.x * next.y - next.x * current.y
+        }
+        return abs(sum) / 2
     }
 
     /// 가로·세로에서 조금 비뚤어진 벽은 가운데를 축으로 돌려 가로·세로로 맞춘다
