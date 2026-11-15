@@ -14,9 +14,59 @@ import simd
 extension PlanData {
     /// 스캔한 면·방 종류·물체로 도면을 만든다. 벽이 없으면 바닥 윤곽으로 방을 만들고, 바닥 윤곽으로도 방이 안 되면 빈 도면
     init(scanSurfaces surfaces: [ScanSurface], sections: [ScanSection] = [], objects: [ScanObject] = []) {
+        self = Self.converted(scanSurfaces: surfaces, sections: sections, objects: objects).plan
+    }
+
+    /// 도면과, 원본과 맞춰 본 기록(빠진 요소·벽 끝점이 움직인 거리)을 함께 돌려준다
+    static func converted(
+        scanSurfaces surfaces: [ScanSurface],
+        sections: [ScanSection] = [],
+        objects: [ScanObject] = []
+    ) -> (plan: PlanData, report: ScanConversionReport) {
+        var report = ScanConversionReport()
+        for surface in surfaces {
+            if let kind = ScanConversionReport.Kind(surface.kind) { report.sourceCounts[kind, default: 0] += 1 }
+        }
+        report.sourceCounts[.furniture] = objects.count
+        // 위치·크기에 NaN·무한대가 든 면·물체는 하나 때문에 모든 꼭짓점이 NaN이 되므로 빼고 기록한다
+        for surface in surfaces where !surface.isFinite {
+            if let kind = ScanConversionReport.Kind(surface.kind) { report.omit(kind, surface.id, .invalidNumber) }
+        }
+        for _ in 0..<objects.filter({ !$0.isFinite }).count { report.omit(.furniture, nil, .invalidNumber) }
+
+        var plan = PlanData.empty
+        plan.fillFromScan(
+            surfaces: surfaces.filter(\.isFinite),
+            sections: sections.filter { $0.center.x.isFinite && $0.center.y.isFinite && $0.center.z.isFinite },
+            objects: objects.filter(\.isFinite),
+            report: &report
+        )
+        report.planCounts[.wall] = plan.walls.filter { !$0.isVirtual }.count
+        for kind in [DoorWindowKind.door, .window, .passage] {
+            let reportKind: ScanConversionReport.Kind = switch kind {
+            case .door: .door
+            case .window: .window
+            default: .opening
+            }
+            report.planCounts[reportKind] = plan.doorWindows.filter { $0.kind == kind }.count
+        }
+        report.planCounts[.furniture] = plan.furniture?.count ?? 0
+        return (plan, report)
+    }
+
+    /// 변환 본체. 이미 NaN을 걸러 낸 값만 받는다
+    private mutating func fillFromScan(
+        surfaces: [ScanSurface],
+        sections: [ScanSection],
+        objects: [ScanObject],
+        report: inout ScanConversionReport
+    ) {
         self = .empty
         let wallSurfaces = surfaces.filter { $0.kind == .wall && $0.width >= ScanRule.minWallLength }
         let usesFloorOutline = wallSurfaces.isEmpty
+        for surface in surfaces where surface.kind == .wall && surface.width < ScanRule.minWallLength {
+            report.omit(.wall, surface.id, .tooShort)
+        }
 
         // 1) 바닥 높이: 바닥 면, 없으면 벽 아래 끝 중 가장 낮은 곳
         let floorY = surfaces.first { $0.kind == .floor }?.center.y
@@ -52,6 +102,13 @@ extension PlanData {
             .reduce(SIMD2(Double.infinity, .infinity)) { simd_min($0, $1) }
         let shift = SIMD2(repeating: ScanRule.margin) - lowest
         let shifted = lines.map { Segment(a: $0.a + shift, b: $0.b + shift) }
+        // 원본 벽 끝점(돌리고 옮긴 자리)에서 보정으로 얼마나 움직였는지 잰다. 가상 경계선은 보정이 없어 재지 않는다
+        if !usesFloorOutline {
+            for (original, moved) in zip(raw, shifted) {
+                let before = [rotation.apply(original.a) + shift, rotation.apply(original.b) + shift]
+                report.maxWallShift = max(report.maxWallShift, simd_distance(before[0], moved.a), simd_distance(before[1], moved.b))
+            }
+        }
         func planPoint(_ world: SIMD3<Double>) -> SIMD2<Double> {
             rotation.apply(SIMD2(world.x, world.z)) + shift
         }
@@ -63,8 +120,16 @@ extension PlanData {
         vertices = graph.points.enumerated().map { Vertex(id: "v\($0.offset + 1)", x: $0.element.x, y: $0.element.y) }
         var wallIdOfSurface: [UUID: String] = [:]
         var wallIdOfIndex: [Int: String] = [:]
+        // 방 나누기에서 사라진 벽·문·창문을 찾으려고 만든 id가 어느 원본에서 왔는지 남긴다
+        var surfaceOfWallId: [String: UUID] = [:]
+        var surfaceOfDoorId: [String: (id: UUID, kind: ScanConversionReport.Kind)] = [:]
         for (index, ends) in graph.ends.enumerated() {
-            guard let ends else { continue }
+            guard let ends else {
+                if !usesFloorOutline {
+                    report.omit(.wall, wallSurfaces[index].id, graph.keptIndex[index] == nil ? .absorbed : .overlapped)
+                }
+                continue
+            }
             let id = "w\(walls.count + 1)"
             wallIdOfIndex[index] = id
             if usesFloorOutline {
@@ -81,6 +146,7 @@ extension PlanData {
             }
             let surface = wallSurfaces[index]
             wallIdOfSurface[surface.id] = id
+            surfaceOfWallId[id] = surface.id
             walls.append(Wall(
                 id: id,
                 startVertex: vertices[ends.start].id,
@@ -96,14 +162,21 @@ extension PlanData {
             wallIdOfSurface[wallSurfaces[index].id] = id
         }
 
-        // 7) 문·창문·개구부: 속한 벽, 없으면 가까운 벽에 붙인다 (벽이 없으면 붙일 곳이 없다)
-        for surface in surfaces where !usesFloorOutline && [.door, .window, .opening].contains(surface.kind) {
+        // 7) 문·창문·개구부: 속한 벽, 없으면 가까운 벽에 붙인다 (벽이 없으면 붙일 곳이 없어 기록만 남긴다)
+        for surface in surfaces where [.door, .window, .opening].contains(surface.kind) {
+            guard !usesFloorOutline else {
+                if let kind = ScanConversionReport.Kind(surface.kind) { report.omit(kind, surface.id, .noWallToAttach) }
+                continue
+            }
             let point = planPoint(surface.center)
             let wall = surface.parentId.flatMap { wallIdOfSurface[$0] }.flatMap { self.wall(id: $0) }
                 ?? walls.min { distance(from: point, to: $0) < distance(from: point, to: $1) }
                     .flatMap { distance(from: point, to: $0) <= ScanRule.openingSearchDistance ? $0 : nil }
                 ?? wallBeneath(point)
-            guard let wall, let line = line(of: wall) else { continue }
+            guard let wall, let line = line(of: wall) else {
+                if let kind = ScanConversionReport.Kind(surface.kind) { report.omit(kind, surface.id, .noWallToAttach) }
+                continue
+            }
             let kind: DoorWindowKind = switch surface.kind {
             case .door: .door
             case .window: .window
@@ -113,8 +186,10 @@ extension PlanData {
             let along = simd_dot(point - line.start, line.direction)
             let bottom = max(0, surface.center.y - surface.height / 2 - floorY)
             let sill = kind == .window ? bottom : 0
+            let doorId = "d\(doorWindows.count + 1)"
+            if let reportKind = ScanConversionReport.Kind(surface.kind) { surfaceOfDoorId[doorId] = (surface.id, reportKind) }
             doorWindows.append(DoorWindow(
-                id: "d\(doorWindows.count + 1)",
+                id: doorId,
                 wallId: wall.id,
                 kind: kind,
                 centerAlongWall: min(max(along, width / 2), line.length - width / 2),
@@ -127,6 +202,13 @@ extension PlanData {
 
         // 8) 떠 있는 벽 끝을 잇고 방을 찾는다
         addScanRooms(sections: sections.map { (name: $0.name, point: planPoint($0.center)) })
+        // 방을 나누며 꼭짓점이 합쳐져 사라진 벽(겹침)과 문·창문(두 끝이 같아진 벽에 붙었던 것)을 기록한다
+        for (wallId, surfaceId) in surfaceOfWallId where wall(id: wallId) == nil {
+            report.omit(.wall, surfaceId, .mergedWhileSplitting)
+        }
+        for (doorId, source) in surfaceOfDoorId where !doorWindows.contains(where: { $0.id == doorId }) {
+            report.omit(source.kind, source.id, .mergedWhileSplitting)
+        }
         // 바닥 윤곽이 너무 작아 방이 안 되면 경계선만 남은 도면이 되므로 빈 도면으로 돌려준다
         if usesFloorOutline, rooms.isEmpty {
             self = .empty
