@@ -65,8 +65,27 @@ extension ScanSurface {
             widthAxis: floorAxis(of: surface.transform),
             width: Double(surface.dimensions.x),
             height: Double(surface.dimensions.y),
-            parentId: surface.parentIdentifier
+            parentId: surface.parentIdentifier,
+            corners: kind == .floor ? floorOutline(of: surface) : []
         )
+    }
+}
+
+/// 바닥 면의 윤곽 꼭짓점을 월드 (x, z)로. RoomPlan이 윤곽을 주지 않으면 폭·높이로 사각형을 만든다.
+/// 윤곽은 면의 로컬 좌표(면 위가 x·y, 수직이 z)이므로 면의 변환 행렬을 곱해 월드로 옮긴다
+private func floorOutline(of surface: CapturedRoom.Surface) -> [SIMD2<Double>] {
+    var local = surface.polygonCorners
+    if local.count < 3 {
+        let halfWidth = surface.dimensions.x / 2
+        let halfHeight = surface.dimensions.y / 2
+        local = [
+            SIMD3(-halfWidth, -halfHeight, 0), SIMD3(halfWidth, -halfHeight, 0),
+            SIMD3(halfWidth, halfHeight, 0), SIMD3(-halfWidth, halfHeight, 0)
+        ]
+    }
+    return local.map { corner in
+        let world = surface.transform * SIMD4(corner.x, corner.y, corner.z, 1)
+        return SIMD2(Double(world.x), Double(world.z))
     }
 }
 
