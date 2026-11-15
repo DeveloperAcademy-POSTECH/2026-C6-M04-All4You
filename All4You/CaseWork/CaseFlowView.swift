@@ -31,6 +31,8 @@ struct CaseFlowView: View {
     @State private var history = PlanHistory()
     /// 도면 저장에 실패했는지. 참이면 알림을 띄운다
     @State private var isSaveFailed = false
+    /// 도면 수정 화면이 처음 한 번 보여 줄 안내. 직접 그리기에서 스케치 스탬프를 옮기지 못했을 때
+    @State private var launchNotice: String?
 
     /// 메인에서 처음 보여 줄 탭
     private let startTab: CaseStartTab
@@ -44,6 +46,10 @@ struct CaseFlowView: View {
         // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 저장된 JSON을 못 읽으면 빈 도면
         _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? .empty)
         _photoStore = State(initialValue: PhotoStore(fireCase: fireCase))
+        // 직접 그리기 변환에서 옮기지 못한 스탬프가 있으면 한 번 알리고 비운다
+        let unplaced = fireCase.unplacedStampCount
+        _launchNotice = State(initialValue: unplaced > 0 ? Copy.stampsNotPlaced(unplaced) : nil)
+        fireCase.unplacedStampCount = 0
     }
 
     var body: some View {
@@ -90,7 +96,7 @@ struct CaseFlowView: View {
 extension CaseFlowView {
     /// 처음 시작할 때와 메인의 "수정"으로 들어올 때 함께 쓰는 도면 수정 화면
     private var editScreen: some View {
-        FloorPlanEditView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading)
+        FloorPlanEditView(planData: $planData, history: $history, onBack: goBack, onDone: showConversionLoading, launchNotice: launchNotice)
     }
 
     /// 화면 목록의 값에 맞는 화면을 만든다
@@ -136,6 +142,8 @@ extension CaseFlowView {
 
     /// 변환 로딩이 끝나면 메인을 띄우고 더미를 비운다
     private func showCaseMain() {
+        // 스탬프 안내는 처음 도면 수정에서 한 번만 보인다. 메인에서 다시 수정으로 들어와도 또 띄우지 않는다
+        launchNotice = nil
         path = []
         returnsToMain = false
         isCaseMainShown = true
@@ -200,6 +208,8 @@ extension CaseFlowView {
         static let saveFailedTitle = "도면을 저장하지 못했어요"
         static let saveFailedMessage = "방금 고친 내용이 저장되지 않았을 수 있어요. 다시 고쳐 보거나 앱을 다시 열어 주세요."
         static let confirm = "확인"
+        // TEMP: Figma에 스케치 스탬프 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
+        static func stampsNotPlaced(_ count: Int) -> String { "스탬프 \(count)개를 옮기지 못했어요" }
     }
 }
 

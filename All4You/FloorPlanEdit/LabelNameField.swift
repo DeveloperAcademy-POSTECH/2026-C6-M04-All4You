@@ -10,6 +10,8 @@ struct LabelNameField: View {
         case room
         /// 가구 이름: 흰 캡슐, 검은 테두리
         case furniture
+        /// 기타 스탬프 라벨: 주황 캡슐, 흰 글자 (StampKindLabelView 모양)
+        case stamp
     }
 
     let style: Style
@@ -21,6 +23,8 @@ struct LabelNameField: View {
     let onSubmit: () -> Void
     /// 캡슐과 같은 배율 (LabelScale). 이름을 고치는 중에도 캡슐 크기가 그대로이게
     var scale: CGFloat = 1
+    /// 넘으면 잘라 내는 글자 수. nil이면 제한이 없다
+    var maxLength: Int? = nil
 
     var body: some View {
         switch style {
@@ -41,6 +45,16 @@ struct LabelNameField: View {
                 .background(.white, in: .capsule)
                 .overlay { Capsule().stroke(.black, lineWidth: 1) }
                 .scaleEffect(scale)
+        case .stamp:
+            field
+                .font(.system(size: StampKindLabelView.Layout.fontSize, weight: .semibold))
+                .foregroundStyle(.white)
+                // 주황 바탕 위라 커서도 흰색
+                .tint(.white)
+                .padding(.horizontal, StampKindLabelView.Layout.horizontalPadding)
+                .padding(.vertical, StampKindLabelView.Layout.verticalPadding)
+                .background(.brand500, in: .capsule)
+                .scaleEffect(scale)
         }
     }
 
@@ -52,6 +66,9 @@ struct LabelNameField: View {
             .focused(isFocused)
             .submitLabel(.done)
             .onSubmit(onSubmit)
+            .onChange(of: text) {
+                if let maxLength, text.count > maxLength { text = String(text.prefix(maxLength)) }
+            }
     }
 }
 

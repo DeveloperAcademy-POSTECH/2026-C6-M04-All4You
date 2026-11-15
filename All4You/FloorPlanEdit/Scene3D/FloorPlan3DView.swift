@@ -32,6 +32,10 @@ struct FloorPlan3DView: View {
     var onRenameRoom: ((String, String) -> Void)? = nil
     /// 가구 이름 캡슐을 누르면 이름을 고치고, 고친 이름을 알린다 (Furniture.id, 새 이름). nil이면 캡슐은 보기만 한다
     var onRenameFurniture: ((String, String) -> Void)? = nil
+    /// 기타 스탬프의 라벨을 누르면 글자를 고치고, 고친 글자를 알린다 (PlanMarker.id·WallFixture.id, 새 글자. 비우면 빈 글자). nil이면 라벨은 보기만 한다
+    var onChangeKindNote: ((String, String) -> Void)? = nil
+    /// 방금 기타로 놓은 스탬프의 id. 받으면 그 라벨의 글자 고치기를 바로 시작하고 nil로 비운다
+    var kindNoteRequest: Binding<String?>? = nil
     /// 값이 바뀌면 고치던 이름을 넣고 닫는다 (2D로 바꾸거나 되돌리기를 눌렀을 때 부모가 올린다)
     var resetToken = 0
     /// 치수·면적 글자 설정. 받으면 오른쪽 아래에 켜고 끄는 버튼을 띄우고, 켜져 있으면 고른 종류의 글자를 도면 위에 겹친다. nil이면 띄우지 않는다
@@ -108,6 +112,8 @@ struct FloorPlan3DView: View {
     private enum LabelEdit: Equatable {
         case room(String)
         case furniture(String)
+        /// 기타 스탬프의 라벨 (PlanMarker.id·WallFixture.id)
+        case stamp(String)
     }
 
     var body: some View {
@@ -224,29 +230,68 @@ struct FloorPlan3DView: View {
         .onChange(of: resetToken) {
             if labelEdit != nil { finishLabelEdit() }
         }
+        // 기타로 놓은 스탬프의 라벨 자리가 정해지면 글자 고치기를 시작한다
+        .onChange(of: kindNoteRequest?.wrappedValue) { startRequestedKindNote() }
+        .onChange(of: stampLabelPoints) { startRequestedKindNote() }
     }
 }
 
 // 공간·가구 이름 라벨
 // iOS의 RealityView는 SwiftUI 뷰를 3D에 직접 붙일 수 없어서(visionOS 전용), 3D 점을 화면 점으로 바꿔 위에 겹치는 방법 사용
 extension FloorPlan3DView {
-    /// 발화지점·전기 스탬프 아래의 종류 라벨. 2D와 같은 모양이고 눌리지 않는다
+    /// 발화지점·전기 스탬프 아래의 종류 라벨. 2D와 같은 모양이다. 눌리지 않지만, 종류가 기타인 것은 받을 곳이 있으면 눌러서 글자를 고친다
     private var stampKindLabels: some View {
         ZStack {
             ForEach(planData.markers) { marker in
-                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id] {
-                    StampKindLabelView(text: text, scale: labelScale)
-                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id], labelEdit != .stamp(marker.id) {
+                    kindLabel(text, selecting: .marker(marker.id), isOther: marker.isKindOther, at: point)
                 }
             }
             ForEach(planData.wallFixtures) { fixture in
-                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id] {
-                    StampKindLabelView(text: text, scale: labelScale)
-                        .position(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id], labelEdit != .stamp(fixture.id) {
+                    kindLabel(text, selecting: .wallFixture(fixture.id), isOther: fixture.isKindOther, at: point)
                 }
             }
         }
-        .allowsHitTesting(false)
+    }
+
+    /// 고른 기타 스탬프는 라벨에만 따로 사각 테두리를 치고, 이 라벨을 누르면 글자를 고친다. 고르지 않은 스탬프의 라벨을 누르면 그 스탬프를 고른다
+    private func kindLabel(_ text: String, selecting stamp: PlanSelection, isOther: Bool, at point: CGPoint) -> some View {
+        let position = kindLabelPosition(from: point)
+        let isBoxed = isOther && selection == stamp
+        return StampKindLabelView(text: text)
+            .overlay {
+                if isBoxed {
+                    Rectangle()
+                        .stroke(.brand500, lineWidth: Layout.kindLabelBoxLineWidth)
+                        .padding(-Layout.kindLabelBoxPadding)
+                }
+            }
+            .scaleEffect(labelScale)
+            .onTapGesture {
+                if selection == stamp, isOther, let id = stamp.stampId {
+                    startLabelEdit(.stamp(id), name: planData.kindNote(id: id) ?? "", at: position)
+                } else {
+                    onTap(.element(stamp))
+                }
+            }
+            .allowsHitTesting(canEditKindNotes)
+            .position(position)
+    }
+
+    /// 스탬프의 화면 점에서 라벨 캡슐 가운데까지
+    private func kindLabelPosition(from point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x, y: point.y + Layout.stampLabelBelow * labelScale)
+    }
+
+    /// 기타 라벨을 눌러 고칠 수 있는지. 스탬프 도구가 켜져 있으면 라벨 자리에도 스탬프를 놓을 수 있게 누르지 않는다
+    private var canEditKindNotes: Bool { onChangeKindNote != nil && !isStampToolActive }
+
+    /// 방금 기타로 놓은 스탬프가 있으면, 라벨 자리를 안 순간 글자 고치기를 시작한다
+    private func startRequestedKindNote() {
+        guard let id = kindNoteRequest?.wrappedValue, let point = stampLabelPoints[id] else { return }
+        kindNoteRequest?.wrappedValue = nil
+        startLabelEdit(.stamp(id), name: planData.kindNote(id: id) ?? "", at: kindLabelPosition(from: point))
     }
 
     /// 지금 이름 캡슐 배율
@@ -295,6 +340,9 @@ extension FloorPlan3DView {
                 LabelNameField(style: .furniture, placeholder: furniture.label, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale)
                     .position(furnitureLabelPoints[id] ?? labelEditFallbackPoint)
             }
+        case .stamp(let id)?:
+            LabelNameField(style: .stamp, placeholder: IgnitionCause.other.title, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale, maxLength: PlanData.kindNoteMaxLength)
+                .position(stampLabelPoints[id].map(kindLabelPosition(from:)) ?? labelEditFallbackPoint)
         case nil:
             EmptyView()
         }
@@ -326,6 +374,9 @@ extension FloorPlan3DView {
             if !name.isEmpty { onRenameRoom?(id, name) }
         case .furniture(let id)?:
             if !name.isEmpty { onRenameFurniture?(id, name) }
+        case .stamp(let id)?:
+            // 비우면 글자를 지워 "기타"로 돌아가야 하므로 빈 글자도 알린다
+            onChangeKindNote?(id, name)
         case nil:
             break
         }
@@ -1116,6 +1167,9 @@ extension FloorPlan3DView {
         /// 스탬프 종류 라벨을 스탬프 자리에서 아래로 내리는 거리 (pt)
         // TEMP: 3D 스탬프 모델 크기에 맞춰 임시로 정함 — 실기기에서 보고 조절
         static let stampLabelBelow: CGFloat = 22
+        /// 고른 기타 스탬프의 라벨 사각 테두리 (2D와 같게)
+        static let kindLabelBoxLineWidth: CGFloat = 1.5
+        static let kindLabelBoxPadding: CGFloat = 4
         /// 오른쪽 아래 버튼들 사이 (pt)
         static let cornerButtonSpacing: CGFloat = 8
         /// 치수 글자를 이름 캡슐 가운데에서 아래로 내리는 거리 (pt). 2D와 같다

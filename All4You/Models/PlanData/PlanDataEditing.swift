@@ -58,7 +58,8 @@ extension PlanData {
                 lying: original.lying,
                 scale: original.scale,
                 ignitionCause: original.ignitionCause,
-                electricalKind: original.electricalKind
+                electricalKind: original.electricalKind,
+                kindNote: original.kindNote
             )
         }
         guard let copy = copies.first(where: fits) else { return nil }
@@ -165,7 +166,8 @@ extension PlanData {
             face: original.face,
             positionAlongWall: along,
             heightFromFloor: original.heightFromFloor,
-            electricalKind: original.electricalKind
+            electricalKind: original.electricalKind,
+            kindNote: original.kindNote
         )
         wallFixtures.append(copy)
         return copy.id

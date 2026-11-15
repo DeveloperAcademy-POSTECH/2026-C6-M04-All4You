@@ -11,7 +11,7 @@ import Foundation
 enum WallDrawingRules {
     /// 이 각도(도)보다 덜 기울었으면 가로·세로로 맞춘다
     // TEMP: 맞춤 각도는 실기기에서 그려 보고 정함
-    static let straightenAngle = 15.0
+    static let straightenAngle = 2.0
     /// 끝점에서 그은 방향으로 이만큼(m) 안쪽만 늘이면 벽에 닿을 때 늘여서 붙인다
     // TEMP: 늘여 붙는 거리는 실기기에서 그려 보고 정함
     static let extendDistance = 0.5

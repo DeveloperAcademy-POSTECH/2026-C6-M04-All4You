@@ -27,6 +27,8 @@ struct Plan2DView: View {
     var scalesLabels = false
     /// 발화지점·전기 스탬프 아래에 종류 글자를 보일지. 내보내기 도면은 바닥 스탬프를 비우고 그려서 벽 전기 글자만 남지 않게 끈다
     var showsStampKinds = true
+    /// 라벨 글자를 고치는 중이라 라벨 대신 입력칸을 띄울 스탬프 (PlanMarker.id·WallFixture.id). 이 스탬프의 종류 라벨은 그리지 않는다
+    var editingKindNoteId: String? = nil
 
     /// 지금 이름 캡슐 배율
     private var labelScale: CGFloat {
@@ -50,6 +52,10 @@ struct Plan2DView: View {
     }
     /// 아이콘에서 고른 테두리까지 (pt). 손잡이도 이 테두리 모서리에 붙는다
     static let selectionPadding: CGFloat = 6
+    /// 고른 테두리와 종류 라벨 사이 (pt)
+    static let kindLabelGap: CGFloat = 2
+    /// 종류 라벨과 그 사각 테두리 사이 (pt)
+    static let kindLabelBoxPadding: CGFloat = 4
 
     var body: some View {
         Canvas { context, _ in
@@ -325,29 +331,36 @@ extension Plan2DView {
                     .rotationEffect(.degrees(marker.yaw))
                     .position(screen.point(marker.position))
                 // 종류 글자는 스탬프를 돌려도 바로 서고, 스탬프 아래에 놓인다
-                kindLabel(marker.kindLabel, at: marker.position, iconSize: Self.iconSize(of: marker))
+                kindLabel(marker.kindLabel, id: marker.id, isBoxed: marker.isKindOther && selection == .marker(marker.id), at: marker.position, iconSize: Self.iconSize(of: marker))
             }
             ForEach(planData.wallFixtures) { fixture in
                 if let point = planData.point(of: fixture) {
                     stampIcon(EditTool.outlet.iconName)
                         .overlay { selectionBorder(isSelected: selection == .wallFixture(fixture.id)) }
                         .position(screen.point(point))
-                    kindLabel(fixture.kindLabel, at: point, iconSize: screen.outletSize)
+                    kindLabel(fixture.kindLabel, id: fixture.id, isBoxed: fixture.isKindOther && selection == .wallFixture(fixture.id), at: point, iconSize: screen.outletSize)
                 }
             }
         }
     }
 
     /// 스탬프 아래의 종류 글자 캡슐. 종류가 없으면 그리지 않는다. 고른 테두리 바로 아래에 두고, 눌리지 않는다.
+    /// 고른 기타 스탬프(isBoxed)는 라벨에만 따로 주황 사각 테두리를 쳐서, 이 테두리를 누르면 글자를 고칠 수 있음을 보인다.
     /// 캡슐은 가운데 기준으로 키우고 줄므로, 키운 높이의 절반만큼 더 내려서 스탬프와 겹치지 않게 한다
     @ViewBuilder
-    private func kindLabel(_ text: String?, at point: SIMD2<Double>, iconSize: Double) -> some View {
-        if showsStampKinds, let text {
-            let center = screen.point(point)
-            let below = screen.length(iconSize) / 2 + Self.selectionPadding + Layout.kindLabelGap + StampKindLabelView.height * labelScale / 2
-            StampKindLabelView(text: text, scale: labelScale)
+    private func kindLabel(_ text: String?, id: String, isBoxed: Bool, at point: SIMD2<Double>, iconSize: Double) -> some View {
+        if showsStampKinds, id != editingKindNoteId, let text {
+            StampKindLabelView(text: text)
+                .overlay {
+                    if isBoxed {
+                        Rectangle()
+                            .stroke(.brand500, lineWidth: Layout.selectionLineWidth)
+                            .padding(-Self.kindLabelBoxPadding)
+                    }
+                }
+                .scaleEffect(labelScale)
                 .allowsHitTesting(false)
-                .position(x: center.x, y: center.y + below)
+                .position(screen.kindLabelCenter(at: point, iconSize: iconSize, labelScale: labelScale))
         }
     }
 
@@ -436,8 +449,6 @@ extension Plan2DView {
         static let selectedOpeningOpacity = 0.3
         /// 고른 테두리 두께 (pt)
         static let selectionLineWidth: CGFloat = 1.5
-        /// 고른 테두리와 종류 글자 캡슐 사이 (pt)
-        static let kindLabelGap: CGFloat = 2
         /// 방 바닥을 칠하는 옅은 주황의 진하기
         static let roomTintOpacity = 0.08
         /// 치수선 굵기와 끝 눈금 길이 (pt)

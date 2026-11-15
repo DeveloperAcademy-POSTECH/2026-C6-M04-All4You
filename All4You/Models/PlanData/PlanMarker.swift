@@ -18,6 +18,8 @@ struct PlanMarker: Codable, Hashable, Identifiable {
     var ignitionCause: IgnitionCause? = nil
     /// 전기 종류 (바닥 전기만 값이 있고 나머지는 nil)
     var electricalKind: ElectricalKind? = nil
+    /// 종류가 기타(other)일 때 사용자가 적은 라벨 글자. 없으면 "기타"로 보인다 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
+    var kindNote: String? = nil
 
     /// 그릴 때 쓰는 배율. 저장된 값이 없으면 1
     var drawScale: Double { scale ?? 1 }
@@ -35,9 +37,20 @@ struct PlanMarker: Codable, Hashable, Identifiable {
         kind == .person ? personTokenScale * personModelEnlargement : 1
     }
 
-    /// 스탬프 아래에 보일 글자. 발화지점·전기는 고른 종류(종류를 고르지 않은 예전 스탬프는 nil), 피해자는 "피해자"
-    var kindLabel: String? {
+    /// 종류가 기타라 라벨 글자를 직접 적을 수 있는지
+    var isKindOther: Bool {
         switch kind {
+        case .ignitionPoint: ignitionCause == .other
+        case .outlet: electricalKind == .other
+        case .person: false
+        }
+    }
+
+    /// 스탬프 아래에 보일 글자. 발화지점·전기는 고른 종류(종류를 고르지 않은 예전 스탬프는 nil), 피해자는 "피해자".
+    /// 종류가 기타이고 적은 글자(kindNote)가 있으면 그 글자
+    var kindLabel: String? {
+        if isKindOther, let kindNote { return kindNote }
+        return switch kind {
         case .ignitionPoint: ignitionCause?.title
         case .outlet: electricalKind?.title
         case .person: EditTool.person.title

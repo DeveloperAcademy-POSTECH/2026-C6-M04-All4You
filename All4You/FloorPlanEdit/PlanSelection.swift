@@ -13,3 +13,13 @@ enum PlanSelection: Equatable {
     /// 가구 (Furniture.id). 2D에서만 고른다 (위 도구 없이 윗면을 누르거나, 도구와 상관없이 이름 캡슐을 누름)
     case furniture(String)
 }
+
+extension PlanSelection {
+    /// 스탬프(사람·발화지점·전기)를 골랐다면 그 id (PlanMarker.id·WallFixture.id). 창문·문·벽·가구는 nil
+    var stampId: String? {
+        switch self {
+        case .marker(let id), .wallFixture(let id): id
+        case .doorWindow, .wall, .furniture: nil
+        }
+    }
+}

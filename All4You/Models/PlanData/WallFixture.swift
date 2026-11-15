@@ -14,9 +14,18 @@ struct WallFixture: Codable, Hashable, Identifiable {
     var heightFromFloor: Double
     /// 전기 종류 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
     var electricalKind: ElectricalKind? = nil
+    /// 종류가 기타(other)일 때 사용자가 적은 라벨 글자. 없으면 "기타"로 보인다 (이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널)
+    var kindNote: String? = nil
 
-    /// 스탬프 아래에 보일 종류 글자. 종류를 고르지 않은 것(예전에 저장한 도면)은 nil
-    var kindLabel: String? { electricalKind?.title }
+    /// 종류가 기타라 라벨 글자를 직접 적을 수 있는지
+    var isKindOther: Bool { electricalKind == .other }
+
+    /// 스탬프 아래에 보일 종류 글자. 종류를 고르지 않은 것(예전에 저장한 도면)은 nil.
+    /// 종류가 기타이고 적은 글자(kindNote)가 있으면 그 글자
+    var kindLabel: String? {
+        if isKindOther, let kindNote { return kindNote }
+        return electricalKind?.title
+    }
 }
 
 /// 벽에 붙는 것의 종류  FixtureKind

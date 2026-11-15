@@ -54,6 +54,14 @@ enum StampOption: Hashable {
         case .electricalKind(let kind): kind.title
         }
     }
+
+    /// 기타라 놓은 뒤 라벨 글자를 직접 적을 수 있는 종류인지
+    var isOther: Bool {
+        switch self {
+        case .ignitionCause(let cause): cause == .other
+        case .electricalKind(let kind): kind == .other
+        }
+    }
 }
 
 extension EditTool {

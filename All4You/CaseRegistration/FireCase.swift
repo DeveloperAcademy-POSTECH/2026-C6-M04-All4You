@@ -40,6 +40,9 @@ final class FireCase {
     @Relationship(deleteRule: .cascade, inverse: \FloorPlan.fireCase)
     var floorPlan: FloorPlan?
     
+    /// 직접 그리기에서 변환한 뒤 도면에 옮기지 못한 스케치 스탬프 개수. 저장하지 않고, 2D 수정 화면이 한 번 알리고 0으로 되돌린다
+    @Transient var unplacedStampCount = 0
+
     /// 사용자가 만든 사건 목록. 사건은 목록 하나에만 들어가고, nil이면 상태에 따라 조사 중·조사 종결에 보인다
     var folder: CaseFolder?
     
