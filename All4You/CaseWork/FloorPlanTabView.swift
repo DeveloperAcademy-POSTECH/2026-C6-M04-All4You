@@ -60,9 +60,32 @@ struct FloorPlanTabView: View {
         HStack(spacing: 0) {
             floorPlanArea
                 .overlay(alignment: .topLeading) {
-                    PhotoFilterMenu(filter: $photoFilter)
-                        .padding(.leading, Layout.filterLeading)
-                        .padding(.top, Layout.filterTop)
+                    HStack(spacing: 8) {
+                        PhotoFilterMenu(filter: $photoFilter)
+
+                        if isPhotoPositionEditMode {
+                            HStack(spacing: 12) {
+                                Text("사진위치 수정 중")
+                                    .font(AppTypography.subheadline)
+                                    .foregroundStyle(.primary)
+
+                                Button("완료") {
+                                    if bookmarkEdit != nil {
+                                        cancelBookmarkEditing()
+                                    }
+                                    isPhotoPositionEditMode = false
+                                }
+                                .font(AppTypography.subheadlineEmphasized)
+                                .buttonStyle(.borderedProminent)
+                                .tint(.brand500)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .glassEffect(.regular, in: .capsule)
+                        }
+                    }
+                    .padding(.leading, Layout.filterLeading)
+                    .padding(.top, Layout.filterTop)
                 }
                 .overlay(alignment: .topTrailing) {
                     // 패널을 닫아도 위치를 정하지 않은 사진이 남아 있으면 언제든 다시 열 수 있게 둔다
@@ -74,27 +97,7 @@ struct FloorPlanTabView: View {
                 .overlay(alignment: .bottom) {
                     dimensionPicker
                 }
-                .overlay(alignment: .top) {
-                    if isPhotoPositionEditMode {
-                        HStack(spacing: 12) {
-                            Text("사진위치 수정 중")
-                                .font(AppTypography.subheadline)
-                                .foregroundStyle(.primary)
-                            Button("완료") {
-                                // 저장하지 않은 임시 편집만 취소하고 전체 수정 모드를 종료한다.
-                                if bookmarkEdit != nil { cancelBookmarkEditing() }
-                                isPhotoPositionEditMode = false
-                            }
-                            .font(AppTypography.subheadlineEmphasized)
-                            .buttonStyle(.borderedProminent)
-                            .tint(.brand500)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .glassEffect(.regular, in: .capsule)
-                        .padding(.top, Layout.filterTop)
-                    }
-                }
+            
             if isPlacingPhotos {
                 Divider()
                 UnassignedPhotoPanel(photos: photoStore.unassignedPhotos) {
