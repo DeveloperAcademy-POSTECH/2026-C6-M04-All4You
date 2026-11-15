@@ -216,12 +216,8 @@ private struct RoomAlbumView: View {
     
     var body: some View {
         ScrollView {
-            VStack(
-                alignment: .leading,
-                spacing: Layout.titleSpacing
-            ) {
+            VStack(alignment: .leading, spacing: Layout.titleSpacing) {
                 header
-                
                 LazyVGrid(
                     columns: Layout.columns,
                     alignment: .leading,
@@ -229,23 +225,16 @@ private struct RoomAlbumView: View {
                     pinnedViews: .sectionHeaders
                 ) {
                     if isBookmarkOnly {
-                        // 북마크 사진을 앞으로 모으고
-                        // 나머지 사진은 흐리게 뒤에 표시
+                        // 북마크 사진을 앞에 모으고, 나머지는 뒤에서 흐리게 표시
                         ForEach(orderedPhotos) { photo in
-                            tile(photo)
+                            tile(photo, bookmarkFilterEnabled: true)
                         }
                     } else {
-                        // 필터 해제 시 기존 월별 정렬 유지
-                        ForEach(
-                            PhotoDateSection<LoadedPhoto>.group(
-                                photos,
-                                by: .month,
-                                date: \.takenAt
-                            )
-                        ) { section in
+                        // 필터를 끄면 기존 월별 섹션과 촬영 순서로 복귀
+                        ForEach(PhotoDateSection<LoadedPhoto>.group(photos, by: .month, date: \.takenAt)) { section in
                             Section {
                                 ForEach(section.items) { photo in
-                                    tile(photo)
+                                    tile(photo, bookmarkFilterEnabled: false)
                                 }
                             } header: {
                                 monthLabel(section.startDate)
@@ -253,33 +242,27 @@ private struct RoomAlbumView: View {
                         }
                     }
                 }
+                .id(isBookmarkOnly)
+                
             }
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.bottom, Layout.pickerClearance)
         }
         .overlay {
             if photos.isEmpty {
-                ContentUnavailableView(
-                    Copy.emptyTitle,
-                    systemImage: "photo.on.rectangle.angled",
-                    description: Text(Copy.emptyMessage)
-                )
+                ContentUnavailableView(Copy.emptyTitle, systemImage: "photo.on.rectangle.angled", description: Text(Copy.emptyMessage))
             }
         }
     }
     
-    /// 북마크 필터 활성화 시 북마크 사진을 앞쪽으로 정렬
-    /// 각 그룹 안에서는 기존 촬영 날짜 순서를 유지
+    /// 북마크를 먼저 배치하되, 각 그룹 안의 기존 촬영 순서는 유지
     private var orderedPhotos: [LoadedPhoto] {
-        guard isBookmarkOnly else { return photos }
-        
         let bookmarked = photos.filter { $0.isBookmarked }
         let others = photos.filter { !$0.isBookmarked }
-        
         return bookmarked + others
     }
     
-    /// 북마크만 보기를 켜면 북마크하지 않은 사진은 흐려지고 누를 수 없다
+    /// 필터 중 전체 화면 보기에서는 북마크 사진만 넘길 수 있다
     private var visiblePhotos: [LoadedPhoto] {
         isBookmarkOnly ? photos.filter(\.isBookmarked) : photos
     }
@@ -289,18 +272,11 @@ private struct RoomAlbumView: View {
             Text(title)
                 .font(.largeTitle.bold())
             Spacer()
-            
             Button {
                 withAnimation {
                     isBookmarkOnly.toggle()
                 }
-
-                print("🔥 북마크 버튼 눌림!")
-                print("🔥 필터 상태: \(isBookmarkOnly)")
-                print("🔥 전체 사진 수: \(photos.count)")
-                print("🔥 북마크 사진 수: \(photos.filter { $0.isBookmarked }.count)")
             } label: {
-
                 HStack(spacing: Layout.toggleSpacing) {
                     Image(systemName: "checkmark")
                         .font(AppTypography.subheadlineEmphasized)
@@ -327,21 +303,10 @@ private struct RoomAlbumView: View {
             .background(.gray100, in: .capsule)
             .padding(.vertical, Layout.monthVerticalPadding)
     }
-
-    private func tile(_ photo: LoadedPhoto) -> some View {
-        let isDimmed = isBookmarkOnly && !photo.isBookmarked
-
-        #if DEBUG
-        let _ = print("""
-        📸 사진 상태 확인
-        - 사진 ID: \(photo.id)
-        - 북마크 필터: \(isBookmarkOnly)
-        - 북마크 여부: \(photo.isBookmarked)
-        - 투명도 적용: \(isDimmed)
-        - 최종 불투명도: \(isDimmed ? Layout.dimmedOpacity : 1)
-        """)
-        #endif
-
+    
+    private func tile(_ photo: LoadedPhoto, bookmarkFilterEnabled: Bool) -> some View {
+        let isDimmed = bookmarkFilterEnabled && !photo.isBookmarked
+        
         return AlbumPhotoTile(photo: photo) {
             onOpenPhoto(visiblePhotos, photo.id)
         }
@@ -349,7 +314,6 @@ private struct RoomAlbumView: View {
         .opacity(isDimmed ? Layout.dimmedOpacity : 1)
         .disabled(isDimmed)
     }
-
 }
 
 // 크기
