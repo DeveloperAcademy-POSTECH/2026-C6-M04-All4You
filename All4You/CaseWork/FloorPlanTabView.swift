@@ -19,6 +19,8 @@ struct FloorPlanTabView: View {
     var highlightedMemoID: UUID? = nil
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var onUpdateMemo: (FloorPlanMemo.ID, String) -> Void = { _, _ in }
+    /// 2D에서 도면을 돌려 놓으면 돌린 각(라디안, 돌리지 않았으면 nil)을 알린다. 도면에 저장하는 일은 바깥이 한다
+    var onRotatePlan: (Double?) -> Void = { _ in }
     
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
@@ -26,6 +28,8 @@ struct FloorPlanTabView: View {
     @State private var canvasSize = CGSize.zero
     /// 오므리는 동안 직전까지 적용한 배율. 바뀐 만큼만 screen에 곱한다
     @State private var lastMagnification = 1.0
+    /// 돌리는 동안 직전까지 적용한 각 (라디안). 바뀐 만큼만 screen에 더한다
+    @State private var lastRotation = 0.0
     /// 사진 핀을 눌러 고른 장소 (Room.id). 오른쪽에 그 장소 사진 모음이 열린다
     @State private var selectedRoomID: String?
     /// 장소 사진 모음의 확대 버튼을 누르면 띄우는 전체 화면 사진 보기
@@ -195,11 +199,17 @@ extension FloorPlanTabView {
                 .contentShape(.rect)
                 // 도면 빈 곳을 누르면 장소 선택을 풀고 사진 모음을 닫는다. 핀(버튼)을 누른 것은 핀이 먼저 받는다
                 .onTapGesture(perform: clearRoomSelection)
-                .gesture(zoomGesture)
+                .gesture(zoomGesture.simultaneously(with: rotateGesture))
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
                 .overlay(alignment: .bottomTrailing) {
                     ResetViewButton { resetView(planData) }
                         .padding()
+                }
+                .overlay(alignment: .topTrailing) {
+                    // 2D 수정에서 정한 북쪽. 도면을 돌려 놓은 만큼 함께 돈다. 메인에서는 보기만 하고 방위표는 돌리지 않는다
+                    CompassView(northAngle: .radians((planData.northAngle ?? 0) + (screen?.rotation ?? 0)))
+                        .padding()
+                        .padding(.top, Layout.compassTopInset)
                 }
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
                 if isThreeDReady {
@@ -212,7 +222,9 @@ extension FloorPlanTabView {
                         onEdit: { _ in },
                         pins: pins3D(in: planData),
                         pinView: { id in pinView3D(id: id, in: planData) },
-                        showsResetButton: true
+                        showsResetButton: true,
+                        showsCompass: true,
+                        compassTopInset: Layout.compassTopInset
                     )
                     .modifier(DimensionLayer(isShown: dimension == .threeD))
                 }
@@ -444,6 +456,33 @@ extension FloorPlanTabView {
             }
     }
     
+    /// 두 손가락이 비틀린 만큼 도면을 돌린다. 손가락 사이가 제자리에 있고, 손을 떼면 90° 방향에 붙여 알린다
+    private var rotateGesture: some Gesture {
+        RotateGesture()
+            .onChanged { value in
+                guard let screen else { return }
+                // 두 손가락이 정확히 세로·가로가 되는 순간 시스템이 NaN을 줄 때가 있다. 그 값을 넣으면 도면이 사라지므로 건너뛴다
+                let radians = value.rotation.radians
+                guard radians.isFinite else { return }
+                let delta = radians - lastRotation
+                lastRotation = radians
+                self.screen = screen.rotated(by: delta, around: value.startLocation)
+            }
+            .onEnded { _ in
+                lastRotation = 0
+                finishPlanRotation()
+            }
+    }
+
+    /// 손을 뗐다. 도면을 90° 방향 가까이면 그 방향으로 붙이고, 돌린 각을 알려 도면에 저장하게 한다
+    private func finishPlanRotation() {
+        guard let screen else { return }
+        withAnimation(.easeOut(duration: Layout.rotationSettleDuration)) {
+            self.screen = screen.settled(around: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
+        }
+        onRotatePlan(screen.savedRotation)
+    }
+
     /// 두 손가락으로 끈 만큼 도면을 옮긴다
     private func panPlan(to location: CGPoint, from previous: CGPoint) {
         screen = screen?.moved(by: CGSize(width: location.x - previous.x, height: location.y - previous.y))
@@ -472,6 +511,10 @@ extension FloorPlanTabView {
         static let openPanelSpacing: CGFloat = 8
         static let openPanelPadding: CGFloat = 16
         static let openPanelHeight: CGFloat = 48
+        /// 돌린 도면을 90° 방향에 붙이는 시간 (초)
+        static let rotationSettleDuration = 0.15
+        /// 방위표를 오른쪽 위 "위치 미확인 사진" 버튼(바깥 여백 16 + 높이 48) 아래로 내리는 높이 (pt)
+        static let compassTopInset: CGFloat = 16 + 48
         /// 3D에서 사진 핀을 띄울 높이 (m). 공간 이름 라벨과 같은 높이라 벽 너머에서는 가려진다
         static let photoPinHeight = 1.5
         /// 3D에서 메모 핀을 띄울 높이 (m). 가구 위에 남긴 메모도 보이게 가구 높이보다 조금 위
