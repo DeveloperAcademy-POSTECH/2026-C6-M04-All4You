@@ -106,14 +106,8 @@ extension PlanData {
             drawnWallIds.insert(wall.id)
         }
         guard !drawnWallIds.isEmpty else { return .failure(.wallAlreadyThere) }
-        guard result.retraceRooms(splitsRooms: true) else { return .failure(.roomsCannotBeRebuilt) }
-        // 쓸모없어진 가상 경계선을 정리한 뒤에 새 방을 만들어야, 지워진 방의 칸이 "새 공간"으로 되살아나지 않는다
-        result.cleanUpVirtualWalls()
-        // 새 벽이 방 밖에서 칸을 닫았으면 그 칸을 "새 공간"으로 만든다
-        result.addRoomsClosed(by: drawnWallIds)
         // 방 안에 잘 있던 사람·발화지점을 벽이 지나가면 그리지 않는다
         guard markers.filter(fits).allSatisfy(result.fits) else { return .failure(.stampInTheWay) }
-        result.refreshRoomLabels()
         return .success(result)
     }
 
@@ -434,13 +428,6 @@ extension PlanData {
             wallFixtures[i].wallId = back.id
             wallFixtures[i].positionAlongWall -= at
         }
-        // 방 경계도 벽 하나를 두 조각으로 바꾼다. 도는 방향이 반대면 뒤쪽 조각이 먼저다
-        for r in rooms.indices {
-            guard let at = rooms[r].boundary.firstIndex(where: { $0.wallId == wallId }) else { continue }
-            let forward = rooms[r].boundary[at].forward
-            let pieces = [RoomEdge(wallId: wallId, forward: forward), RoomEdge(wallId: back.id, forward: forward)]
-            rooms[r].boundary.replaceSubrange(at...at, with: forward ? pieces : pieces.reversed())
-        }
         return vertex.id
     }
 
@@ -481,36 +468,9 @@ extension PlanData {
 
 // 지우기
 extension PlanData {
-    /// 지우개로 벽을 지운다. 양쪽이 모두 방이면 벽을 빼고 두 방을 합친다(같은 방이면 그대로 하나).
-    /// 한쪽이 건물 바깥이면 가상 경계선으로 바꾼다. 방 경계가 아닌 벽은 그냥 뺀다
+    /// 지우개로 벽을 지운다. 벽과 거기 달린 창문·문·콘센트를 빼고, 어느 벽도 쓰지 않게 된 꼭짓점도 뺀다.
+    /// 공간 라벨은 자리(점)만 갖고 있어 그대로 둔다
     mutating func eraseWall(id: String) {
-        guard let wall = wall(id: id), !wall.isVirtual else { return }
-        let roomSides = rooms.flatMap(\.boundary).filter { $0.wallId == id }
-        switch roomSides.count {
-        case 0:
-            deleteWall(id: id)
-        case 2:
-            var merged = self
-            merged.deleteWall(id: id)
-            if merged.retraceRooms(mergesRooms: true) {
-                // 합쳐져 남은 방은 이름을 새 방 가운데로 옮긴다
-                for roomId in Set(roomSides.compactMap { side in rooms.first { $0.boundary.contains(side) }?.id }) {
-                    merged.centerRoomLabel(id: roomId)
-                }
-                merged.refreshRoomLabels()
-                self = merged
-            } else {
-                removeWall(id: id)
-            }
-        default:
-            removeWall(id: id)
-        }
-        // 지워서 쓸모없어진 가상 경계선을 정리한다. 지우개 한 번이 되돌리기 한 칸이 되도록 같은 변경 안에서 한다
-        cleanUpVirtualWalls()
-    }
-
-    /// 벽과 거기 달린 창문·문·콘센트를 빼고, 어느 벽도 쓰지 않게 된 꼭짓점도 뺀다
-    private mutating func deleteWall(id: String) {
         walls.removeAll { $0.id == id }
         doorWindows.removeAll { $0.wallId == id }
         wallFixtures.removeAll { $0.wallId == id }

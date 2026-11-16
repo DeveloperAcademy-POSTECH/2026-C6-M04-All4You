@@ -11,7 +11,6 @@ enum VertexMoveFailure: Error {
     case crossesWall
     case openingOutsideWall
     case stampInTheWay
-    case roomsCannotBeRebuilt
 
     var message: String {
         switch self {
@@ -20,7 +19,6 @@ enum VertexMoveFailure: Error {
         case .crossesWall: "다른 벽과 부딪혀요. 다른 벽을 지나지 않는 자리로 옮겨 주세요"
         case .openingOutsideWall: "벽에 달린 창문·문·콘센트가 벽 밖으로 나가요. 벽을 덜 줄여 주세요"
         case .stampInTheWay: "스탬프가 걸려요. 발화지점·피해자에서 떨어진 자리로 옮겨 주세요"
-        case .roomsCannotBeRebuilt: "방을 다시 만들 수 없어요. 벽이 끊기지 않는 자리로 옮겨 주세요"
         }
     }
 }
@@ -170,11 +168,7 @@ extension PlanData {
             touchedIds.insert(walls[wallIndex].id)
         }
         for wall in walls where touchedIds.contains(wall.id) && !wall.isVirtual && crossesWalls(wall) { return .failure(.crossesWall) }
-        guard retraceRooms(splitsRooms: true) else { return .failure(.roomsCannotBeRebuilt) }
-        cleanUpVirtualWalls()
-        addRoomsClosed(by: touchedIds)
         guard original.markers.filter(original.fits).allSatisfy(fits) else { return .failure(.stampInTheWay) }
-        refreshRoomLabels()
         return .success(self)
     }
 }

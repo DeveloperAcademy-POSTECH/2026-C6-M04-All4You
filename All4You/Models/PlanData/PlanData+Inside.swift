@@ -14,9 +14,9 @@ extension PlanData {
         }
     }
 
-    /// 점 p(도면 좌표, m)가 어느 방 안이고, 벽 두께 위가 아닌지
+    /// 점 p(도면 좌표, m)가 벽으로 닫힌 칸이나 바닥 안이고, 벽 두께 위가 아닌지
     func isInsideRoom(_ p: SIMD2<Double>) -> Bool {
-        guard rooms.contains(where: { Self.polygon(polygon(of: $0), contains: p) }) else { return false }
+        guard regions.regions.contains(where: { Self.polygon($0.polygon, contains: p) }) else { return false }
         return !walls.contains { wall in
             guard !wall.isVirtual, let line = line(of: wall) else { return false }
             return line.distance(to: p) < wall.thickness / 2

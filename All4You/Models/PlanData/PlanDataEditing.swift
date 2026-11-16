@@ -224,8 +224,6 @@ extension PlanData {
     /// 그 방에 놓였던 사진·메모는 장소가 없어진다
     mutating func removeRoom(id: String) {
         rooms.removeAll { $0.id == id }
-        // TEMP: 가상 경계선을 없애는 커밋에서 이 정리도 함께 지운다
-        cleanUpVirtualWalls()
     }
 
     /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 어디로든 옮길 수 있다
@@ -238,14 +236,6 @@ extension PlanData {
 
 // 벽 한 줄
 extension PlanData {
-    /// 벽을 지운다. 방 경계(Room.boundary)가 이 벽을 가리키므로 실제로 빼지 않고 가상 경계선으로 바꿔, 2D·3D에 그리지 않는다.
-    /// 그 벽에 달린 창문·문·콘센트는 붙을 곳이 없어지므로 함께 지운다
-    mutating func removeWall(id: String) {
-        guard let index = walls.firstIndex(where: { $0.id == id }) else { return }
-        walls[index].isVirtual = true
-        doorWindows.removeAll { $0.wallId == id }
-        wallFixtures.removeAll { $0.wallId == id }
-    }
 }
 
 // 창문

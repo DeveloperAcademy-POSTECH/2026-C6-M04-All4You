@@ -1,90 +1,12 @@
-// 벽 연결에서 방 경계(Room.boundary)를 다시 만들고, 방 밖으로 나간 이름 자리를 방 안으로 옮긴다
+// 벽 연결에서 닫힌 칸(면 따라 돌기)을 찾는다. 공간 스캔 변환이 방 이름 자리를 정할 때 쓰는 계산도 함께 있다
 //
 // 면 따라 돌기: 벽 하나를 방향이 반대인 두 "면"으로 본다. 면을 따라가다 꼭짓점에 닿으면 가장 오른쪽으로 꺾는다.
-// 이렇게 돌면 방은 화면에서 시계 방향(넓이 +)으로, 건물 바깥은 반시계 방향(넓이 −)으로 한 바퀴 돈다.
-// 방 이름 잇기: 옮기기 전에 어떤 면이 어느 방이었는지 기억해 두고, 다시 돈 고리에 그 면이 있으면 같은 방으로 본다.
-// 벽 이동은 방을 새로 만들거나 없애지 않으므로 고리와 방은 하나씩 짝이 맞아야 한다. 안 맞으면 실패
+// 이렇게 돌면 닫힌 칸은 화면에서 시계 방향(넓이 +)으로, 건물 바깥은 반시계 방향(넓이 −)으로 한 바퀴 돈다.
+// 벽을 고쳐도 칸과 공간 라벨의 짝을 맞추지 않는다. 라벨은 이름과 자리(점)만 갖고, 영역은 PlanRegions가 그때그때 계산한다
 
 import Foundation
 
 extension PlanData {
-    /// 방 경계를 다시 만든다. 고리와 방의 짝이 맞지 않으면 바꾸지 않고 false.
-    /// splitsRooms가 true면 새로 그린 벽이 방 하나를 여러 고리로 나눈 것을 허락한다.
-    /// 이름 자리가 든 고리가 원래 방을 잇고, 나머지 고리는 새 방이 된다.
-    /// mergesRooms가 true면 벽을 지워 여러 방이 한 고리가 된 것을 허락한다. 목록에서 앞선 방이 남고 나머지 방은 빠진다
-    mutating func retraceRooms(splitsRooms: Bool = false, mergesRooms: Bool = false) -> Bool {
-        guard let loops = faceLoops() else { return false }
-
-        // 경계 없이 라벨만 있는 방은 벽과 짝을 맞추지 않고 그대로 둔다
-        let boundedRooms = rooms.filter { !$0.boundary.isEmpty }
-        var roomOfSide: [String: String] = [:]
-        for room in boundedRooms { for edge in room.boundary { roomOfSide["\(edge.wallId)/\(edge.forward)"] = room.id } }
-
-        var loopsOfRoom: [String: [[RoomEdge]]] = [:]
-        var mergedRoomIds = Set<String>()
-        var outerCount = 0
-        for (loop, area) in loops {
-            let names = Set(loop.compactMap { roomOfSide["\($0.wallId)/\($0.forward)"] })
-            if area > WallMoveRules.eps {
-                // 방이 아닌 닫힌 고리(이름이 없는 칸)는 그대로 둔다
-                guard names.count <= 1 || mergesRooms else { return false }
-                guard let name = boundedRooms.first(where: { names.contains($0.id) })?.id else { continue }
-                mergedRoomIds.formUnion(names.subtracting([name]))
-                loopsOfRoom[name, default: []].append(loop)
-            } else {
-                guard names.isEmpty else { return false }
-                outerCount += 1
-            }
-        }
-        // 실패하면 도면을 바꾸지 않아야 하므로, 합쳐져 빠질 방은 끝에서 한 번에 뺀다
-        let keptRooms = boundedRooms.filter { !mergedRoomIds.contains($0.id) }
-        guard outerCount >= 1, loopsOfRoom.count == keptRooms.count else { return false }
-        var boundaries: [String: [RoomEdge]] = [:]
-        var newRooms: [Room] = []
-        for room in keptRooms {
-            guard var loops = loopsOfRoom[room.id] else { return false }
-            if loops.count > 1 {
-                guard splitsRooms else { return false }
-                // 이름 자리가 든 고리가 원래 방을 잇는다. 그런 고리가 없으면 가장 넓은 고리
-                let label = SIMD2(room.labelX, room.labelY)
-                let keep = loops.firstIndex { Self.polygon(points(of: $0), contains: label) }
-                    ?? loops.indices.max { Self.signedArea(points(of: loops[$0])) < Self.signedArea(points(of: loops[$1])) }!
-                boundaries[room.id] = loops.remove(at: keep)
-                for loop in loops {
-                    // 이름 자리는 아래 refreshRoomLabels가 방 안으로 옮긴다
-                    newRooms.append(Room(id: UUID().uuidString, name: RoomCopy.newRoomName, boundary: loop, labelX: .infinity, labelY: .infinity))
-                }
-            } else {
-                boundaries[room.id] = loops[0]
-            }
-        }
-        var retraced = keptRooms
-        for index in retraced.indices {
-            guard var boundary = boundaries[retraced[index].id] else { return false }
-            // 시작 벽이 그대로 있으면 시작을 맞춰 둔다
-            if let first = retraced[index].boundary.first, let at = boundary.firstIndex(of: first) {
-                boundary = Array(boundary[at...] + boundary[..<at])
-            }
-            retraced[index].boundary = boundary
-        }
-        // 라벨만 있는 방은 원래 자리(순서)에 두고, 합쳐져 빠진 방만 뺀다
-        let retracedById = Dictionary(uniqueKeysWithValues: retraced.map { ($0.id, $0) })
-        rooms = rooms.compactMap { retracedById[$0.id] ?? ($0.boundary.isEmpty ? $0 : nil) } + newRooms
-        return true
-    }
-
-    /// 방 밖에서 새로 그린 벽(wallIds)이 닫은 칸마다 "새 공간" 방을 만든다. 새 벽의 면이 든 고리만 보므로, 이름을 지워 둔 기존 이름 없는 칸은 건드리지 않는다.
-    /// 이름 자리는 아직 없어, 이어서 부르는 refreshRoomLabels가 방 가운데에 놓는다
-    mutating func addRoomsClosed(by wallIds: Set<String>) {
-        guard let loops = faceLoops() else { return }
-        let takenSides = Set(rooms.flatMap(\.boundary).map { "\($0.wallId)/\($0.forward)" })
-        for loop in loops where loop.area > WallMoveRules.eps
-            && loop.edges.contains(where: { wallIds.contains($0.wallId) })
-            && !loop.edges.contains(where: { takenSides.contains("\($0.wallId)/\($0.forward)") }) {
-            rooms.append(Room(id: UUID().uuidString, name: RoomCopy.newRoomName, boundary: loop.edges, labelX: .infinity, labelY: .infinity))
-        }
-    }
-
     /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 방은 넓이 +, 건물 바깥은 넓이 −. 꼭짓점을 못 찾는 벽이 있으면 nil
     func faceLoops() -> [(edges: [RoomEdge], area: Double)]? {
         let pos = vertexPoints
@@ -126,13 +48,9 @@ extension PlanData {
         return loops
     }
 
-    /// 벽으로 닫힌 칸들의 꼭짓점 점들. 방(Room)과, 공간 라벨이 없는 닫힌 칸을 모두 포함한다. 가구처럼 방이 아니어도 놓을 수 있는 것이 칸 안인지 볼 때 쓴다
+    /// 벽으로 닫힌 칸들의 꼭짓점 점들. 공간 라벨이 있든 없든 모두 포함한다. 가구처럼 방이 아니어도 놓을 수 있는 것이 칸 안인지 볼 때 쓴다
     func closedCellPolygons() -> [[SIMD2<Double>]] {
-        var polygons = rooms.map { polygon(of: $0) }
-        for loop in faceLoops() ?? [] where loop.area > WallMoveRules.eps {
-            polygons.append(points(of: loop.edges))
-        }
-        return polygons
+        (faceLoops() ?? []).filter { $0.area > WallMoveRules.eps }.map { points(of: $0.edges) }
     }
 
     /// 점을 경계 다각형 안에 품은 방. 이름 자리를 옮길 때만 쓴다 (공간 라벨의 영역은 room(containing:))
@@ -144,23 +62,6 @@ extension PlanData {
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
     func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
         polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
-    }
-
-    /// 이름 자리가 방 밖으로 나간 방은, 방을 x·y 좌표로 격자처럼 잘라 방 안에서 가장 넓은 칸의 가운데로 옮긴다
-    mutating func refreshRoomLabels() {
-        for index in rooms.indices {
-            // 방을 나눠 새로 생긴 방은 이름 자리가 아직 없으므로 방 가운데에 놓는다
-            guard rooms[index].labelX.isFinite else {
-                centerRoomLabel(id: rooms[index].id)
-                continue
-            }
-            let polygon = polygon(of: rooms[index])
-            let label = SIMD2(rooms[index].labelX, rooms[index].labelY)
-            guard roomByBoundary(containing: label)?.id != rooms[index].id,
-                  let center = Self.largestCellCenter(polygon, inside: rooms[index].id, of: self) else { continue }
-            rooms[index].labelX = center.x
-            rooms[index].labelY = center.y
-        }
     }
 
     /// 방 이름 자리를 방 넓이의 무게중심으로 옮긴다. 무게중심이 방 밖이면(ㄷ자 방 등) 방 안 가장 넓은 칸 가운데로

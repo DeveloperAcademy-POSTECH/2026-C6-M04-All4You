@@ -56,7 +56,7 @@ extension PlanData {
         case .elevateFurniture(let id, let elevation):
             elevateFurniture(id: id, to: elevation)
         case .delete(.wall(let id)):
-            removeWall(id: id)
+            eraseWall(id: id)
             return nil
         case .move(.wall, _, _):
             break

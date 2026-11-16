@@ -76,9 +76,7 @@ extension PlanData {
         }
 
         guard !result.crossesWalls(wall) else { return .failure(.crossing) }
-        guard result.retraceRooms() else { return .failure(.brokenPlan) }
         guard markers.filter(fits).allSatisfy(result.fits) else { return .failure(.stamp) }
-        result.refreshRoomLabels()
         return .success(result)
     }
 
