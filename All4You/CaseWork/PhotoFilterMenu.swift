@@ -16,7 +16,7 @@ struct PhotoFilter {
     }
     /// 북마크를 골랐을 때만 켤 수 있다
     var showsDirection = false
-
+    
     /// 도면 위에 보여 줄 사진의 범위
     enum Scope {
         case all, bookmarked
@@ -27,11 +27,11 @@ struct PhotoFilter {
 /// 패널 머리의 스위치로 사진 표시를 켜고 끄고, 전체 사진·북마크 중 하나와 촬영 방향을 고른다
 struct PhotoFilterMenu: View {
     @Binding var filter: PhotoFilter
-
+    
     @State private var isOpen = false
     /// 버튼과 패널이 같은 유리 모양으로 이어져 바뀌게 하는 이름 공간
     @Namespace private var glassNamespace
-
+    
     var body: some View {
         // 시스템 리퀴드 버튼(메뉴)처럼, 누르면 버튼이 그 자리에서 패널로 펼쳐지고 닫으면 다시 버튼으로 접힌다
         GlassEffectContainer(spacing: Layout.chipSpacing) {
@@ -67,7 +67,7 @@ struct PhotoFilterMenu: View {
             }
         }
     }
-
+    
     /// 버튼과 패널이 서로 변하도록 애니메이션과 함께 열고 닫는다
     private func setOpen(_ open: Bool) {
         withAnimation(.smooth(duration: Layout.morphDuration)) {
@@ -103,7 +103,7 @@ extension PhotoFilterMenu {
         // 크기와 간격은 직접 정하고 배경만 리퀴드 글래스를 쓴다. 누르면 유리가 반응한다
         .glassEffect(.regular.interactive(), in: .capsule)
     }
-
+    
     private var filterPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionTitle(Copy.showPhotos, isOn: $filter.isPhotoVisible)
@@ -130,7 +130,7 @@ extension PhotoFilterMenu {
         .frame(width: Layout.panelWidth)
         .glassEffect(in: .rect(cornerRadius: Layout.panelCornerRadius))
     }
-
+    
     /// 작은 구역 제목 글자와 오른쪽 스위치 ("사진 표시", "촬영 방향")
     private func sectionTitle(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack {
@@ -147,7 +147,7 @@ extension PhotoFilterMenu {
                 Toggle(title, isOn: isOn)
                     .labelsHidden()
                     .tint(.brand500)
-                    // 기본 스위치는 Figma보다 커서 그림만 줄이고, 줄인 크기만큼만 자리를 차지하게 한다
+                // 기본 스위치는 Figma보다 커서 그림만 줄이고, 줄인 크기만큼만 자리를 차지하게 한다
                     .scaleEffect(Layout.switchScale)
                     .frame(width: Layout.switchWidth, height: Layout.switchHeight)
                     .allowsHitTesting(false)
@@ -163,7 +163,7 @@ extension PhotoFilterMenu {
         .padding(.top, Layout.sectionTopPadding)
         .padding(.bottom, Layout.sectionBottomPadding)
     }
-
+    
     /// 고른 줄은 주황 체크 동그라미가 앞에 붙고, 고르지 않은 줄은 체크 없이 글자만 같은 자리에 놓인다
     private func optionRow(_ title: String, isChecked: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -173,7 +173,7 @@ extension PhotoFilterMenu {
                         Circle()
                             .fill(.brand500)
                         Image(systemName: "checkmark")
-                            // TEMP: 디자인 글자 크기에 맞는 AppTypography가 없어 가장 가까운 label을 씀
+                        // TEMP: 디자인 글자 크기에 맞는 AppTypography가 없어 가장 가까운 label을 씀
                             .font(AppTypography.label.weight(.semibold))
                             .foregroundStyle(.white)
                     }
@@ -192,7 +192,7 @@ extension PhotoFilterMenu {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isChecked ? .isSelected : [])
     }
-
+    
     /// 글자는 배경색을 그대로 써서 다크 모드에서도 뒤집힌다
     private func chip(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -265,7 +265,7 @@ extension PhotoFilterMenu {
 
 #Preview {
     @Previewable @State var filter = PhotoFilter()
-
+    
     PhotoFilterMenu(filter: $filter)
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
