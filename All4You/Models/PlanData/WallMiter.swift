@@ -19,7 +19,7 @@ struct WallMiter {
 }
 
 extension PlanData {
-    /// 벽 하나의 양 끝 모양. 그리는 벽(가상 경계선이 아닌 벽)끼리만 이웃으로 본다
+    /// 벽 하나의 양 끝 모양. 다른 벽과 이웃으로 본다
     func wallMiter(of wall: Wall) -> WallMiter {
         guard let line = line(of: wall), line.length > WallMiterRule.eps else { return .square(length: 0) }
         let points = vertexPoints

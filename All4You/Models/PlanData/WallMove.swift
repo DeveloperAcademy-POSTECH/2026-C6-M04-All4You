@@ -86,13 +86,6 @@ extension PlanData {
         }
         return result
     }
-
-    /// 고른 줄의 지금 좌표 (움직이는 축)
-    func coordinate(of selection: WallSelection) -> Double {
-        let pos = vertexPoints
-        guard let vertex = movedVertices(selection).first, let point = pos[vertex] else { return 0 }
-        return point[selection.axis.across]
-    }
 }
 
 // 이동량 맞추기
