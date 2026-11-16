@@ -649,7 +649,7 @@ extension FloorPlanTabView {
     private func photoMarkers3D(in planData: PlanData) -> [Plan3DPhotoMarker] {
         guard showsBookmarkMarkers else { return [] }
         return bookmarkMarkers(in: planData).map { marker in
-            Plan3DPhotoMarker(id: marker.id, placement: marker.placement, showsDirection: false, isDimmed: false)
+            Plan3DPhotoMarker(id: marker.id, placement: marker.placement, showsDirection: photoFilter.showsDirection, isDimmed: false)
         }
     }
     /// 핀 id로 그릴 핀을 고른다
