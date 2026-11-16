@@ -46,6 +46,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     
     var body: some View {
         GeometryReader { proxy in
+            let keyboardTop = keyboardTop(in: proxy)
             ZStack(alignment: .topLeading) {
                 if isPresented {
                     placementSurface(in: proxy.size)
@@ -73,7 +74,7 @@ struct FloorPlanMemoPlacementOverlay: View {
                         draftEditor(
                             for: draft,
                             in: proxy.size,
-                            keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                            keyboardTop: keyboardTop
                         )
                     } else {
                         instruction
@@ -85,14 +86,16 @@ struct FloorPlanMemoPlacementOverlay: View {
                     savedMemoCard(
                         for: selectedMemo,
                         in: proxy.size,
-                        keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                        keyboardTop: keyboardTop
                     )
+                    .zIndex(2)
                     if editingMemoID == selectedMemo.id && isTagPickerPresented {
                         savedMemoTagPicker(
                             for: selectedMemo,
                             in: proxy.size,
-                            keyboardTop: keyboardFrame.isNull ? nil : keyboardFrame.minY - proxy.frame(in: .global).minY
+                            keyboardTop: keyboardTop
                         )
+                        .zIndex(1)
                     }
                 }
             }
@@ -344,7 +347,7 @@ private extension FloorPlanMemoPlacementOverlay {
         let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
         let availableHeight = max(0, visibleBottom - bounds.minY - Layout.edgePadding * 2)
         let pickerHeight = min(
-            Layout.editTagPickerHeight,
+            Layout.tagPickerHeight,
             max(0, availableHeight - Layout.editingCardHeight - Layout.tagPickerGap)
         )
         let card = cardPosition(
@@ -436,11 +439,18 @@ private extension FloorPlanMemoPlacementOverlay {
     func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
         let anchorPoint = screenPoint(for: draft.anchor, in: size)
         let editorWidth = min(Layout.editorWidth, size.width - Layout.edgePadding * 2)
+        let bounds = canvasBounds(in: size)
+        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
+        let availableHeight = max(0, visibleBottom - bounds.minY - Layout.edgePadding * 2)
+        let pickerHeight = isTagPickerPresented
+        ? min(Layout.tagPickerHeight, max(0, availableHeight - Layout.editorHeight - Layout.tagPickerGap))
+        : 0
         let editorPosition = editorPosition(
             around: anchorPoint,
             in: size,
             editorWidth: editorWidth,
-            keyboardTop: keyboardTop
+            keyboardTop: keyboardTop,
+            pickerHeight: pickerHeight
         )
         
         return ZStack(alignment: .topLeading) {
@@ -489,11 +499,11 @@ private extension FloorPlanMemoPlacementOverlay {
             .position(editorPosition)
             
             if isTagPickerPresented {
-                tagPicker
-                    .frame(width: min(Layout.tagPickerWidth, size.width - Layout.edgePadding * 2), height: Layout.tagPickerHeight)
+                tagPicker(height: pickerHeight)
+                    .frame(width: min(Layout.tagPickerWidth, size.width - Layout.edgePadding * 2))
                     .position(
                         x: editorPosition.x,
-                        y: editorPosition.y + Layout.editorHeight / 2 + Layout.tagPickerGap + Layout.tagPickerHeight / 2
+                        y: editorPosition.y + Layout.editorHeight / 2 + Layout.tagPickerGap + pickerHeight / 2
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
             }
@@ -581,7 +591,7 @@ private extension FloorPlanMemoPlacementOverlay {
         }
     }
     
-    var tagPicker: some View {
+    func tagPicker(height: CGFloat) -> some View {
         FloorPlanMemoTagPicker(
             photos: bookmarkedPhotos.sorted { $0.takenAt < $1.takenAt },
             taggedPhotoIDs: Set(draft?.taggedPhotoIDs ?? []),
@@ -590,7 +600,8 @@ private extension FloorPlanMemoPlacementOverlay {
             activePhotoID: draft.flatMap { pendingPhoto(in: $0.content)?.photo.id },
             activeMarkerID: draft.flatMap { pendingMarker(in: $0.content)?.marker.id },
             onSelectPhoto: { photo, number in tagPhoto(photo, number: number) },
-            onSelectMarker: { marker, number in tagMarker(marker, number: number) }
+            onSelectMarker: { marker, number in tagMarker(marker, number: number) },
+            height: height
         )
     }
     
@@ -703,6 +714,17 @@ private extension FloorPlanMemoPlacementOverlay {
         return CGRect(x: 0, y: inset, width: size.width, height: max(0, size.height - inset * 2))
     }
     
+    /// 화면 아래에 붙은 키보드만 입력 영역 계산에 반영. 플로팅 키보드는 도면 전체를 밀어 올리지 않음
+    func keyboardTop(in proxy: GeometryProxy) -> CGFloat? {
+        let viewFrame = proxy.frame(in: .global)
+        let overlap = keyboardFrame.intersection(viewFrame)
+        guard !overlap.isNull,
+              overlap.height > 0,
+              overlap.width >= viewFrame.width * 0.5,
+              keyboardFrame.maxY >= viewFrame.maxY - 1 else { return nil }
+        return max(0, overlap.minY - viewFrame.minY)
+    }
+    
     /// 저장된 말풍선의 터치 영역까지 도면 안에 남도록 중심점 제한
     func pinPosition(for anchor: FloorPlanMemoAnchor, in size: CGSize) -> CGPoint {
         let point = screenPoint(for: anchor, in: size)
@@ -718,13 +740,14 @@ private extension FloorPlanMemoPlacementOverlay {
         around anchor: CGPoint,
         in size: CGSize,
         editorWidth: CGFloat,
-        keyboardTop: CGFloat?
+        keyboardTop: CGFloat?,
+        pickerHeight: CGFloat
     ) -> CGPoint {
         let bounds = canvasBounds(in: size)
         let preferredX = anchor.x + editorWidth / 2 + Layout.editorOffset
         let preferredY = anchor.y - Layout.editorHeight / 2
         let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY) - Layout.edgePadding
-        let pickerSpace = isTagPickerPresented ? Layout.tagPickerHeight + Layout.tagPickerGap : 0
+        let pickerSpace = isTagPickerPresented ? pickerHeight + Layout.tagPickerGap : 0
         let highestCenter = bounds.minY + Layout.editorHeight / 2 + Layout.edgePadding
         let lowestCenter = max(highestCenter, visibleBottom - pickerSpace - Layout.editorHeight / 2)
         return CGPoint(
@@ -770,8 +793,7 @@ private extension FloorPlanMemoPlacementOverlay {
         static let editorCornerRadius: CGFloat = 12
         static let editorBorderWidth: CGFloat = 1.5
         static let tagPickerWidth: CGFloat = 464
-        static let tagPickerHeight: CGFloat = 320
-        static let editTagPickerHeight: CGFloat = 352
+        static let tagPickerHeight: CGFloat = 185
         static let tagPickerGap: CGFloat = 8
         static let edgePadding: CGFloat = 16
     }

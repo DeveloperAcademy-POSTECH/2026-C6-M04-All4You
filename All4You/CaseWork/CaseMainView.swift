@@ -167,7 +167,8 @@ extension CaseMainView {
             onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
             onUpdateMemo: updateMemoWithTags,
-            onRotatePlan: onRotatePlan
+            onRotatePlan: onRotatePlan,
+            hidesDimensionPicker: isAddingMemo
         )
         .id(floorPlanPresentationID)
         .overlay {

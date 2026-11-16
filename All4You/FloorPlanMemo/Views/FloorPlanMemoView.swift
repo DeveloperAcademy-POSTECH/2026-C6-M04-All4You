@@ -156,7 +156,7 @@ struct FloorPlanMemoView: View {
                 memoList
             }
         }
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
         .overlay(alignment: .bottom) {
             if !isDetailExpanded && focusedMarkerID == nil && !sections.isEmpty {
                 locationPicker
