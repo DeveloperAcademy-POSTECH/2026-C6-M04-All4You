@@ -1,16 +1,8 @@
-// 방 라벨의 경계 다각형(옛 방 경계) 계산과, 점이 다각형 안인지 보는 계산. 스탬프가 바닥에서 차지하는 자리(footprint)도 여기 있다
+// 점이 다각형 안인지 보는 계산과, 스탬프가 바닥에서 차지하는 자리(footprint)
 
 import Foundation
 
 extension PlanData {
-    /// 방을 한 바퀴 도는 꼭짓점 점들 (도면 좌표). 경계 벽의 도는 방향 쪽 시작점을 차례로 모은다
-    func polygon(of room: Room) -> [SIMD2<Double>] {
-        room.boundary.compactMap { edge in
-            guard let wall = wall(id: edge.wallId), let line = line(of: wall) else { return nil }
-            return edge.forward ? line.start : line.end
-        }
-    }
-
     /// 다각형 안에 점이 있는지. 점에서 오른쪽으로 그은 선이 변을 홀수 번 지나면 안이다
     static func polygon(_ points: [SIMD2<Double>], contains p: SIMD2<Double>) -> Bool {
         guard points.count >= 3 else { return false }
@@ -26,7 +18,6 @@ extension PlanData {
         }
         return isInside
     }
-
 }
 
 // 스탬프가 바닥에서 차지하는 자리

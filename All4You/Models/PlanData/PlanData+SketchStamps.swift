@@ -55,10 +55,9 @@ extension PlanData {
         return addMarkerNearest(stamp, to: point)
     }
 
-    /// 점에서 벽 표면까지 reach(m) 안인 가장 가까운 벽. 가상 경계선은 고르지 않는다
+    /// 점에서 벽 표면까지 reach(m) 안인 가장 가까운 벽
     private func nearestWallId(to point: SIMD2<Double>, within reach: Double) -> String? {
         walls
-            .filter { !$0.isVirtual }
             .compactMap { wall -> (id: String, distance: Double)? in
                 guard let line = line(of: wall) else { return nil }
                 let distance = line.distance(to: point) - wall.thickness / 2
@@ -90,11 +89,11 @@ extension PlanData {
         return nil
     }
 
-    /// 스탬프가 바닥에서 차지하는 자리(footprint)가 어느 벽 두께와도 겹치지 않는지. 가상 경계선은 보지 않는다
+    /// 스탬프가 바닥에서 차지하는 자리(footprint)가 어느 벽 두께와도 겹치지 않는지
     private func isClearOfWalls(_ marker: PlanMarker) -> Bool {
         let footprint = marker.footprint
         return !walls.contains { wall in
-            guard !wall.isVirtual, let line = line(of: wall) else { return false }
+            guard let line = line(of: wall) else { return false }
             let gap = Self.distance(between: (footprint.start, footprint.end), and: (line.start, line.end))
             return gap < wall.thickness / 2 + footprint.radius
         }

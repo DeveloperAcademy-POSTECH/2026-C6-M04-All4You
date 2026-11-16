@@ -12,7 +12,7 @@
 
 enum DummyFloorPlan {
     static let planData = PlanData(
-        version: 1,
+        version: PlanData.currentVersion,
         vertices: vertices,
         walls: walls,
         doorWindows: doorWindows,
@@ -39,13 +39,13 @@ extension DummyFloorPlan {
         outerWall(id: "w2", from: "v2", to: "v6"),
         outerWall(id: "w3", from: "v6", to: "v3"),
         outerWall(id: "w4", from: "v3", to: "v4"),
-        Wall(id: "w5", startVertex: "v6", endVertex: "v5", thickness: 0.1, height: 2.4, isVirtual: false),
+        Wall(id: "w5", startVertex: "v6", endVertex: "v5", thickness: 0.1, height: 2.4),
         outerWall(id: "w6", from: "v4", to: "v5"),
         outerWall(id: "w7", from: "v5", to: "v1")
     ]
 
     private static func outerWall(id: String, from start: String, to end: String) -> Wall {
-        Wall(id: id, startVertex: start, endVertex: end, thickness: 0.15, height: 2.4, isVirtual: false)
+        Wall(id: id, startVertex: start, endVertex: end, thickness: 0.15, height: 2.4)
     }
 }
 
@@ -70,24 +70,12 @@ extension DummyFloorPlan {
         Room(
             id: "r1",
             name: "거실·주방",
-            boundary: [
-                RoomEdge(wallId: "w1", forward: true),
-                RoomEdge(wallId: "w2", forward: true),
-                RoomEdge(wallId: "w5", forward: true),
-                RoomEdge(wallId: "w7", forward: true)
-            ],
             labelX: 3.0,
             labelY: 2.0
         ),
         Room(
             id: "r2",
             name: "침실",
-            boundary: [
-                RoomEdge(wallId: "w5", forward: false),
-                RoomEdge(wallId: "w3", forward: true),
-                RoomEdge(wallId: "w4", forward: true),
-                RoomEdge(wallId: "w6", forward: true)
-            ],
             labelX: 3.5,
             labelY: 6.0
         )

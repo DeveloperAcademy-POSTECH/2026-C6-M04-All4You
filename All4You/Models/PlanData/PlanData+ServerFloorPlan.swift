@@ -14,7 +14,7 @@ extension PlanData {
         var unnamedCount = 0
 
         self.init(
-            version: 1,
+            version: PlanData.currentVersion,
             vertices: server.vertices.map { Vertex(id: $0.id, x: $0.x * scale, y: $0.y * scale) },
             walls: server.walls.map {
                 Wall(
@@ -22,8 +22,7 @@ extension PlanData {
                     startVertex: $0.startVertex,
                     endVertex: $0.endVertex,
                     thickness: ServerDefault.wallThickness,
-                    height: ServerDefault.wallHeight,
-                    isVirtual: false
+                    height: ServerDefault.wallHeight
                 )
             },
             doorWindows: server.openings.map { opening in
@@ -52,7 +51,6 @@ extension PlanData {
                 return Room(
                     id: room.id,
                     name: name,
-                    boundary: room.boundary.map { RoomEdge(wallId: $0.wallId, forward: $0.forward) },
                     labelX: (label.first ?? 0) * scale,
                     labelY: (label.dropFirst().first ?? 0) * scale
                 )

@@ -69,7 +69,7 @@ struct DimensionMarks: Equatable {
 }
 
 extension PlanData {
-    /// kinds에 든 종류의 치수선·면적 글자들. 가상 경계선과 너무 짧은 벽은 뺀다
+    /// kinds에 든 종류의 치수선·면적 글자들. 너무 짧은 벽은 뺀다
     func dimensionMarks(kinds: Set<DimensionKind>) -> DimensionMarks {
         var marks = DimensionMarks()
         if kinds.contains(.room) { marks.areas += roomAreas() }
@@ -102,7 +102,7 @@ extension PlanData {
     /// 벽마다 길이 선. 벽의 바깥쪽(방이 없는 쪽)에 나란히 긋는다
     private func wallLines(cellSides: [String: Set<Double>]) -> [DimensionLine] {
         walls.compactMap { wall in
-            guard !wall.isVirtual, let line = line(of: wall), line.length >= DimensionRule.minimumWallLength else { return nil }
+            guard let line = line(of: wall), line.length >= DimensionRule.minimumWallLength else { return nil }
             let side = outwardNormal(of: wall, line: line, cellSides: cellSides)
             let face = line.leftNormal * (wall.thickness / 2) * side.sign
             return DimensionLine(
@@ -118,7 +118,7 @@ extension PlanData {
     /// 창문·문마다 폭을 재는 선. 벽 바로 옆(벽 길이 선보다 안쪽 줄)에 긋는다
     private func openingLines(cellSides: [String: Set<Double>]) -> [DimensionLine] {
         doorWindows.compactMap { opening in
-            guard let wall = wall(id: opening.wallId), !wall.isVirtual, let line = line(of: wall) else { return nil }
+            guard let wall = wall(id: opening.wallId), let line = line(of: wall) else { return nil }
             let side = outwardNormal(of: wall, line: line, cellSides: cellSides)
             let face = side.vector * (wall.thickness / 2)
             let from = line.point(along: opening.centerAlongWall - opening.width / 2)
@@ -212,7 +212,7 @@ extension PlanData {
     private func closedCellSides() -> [String: Set<Double>] {
         var sides: [String: Set<Double>] = [:]
         for loop in faceLoops() ?? [] where loop.area > WallMoveRules.eps {
-            for edge in loop.edges { sides[edge.wallId, default: []].insert(edge.forward ? -1.0 : 1.0) }
+            for side in loop.sides { sides[side.wallId, default: []].insert(side.forward ? -1.0 : 1.0) }
         }
         return sides
     }

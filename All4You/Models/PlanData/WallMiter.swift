@@ -40,7 +40,7 @@ extension PlanData {
         guard let origin = points[vertexId] else { return (0, 0) }
         let eps = WallMiterRule.eps
         var arms: [(id: String, direction: SIMD2<Double>, thickness: Double)] = [(wall.id, outward, wall.thickness)]
-        for other in walls where !other.isVirtual && other.id != wall.id {
+        for other in walls where other.id != wall.id {
             let farId: String
             if other.startVertex == vertexId { farId = other.endVertex } else if other.endVertex == vertexId { farId = other.startVertex } else { continue }
             guard let far = points[farId] else { continue }

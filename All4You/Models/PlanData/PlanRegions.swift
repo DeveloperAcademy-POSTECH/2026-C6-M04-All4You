@@ -23,7 +23,7 @@ struct PlanRegions {
     init(plan: PlanData) {
         var found: [Region] = []
         for loop in plan.faceLoops() ?? [] where loop.area > WallMoveRules.eps {
-            found.append(Region(polygon: plan.points(of: loop.edges), area: loop.area, isClosedCell: true))
+            found.append(Region(polygon: loop.points, area: loop.area, isClosedCell: true))
         }
         for floor in plan.floors ?? [] where floor.corners.count >= 3 {
             let polygon = floor.corners.map { SIMD2($0.x, $0.y) }

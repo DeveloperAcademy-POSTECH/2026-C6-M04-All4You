@@ -142,8 +142,7 @@ extension PlanData {
                 startVertex: vertices[ends.start].id,
                 endVertex: vertices[ends.end].id,
                 thickness: ScanRule.wallThickness,
-                height: max(ScanRule.minWallHeight, surface.center.y + surface.height / 2 - floorY),
-                isVirtual: false
+                height: max(ScanRule.minWallHeight, surface.center.y + surface.height / 2 - floorY)
             ))
         }
         // 같은 꼭짓점 쌍이 되어 벽으로 남지 못한 면(같은 벽을 두 번 스캔함)에 붙은 문·창문은 남은 벽에 붙인다

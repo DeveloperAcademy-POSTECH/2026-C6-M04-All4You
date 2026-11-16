@@ -183,7 +183,7 @@ extension PlanData {
     @discardableResult
     mutating func addRoom(at point: SIMD2<Double>) -> String {
         let id = UUID().uuidString
-        rooms.append(Room(id: id, name: RoomCopy.newRoomName, boundary: [], labelX: point.x, labelY: point.y))
+        rooms.append(Room(id: id, name: RoomCopy.newRoomName, labelX: point.x, labelY: point.y))
         return id
     }
 

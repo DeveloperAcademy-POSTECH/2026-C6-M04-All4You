@@ -116,11 +116,10 @@ extension PlanScreen {
         }?.id
     }
 
-    /// planPoint에서 가장 가까운 벽. 벽 두께 절반에 손가락 여유를 더한 거리 안에 없으면 nil. 가상 경계선은 고르지 않는다
+    /// planPoint에서 가장 가까운 벽. 벽 두께 절반에 손가락 여유를 더한 거리 안에 없으면 nil
     private func wall(at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         let margin = Plan2DHit.fingerMargin / scale
         return plan.walls
-            .filter { !$0.isVirtual }
             .compactMap { wall -> (id: String, distance: Double)? in
                 guard let line = plan.line(of: wall) else { return nil }
                 let distance = line.distance(to: planPoint)

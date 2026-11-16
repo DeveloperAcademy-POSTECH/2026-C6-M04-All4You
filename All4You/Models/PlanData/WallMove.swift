@@ -169,7 +169,7 @@ extension PlanData {
                 let template = result.walls[firstCollinear]
                 result.walls.append(Wall(
                     id: UUID().uuidString, startVertex: split.id, endVertex: vertex,
-                    thickness: template.thickness, height: template.height, isVirtual: template.isVirtual
+                    thickness: template.thickness, height: template.height
                 ))
             }
             pos[vertex]![across] += delta
@@ -209,7 +209,7 @@ extension PlanData {
                   let owner = wall(id: fixture.wallId), let ownerLine = line(of: owner) else { continue }
             let along = ((place - ownerLine.start) * ownerLine.direction).sum()
             guard along < -eps || along > ownerLine.length + eps else { continue }
-            for wall in walls where !wall.isVirtual && wall.id != owner.id {
+            for wall in walls where wall.id != owner.id {
                 guard let line = line(of: wall), line.length > eps else { continue }
                 let offset = place - line.start
                 let newAlong = (offset * line.direction).sum()

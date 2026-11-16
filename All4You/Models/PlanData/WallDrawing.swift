@@ -51,7 +51,7 @@ extension PlanData {
         let direction = Self.straightened(stroke / strokeLength)
         let length = (stroke * direction).sum()
         // 두께·높이는 있는 벽을 베끼고, 벽이 하나도 없으면 기본값을 쓴다
-        let model = walls.first { !$0.isVirtual }
+        let model = walls.first
         let thickness = model?.thickness ?? WallDrawingRules.defaultThickness
         let height = model?.height ?? WallDrawingRules.defaultHeight
 
@@ -93,7 +93,7 @@ extension PlanData {
     }
 
     /// 꼭짓점 from → to 직선을 벽으로 넣는다. 가로지르는 벽은 그 자리에서 나누고, 직선 위에 놓인 꼭짓점은 지나가며 이어진다.
-    /// 이미 벽이 있는 구간은 기존 벽을 남기고(보이지 않는 가상 경계선은 진짜 벽으로 바꾼다) 겹치지 않는 구간만 새 벽으로 넣는다. 넣거나 바꾼 것이 없으면 false
+    /// 이미 벽이 있는 구간은 기존 벽을 남기고 겹치지 않는 구간만 새 벽으로 넣는다. 넣은 것이 없으면 false
     private mutating func addWalls(from: String, to: String, thickness: Double, height: Double, removed: inout [RemovedItem]) -> Bool {
         let eps = WallMoveRules.eps
         let pos = vertexPoints
@@ -118,24 +118,16 @@ extension PlanData {
         var didChange = false
         let points = vertexPoints
         for (first, second) in zip(cuts, cuts.dropFirst()) {
-            if let existing = walls.firstIndex(where: { Set([$0.startVertex, $0.endVertex]) == Set([first.id, second.id]) }) {
-                // 보이지 않는 가상 경계선이면 진짜 벽으로 바꾼다. 진짜 벽이면 그대로 둔다
-                guard walls[existing].isVirtual else { continue }
-                walls[existing].isVirtual = false
-                walls[existing].thickness = thickness
-                walls[existing].height = height
-                didChange = true
-                continue
-            }
-            // 그 구간을 이미 진짜 벽이 지나면 기존 벽을 남긴다
+            if walls.contains(where: { Set([$0.startVertex, $0.endVertex]) == Set([first.id, second.id]) }) { continue }
+            // 그 구간을 이미 벽이 지나면 기존 벽을 남긴다
             guard let p = points[first.id], let q = points[second.id] else { continue }
             let middle = (p + q) / 2
             let isCovered = walls.contains { wall in
-                guard !wall.isVirtual, let other = self.line(of: wall) else { return false }
+                guard let other = self.line(of: wall) else { return false }
                 return other.distance(to: middle) < eps
             }
             guard !isCovered else { continue }
-            walls.append(Wall(id: UUID().uuidString, startVertex: first.id, endVertex: second.id, thickness: thickness, height: height, isVirtual: false))
+            walls.append(Wall(id: UUID().uuidString, startVertex: first.id, endVertex: second.id, thickness: thickness, height: height))
             didChange = true
         }
         return didChange
@@ -186,10 +178,9 @@ extension PlanData {
         return base
     }
 
-    /// 꼭짓점이 벽 하나만 달린 떠 있는 끝인지 (가상 경계선이 달려 있으면 아님)
+    /// 꼭짓점이 벽 하나만 달린 떠 있는 끝인지
     func isFreeEnd(_ vertexId: String) -> Bool {
-        let attached = walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }
-        return attached.count == 1 && !attached[0].isVirtual
+        walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }.count == 1
     }
 
     /// 떠 있는 벽 끝 꼭짓점 vertexId를 그은 직선(anchor, direction)과 그 벽이 만나는 점으로 옮겨(벽을 늘이거나 줄여) 모서리를 만든다.
@@ -224,7 +215,7 @@ extension PlanData {
     private func wallPointOnLine(adjacentTo vertexId: String, anchor: SIMD2<Double>, direction: SIMD2<Double>) -> WallEnd? {
         guard abs(direction.x) == 1 || abs(direction.y) == 1, let vertex = vertexPoints[vertexId], !isFreeEnd(vertexId) else { return nil }
         var best: (id: String, point: SIMD2<Double>, distance: Double)?
-        for wall in walls where !wall.isVirtual && (wall.startVertex == vertexId || wall.endVertex == vertexId) {
+        for wall in walls where wall.startVertex == vertexId || wall.endVertex == vertexId {
             guard let crossing = crossingOnWall(wall.id, anchor: anchor, direction: direction) else { continue }
             let distance = Self.length(crossing - vertex)
             if distance <= WallDrawingRules.extendDistance, best == nil || distance < best!.distance { best = (wall.id, crossing, distance) }
@@ -259,7 +250,6 @@ extension PlanData {
         // 스캔한 바닥 꼭짓점: 바닥은 나누거나 바꾸지 않고 좌표만 빌린다
         if let corner = nearestFloorCorner(to: point, within: snapRadius) { return .free(corner) }
 
-        // 벽 위에는 가상 경계선도 붙을 수 있다 (스캔 틈을 메울 때 틈의 일부만 그을 수 있게)
         var nearWall: (id: String, distance: Double)?
         for wall in walls {
             guard let line = line(of: wall), line.length > WallMoveRules.eps else { continue }
@@ -300,7 +290,7 @@ extension PlanData {
         let limit = WallDrawingRules.extendDistance
         var best: (end: WallEnd, t: Double)?
         let pos = vertexPoints
-        let visibleVertices = Set(walls.filter { !$0.isVirtual }.flatMap { [$0.startVertex, $0.endVertex] })
+        let visibleVertices = Set(walls.flatMap { [$0.startVertex, $0.endVertex] })
         // 선 위에 놓인 꼭짓점
         for id in visibleVertices {
             guard let vertex = pos[id] else { continue }
@@ -310,7 +300,7 @@ extension PlanData {
             if best == nil || t < best!.t { best = (.vertex(id), t) }
         }
         // 선과 만나는 벽
-        for wall in walls where !wall.isVirtual {
+        for wall in walls {
             guard let line = line(of: wall), line.length > WallMoveRules.eps else { continue }
             let span = line.end - line.start
             let denominator = cross(direction, span)
@@ -387,7 +377,7 @@ extension PlanData {
         }
         let front = walls[index]
         let back = Wall(id: UUID().uuidString, startVertex: vertex.id, endVertex: front.endVertex,
-                        thickness: front.thickness, height: front.height, isVirtual: front.isVirtual)
+                        thickness: front.thickness, height: front.height)
         walls[index].endVertex = vertex.id
         walls.append(back)
         var addedPieces: [DoorWindow] = []

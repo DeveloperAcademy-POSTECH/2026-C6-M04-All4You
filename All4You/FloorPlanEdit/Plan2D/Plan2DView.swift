@@ -79,7 +79,7 @@ struct Plan2DView: View {
             for furniture in planData.furniture ?? [] {
                 drawFurniture(furniture, in: &context)
             }
-            for wall in planData.walls where !wall.isVirtual {
+            for wall in planData.walls {
                 guard let line = planData.line(of: wall) else { continue }
                 drawWall(wall, line: line, in: &context)
             }

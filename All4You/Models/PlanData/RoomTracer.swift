@@ -6,9 +6,16 @@
 
 import Foundation
 
+/// 닫힌 칸의 한 변: 벽 하나의 한 면. forward가 true면 벽을 시작 → 끝 방향으로 도는 면이다
+struct FaceSide: Hashable {
+    let wallId: String
+    let forward: Bool
+}
+
 extension PlanData {
-    /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 방은 넓이 +, 건물 바깥은 넓이 −. 꼭짓점을 못 찾는 벽이 있으면 nil
-    func faceLoops() -> [(edges: [RoomEdge], area: Double)]? {
+    /// 벽 연결을 면 따라 돌아 닫힌 고리를 모두 찾는다. 닫힌 칸은 넓이 +, 건물 바깥은 넓이 −. 고리마다 도는 면(sides)과 꼭짓점 점들(points)을 돌려준다.
+    /// 꼭짓점을 못 찾는 벽이 있으면 nil
+    func faceLoops() -> [(sides: [FaceSide], points: [SIMD2<Double>], area: Double)]? {
         let pos = vertexPoints
         // 한쪽 끝이 어디에도 이어지지 않은 벽(따로 세운 벽 등)은 방을 나누지 않으므로 빼고 돈다
         let looped = loopedWalls()
@@ -31,7 +38,7 @@ extension PlanData {
         }
 
         var visited = Set<Int>()
-        var loops: [(edges: [RoomEdge], area: Double)] = []
+        var loops: [(sides: [FaceSide], points: [SIMD2<Double>], area: Double)] = []
         for start in sides.indices where !visited.contains(start) {
             var loop: [Int] = []
             var current = start
@@ -40,17 +47,14 @@ extension PlanData {
                 loop.append(current)
                 current = next(current)
             } while current != start
+            let points = loop.map { pos[sides[$0].from]! }
             loops.append((
-                edges: loop.map { RoomEdge(wallId: sides[$0].wallId, forward: sides[$0].forward) },
-                area: Self.signedArea(loop.map { pos[sides[$0].from]! })
+                sides: loop.map { FaceSide(wallId: sides[$0].wallId, forward: sides[$0].forward) },
+                points: points,
+                area: Self.signedArea(points)
             ))
         }
         return loops
-    }
-
-    /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
-    func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
-        polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
     }
 
     /// 화면 시계 방향이면 양수인 다각형 넓이

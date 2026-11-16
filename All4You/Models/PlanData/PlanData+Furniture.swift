@@ -56,7 +56,7 @@ extension PlanData {
 
     /// 가구를 띄울 수 있는 가장 높은 자리 (m). 천장(가장 높은 벽)에서 가구 높이를 뺀 만큼이고, 벽이 없으면 한계가 없다
     func maxElevation(of furniture: Furniture) -> Double {
-        guard let ceiling = walls.filter({ !$0.isVirtual }).map(\.height).max() else { return .infinity }
+        guard let ceiling = walls.map(\.height).max() else { return .infinity }
         return max(ceiling - furniture.height, 0)
     }
 

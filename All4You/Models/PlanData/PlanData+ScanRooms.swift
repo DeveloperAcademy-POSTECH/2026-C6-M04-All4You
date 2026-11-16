@@ -91,7 +91,7 @@ extension PlanData {
         let backId = Self.newId("w", among: walls.map(\.id))
         walls[index].endVertex = vertexId
         walls.append(Wall(id: backId, startVertex: vertexId, endVertex: original.endVertex,
-                          thickness: original.thickness, height: original.height, isVirtual: original.isVirtual))
+                          thickness: original.thickness, height: original.height))
         for i in doorWindows.indices where doorWindows[i].wallId == wallId {
             var item = doorWindows[i]
             let pieceLength: Double
@@ -228,7 +228,7 @@ extension PlanData {
                 unnamedCount += 1
                 name = "\(ScanRoomRule.unnamedRoom) \(unnamedCount)"
             }
-            return Room(id: "r\(index + 1)", name: name, boundary: [], labelX: label.point.x, labelY: label.point.y)
+            return Room(id: "r\(index + 1)", name: name, labelX: label.point.x, labelY: label.point.y)
         }
     }
 
