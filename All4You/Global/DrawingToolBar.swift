@@ -30,7 +30,7 @@ struct DrawingToolBar: View {
 
     var body: some View {
         toolbar
-            .padding(.bottom, Layout.edgeInset)
+            .padding(.bottom, BarLayout.edgeInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     }
 }
@@ -95,8 +95,6 @@ extension DrawingToolBar {
         static let iconSize: CGFloat = 26
         static let toolbarPadding: CGFloat = 4
         static let spacing: CGFloat = 4
-        /// 화면 가장자리에서 막대까지
-        static let edgeInset: CGFloat = 32
     }
 }
 

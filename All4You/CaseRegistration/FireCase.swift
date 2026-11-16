@@ -23,6 +23,12 @@ final class FireCase {
     // SwiftData에 문자열로 저장하고 UI에는 타입 안전한 enum 제공
     private var statusValue: String
     var lastViewedAt: Date
+    /// 지금 사건 화면을 열어 둔 사건인지. 앱을 껐다 켜면 목록이 아니라 이 사건으로 바로 들어간다. 이 칸이 생기기 전에 저장한 사건은 false
+    var isCaseOpen: Bool = false
+    /// 마지막으로 보던 메인 탭 (CaseTabSelection.storageValue). nil이면 도면 2D
+    var lastViewedTab: String? = nil
+    /// 마지막으로 보던 조사 차수. nil이거나 그 차수가 없으면 가장 큰 차수
+    var lastViewedSessionNumber: Int? = nil
     
     /// 조사 차수. 사건을 지우면 함께 지운다
     @Relationship(deleteRule: .cascade, inverse: \InvestigationSession.fireCase)

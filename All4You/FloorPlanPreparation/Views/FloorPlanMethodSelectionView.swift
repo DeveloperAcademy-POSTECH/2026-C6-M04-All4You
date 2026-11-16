@@ -79,7 +79,8 @@ struct FloorPlanMethodSelectionView: View {
                 }
             }
             .frame(maxWidth: 642)
-            .padding(EdgeInsets(top: 169, leading: 24, bottom: 24, trailing: 24))
+            // 공용 상단 바가 16만큼 올라가고 얇아져서, 내용이 있던 자리에 그대로 있게 위 여백을 그만큼 늘렸다 (169 + 16)
+            .padding(EdgeInsets(top: 185, leading: 24, bottom: 24, trailing: 24))
             .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -60,8 +60,9 @@ struct UndoRedoButtons: View {
 extension UndoRedoButtons {
     private enum Layout {
         static let width: CGFloat = 110
-        static let height: CGFloat = 48
-        static let iconSize: CGFloat = 17
+        /// 공용 상단 바의 뒤로가기·체크와 같은 높이
+        static let height = BarLayout.controlSize
+        static let iconSize = BarLayout.iconSize
     }
 }
 

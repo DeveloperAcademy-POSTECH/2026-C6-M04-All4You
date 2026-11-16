@@ -97,8 +97,8 @@ struct FloorPlanTabView: View {
                                 .glassEffect(.regular, in: .capsule)
                             }
                         }
-                        .padding(.leading, Layout.filterLeading)
-                        .padding(.top, Layout.filterTop)
+                        .padding(.leading, BarLayout.edgeInset)
+                        .padding(.top, Layout.topInset)
                         // 필터 칩이 늘어나도 줄어들지 않는 원래 너비를 측정한다.
                         .fixedSize(horizontal: true, vertical: false)
                         .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { _, width in
@@ -109,7 +109,8 @@ struct FloorPlanTabView: View {
                         // 패널을 닫아도 위치를 정하지 않은 사진이 남아 있으면 언제든 다시 열 수 있게 둔다
                         if !isPlacingPhotos && selectedRoom == nil && selectedBookmark == nil && unassignedCount > 0 {
                             openPanelButton
-                                .padding()
+                                .padding(.trailing, BarLayout.edgeInset)
+                                .padding(.top, Layout.topInset)
                         }
                     }
                     .overlay(alignment: .bottom) {
@@ -362,8 +363,8 @@ extension FloorPlanTabView {
                         dropPhoto(on: room, at: location)
                     }
                 ))
-                // 처음 맞출 때 도면이 위 필터 메뉴·아래 2D/3D 막대와 겹치지 않게 한다
-                .padding(.vertical, Layout.overlayInset)
+                // 위 필터 메뉴·아래 2D/3D 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (도면 수정 화면·3D와 같다).
+                // 도면 영역을 줄이지 않고, 처음 맞출 때만 막대를 피해 놓는다
                 .background(.white)
                 // 옮기거나 확대한 도면이 상단 바 위로 넘쳐 보이지 않게 한다
                 .clipped()
@@ -374,12 +375,12 @@ extension FloorPlanTabView {
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
                 .overlay(alignment: .bottomTrailing) {
                     ResetViewButton { resetView(planData) }
-                        .padding()
+                        .padding([.trailing, .bottom], BarLayout.edgeInset)
                 }
                 .overlay(alignment: .topTrailing) {
                     // 2D 수정에서 정한 북쪽. 도면을 돌려 놓은 만큼 함께 돈다. 메인에서는 보기만 하고 방위표는 돌리지 않는다
                     CompassView(northAngle: .radians((planData.northAngle ?? 0) + (screen?.rotation ?? 0)))
-                        .padding()
+                        .padding(.trailing, BarLayout.edgeInset)
                         .padding(.top, Layout.compassTopInset)
                 }
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
@@ -448,7 +449,7 @@ extension FloorPlanTabView {
     }
     private var dimensionPicker: some View {
         DimensionPicker(selection: $dimension)
-            .padding()
+            .padding(.bottom, BarLayout.edgeInset)
     }
 }
 // 장소 선택
@@ -777,7 +778,10 @@ extension FloorPlanTabView {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(_ planData: PlanData, in size: CGSize) {
         canvasSize = size
-        screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+        // 위·아래 막대를 뺀 영역 가운데에 맞춘 뒤 아래로 내려, 처음에는 도면이 막대와 겹치지 않게 한다. 도면 수정 화면과 같다
+        let inner = CGSize(width: size.width, height: max(size.height - Layout.overlayInset * 2, 1))
+        screen = PlanScreen(plan: planData, in: inner, fill: Layout.planFill)
+            .moved(by: CGSize(width: 0, height: Layout.overlayInset))
     }
     /// 확대하거나 옮긴 도면을 처음 맞춘 배율·자리로 되돌린다
     private func resetView(_ planData: PlanData) {
@@ -839,7 +843,7 @@ extension FloorPlanTabView {
         static let planFill = 0.7
         /// 북마크 핀을 골랐을 때 나머지 도면·장소 핀을 흐리게 하는 정도
         static let focusDimmedOpacity = 0.35
-        /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
+        /// 처음 맞출 때 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
         /// 2D·3D가 서로 바뀌는 시간 (초)
         static let dimensionFadeDuration = 0.3
@@ -847,17 +851,17 @@ extension FloorPlanTabView {
         static let threeDWarmUp = Duration.seconds(1)
         /// 처음 시야로 되돌리는 애니메이션 시간 (초)
         static let resetDuration = 0.35
-        /// 필터 버튼 자리 (왼쪽 끝에서, 상단 바 아래로)
-        static let filterLeading: CGFloat = 32
-        // 도면 수정 화면의 위 도구 막대(바깥 여백 16 + 높이 54) 윗줄과 맞춰 그 막대와 같은 높이에 놓는다
-        static let filterTop: CGFloat = 42
+        /// 필터 버튼과 "위치 미확인 사진" 버튼을 시스템 상단 바 아래로 내리는 거리 (pt).
+        /// 도면 수정 화면의 위 도구 막대와 같은 높이(윗줄 아래 32)에 오게 한다. 시스템 상단 바가 공용 상단 바보다 낮게 끝나서 BarLayout.contentTopInset보다 작다
+        static let topInset: CGFloat = 22
         static let openPanelSpacing: CGFloat = 8
         static let openPanelPadding: CGFloat = 16
-        static let openPanelHeight: CGFloat = 48
+        /// 왼쪽 필터 버튼과 같은 높이
+        static let openPanelHeight: CGFloat = 40
         /// 돌린 도면을 90° 방향에 붙이는 시간 (초)
         static let rotationSettleDuration = 0.15
-        /// 방위표를 오른쪽 위 "위치 미확인 사진" 버튼(바깥 여백 16 + 높이 48) 아래로 내리는 높이 (pt)
-        static let compassTopInset: CGFloat = 16 + 48
+        /// 방위표의 위 여백 (pt). 오른쪽 위 "위치 미확인 사진" 버튼 아래로 16만큼 띄운다
+        static let compassTopInset: CGFloat = topInset + openPanelHeight + 16
         /// 3D에서 사진 핀을 띄울 높이 (m). 공간 이름 라벨과 같은 높이라 벽 너머에서는 가려진다
         static let photoPinHeight = 1.5
         /// 3D에서 메모 핀을 띄울 높이 (m). 가구 위에 남긴 메모도 보이게 가구 높이보다 조금 위
