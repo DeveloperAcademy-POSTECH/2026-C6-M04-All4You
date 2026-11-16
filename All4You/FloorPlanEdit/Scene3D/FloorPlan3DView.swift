@@ -77,6 +77,8 @@ struct FloorPlan3DView: View {
     @State private var dimensionPoints: [String: CGPoint] = [:]
     /// 스탬프 종류 라벨의 화면 위치 (키 = PlanMarker.id·WallFixture.id). 라벨과 함께 다시 계산한다
     @State private var stampLabelPoints: [String: CGPoint] = [:]
+    /// 서로 겹치지 않게 남긴 이름 라벨들. 라벨 위치와 함께 다시 계산한다
+    @State private var visibleLabels: Set<LabelDeclutter.Key> = []
     /// 핀의 화면 위치 (키 = Plan3DPin.id). 라벨과 함께 다시 계산한다
     @State private var pinPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
@@ -169,7 +171,7 @@ struct FloorPlan3DView: View {
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { [content] event in
                 // 불꽃은 부드럽게 보여야 해서 아래 라벨 계산 간격과 상관없이 매 프레임 흔든다
                 animateFlames()
-                // 라벨마다 벽에 가려졌는지 직선을 그어 확인하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
+                // 라벨마다 벽·가구에 가려졌는지 직선을 그어 확인하고 서로 겹치는지도 보므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
                 timeSinceLabelUpdate += event.deltaTime
                 guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
                 timeSinceLabelUpdate = 0
@@ -262,12 +264,12 @@ extension FloorPlan3DView {
     private var stampKindLabels: some View {
         ZStack {
             ForEach(planData.markers) { marker in
-                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id], labelEdit != .stamp(marker.id) {
+                if let text = marker.kindLabel, let point = stampLabelPoints[marker.id], labelEdit != .stamp(marker.id), visibleLabels.contains(.init(kind: .stamp, id: marker.id)) {
                     kindLabel(text, selecting: .marker(marker.id), isOther: marker.isKindOther, at: point)
                 }
             }
             ForEach(planData.wallFixtures) { fixture in
-                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id], labelEdit != .stamp(fixture.id) {
+                if let text = fixture.kindLabel, let point = stampLabelPoints[fixture.id], labelEdit != .stamp(fixture.id), visibleLabels.contains(.init(kind: .stamp, id: fixture.id)) {
                     kindLabel(text, selecting: .wallFixture(fixture.id), isOther: fixture.isKindOther, at: point)
                 }
             }
@@ -320,7 +322,7 @@ extension FloorPlan3DView {
     
     private var roomLabels: some View {
         ForEach(planData.rooms) { room in
-            if let point = labelPoints[room.id], labelEdit != .room(room.id) {
+            if let point = labelPoints[room.id], labelEdit != .room(room.id), visibleLabels.contains(.init(kind: .room, id: room.id)) {
                 RoomLabelView(name: room.name, scale: labelScale)
                     .onTapGesture { startLabelEdit(.room(room.id), name: room.name, at: point) }
                     .allowsHitTesting(canRenameRooms)
@@ -332,7 +334,7 @@ extension FloorPlan3DView {
     /// 2D와 같은 가구 이름 캡슐. 받을 곳이 있으면 눌러서 이름을 고친다
     private var furnitureLabels: some View {
         ForEach(planData.furniture ?? []) { furniture in
-            if let point = furnitureLabelPoints[furniture.id], labelEdit != .furniture(furniture.id) {
+            if let point = furnitureLabelPoints[furniture.id], labelEdit != .furniture(furniture.id), visibleLabels.contains(.init(kind: .furniture, id: furniture.id)) {
                 FurnitureLabelView(label: furniture.label, scale: labelScale)
                     .onTapGesture { startLabelEdit(.furniture(furniture.id), name: furniture.label, at: point) }
                     .allowsHitTesting(canRenameFurniture)
@@ -511,17 +513,21 @@ extension FloorPlan3DView {
         if zoom != labelZoom {
             labelZoom = zoom
         }
-        let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content)
+        let rooms = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.roomLabelAnchorsName, content: content, isCoveredByFurniture: true)
         if rooms != labelPoints {
             labelPoints = rooms
         }
-        let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content)
+        let furniture = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.furnitureLabelAnchorsName, content: content, isCoveredByFurniture: true)
         if furniture != furnitureLabelPoints {
             furnitureLabelPoints = furniture
         }
-        let stampKinds = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.stampLabelAnchorsName, content: content)
+        let stampKinds = screenPoints(ofAnchorsIn: FloorPlan3DBuilder.stampLabelAnchorsName, content: content, isCoveredByFurniture: true)
         if stampKinds != stampLabelPoints {
             stampLabelPoints = stampKinds
+        }
+        let visible = LabelDeclutter.visibleKeys(labelSlots(rooms: rooms, furniture: furniture, stamps: stampKinds))
+        if visible != visibleLabels {
+            visibleLabels = visible
         }
         let dimensionScreenPoints = screenPoints(ofAnchorsIn: Self.dimensionAnchorsName, content: content)
         if dimensionScreenPoints != dimensionPoints {
@@ -533,14 +539,16 @@ extension FloorPlan3DView {
         }
     }
     
-    /// 장면 안 라벨 자리 묶음(FloorPlan3DBuilder)을 화면 점으로 바꾼다 (키 = 자리 엔티티 이름). 카메라 뒤에 있거나 벽에 가려지면 뺀다
-    private func screenPoints(ofAnchorsIn groupName: String, content: RealityViewCameraContent) -> [String: CGPoint] {
+    /// 장면 안 라벨 자리 묶음(FloorPlan3DBuilder)을 화면 점으로 바꾼다 (키 = 자리 엔티티 이름). 카메라 뒤에 있거나 벽에 가려지면 뺀다.
+    /// isCoveredByFurniture가 참이면 가구에 가려진 것도 뺀다
+    private func screenPoints(ofAnchorsIn groupName: String, content: RealityViewCameraContent, isCoveredByFurniture: Bool = false) -> [String: CGPoint] {
         guard let anchors = sceneRoot.findEntity(named: groupName) else { return [:] }
         var points: [String: CGPoint] = [:]
         for anchor in anchors.children {
             let position = anchor.position(relativeTo: nil)
             guard let point = content.project(point: position, to: .local),
                   !isHiddenByWall(position, at: point, content: content) else { continue }
+            if isCoveredByFurniture, isHiddenByFurniture(position, at: point, ownerId: anchor.name, content: content) { continue }
             points[anchor.name] = point
         }
         return points
@@ -560,6 +568,52 @@ extension FloorPlan3DView {
             relativeTo: nil
         )
         return !hits.isEmpty
+    }
+    
+    /// 같은 직선이 가구와 부딪히면 라벨이 가구에 가려진 것으로 판단한다. 벽보다 널널하게, 라벨 바로 앞 furnitureHitMargin(m) 안쪽은 보지 않는다.
+    /// 라벨이 놓인 가구 자신(ownerId가 가구 id일 때)은 가리지 않는 것으로 본다
+    private func isHiddenByFurniture(_ position: SIMD3<Float>, at point: CGPoint, ownerId: String, content: RealityViewCameraContent) -> Bool {
+        guard let scene = sceneRoot.scene,
+              let ray = content.ray(through: point, in: .local, to: .scene) else { return false }
+        let distanceToLabel = simd_distance(ray.origin, position)
+        let hits = scene.raycast(
+            origin: ray.origin,
+            direction: ray.direction,
+            length: distanceToLabel - Layout.furnitureHitMargin,
+            query: .all,
+            mask: FloorPlan3DBuilder.furnitureCollisionGroup,
+            relativeTo: nil
+        )
+        return hits.contains { FloorPlan3DBuilder.selection(of: $0.entity) != .furniture(ownerId) }
+    }
+    
+    /// 화면에 자리가 잡힌 이름 라벨들의 가운데와 크기. 서로 겹치는지 볼 때 쓴다
+    private func labelSlots(rooms: [String: CGPoint], furniture: [String: CGPoint], stamps: [String: CGPoint]) -> [LabelDeclutter.Slot] {
+        var slots: [LabelDeclutter.Slot] = []
+        for room in planData.rooms {
+            guard let point = rooms[room.id] else { continue }
+            let size = LabelDeclutter.estimatedSize(of: room.name, fontSize: Layout.roomFontSize, horizontalPadding: 16, verticalPadding: 8, scale: labelScale)
+            slots.append(.init(key: .init(kind: .room, id: room.id), center: point, size: size))
+        }
+        func addStamp(id: String, text: String?) {
+            guard let text, let point = stamps[id] else { return }
+            let size = LabelDeclutter.estimatedSize(of: text, fontSize: StampKindLabelView.Layout.fontSize, horizontalPadding: StampKindLabelView.Layout.horizontalPadding, verticalPadding: StampKindLabelView.Layout.verticalPadding, scale: labelScale)
+            slots.append(.init(key: .init(kind: .stamp, id: id), center: kindLabelPosition(from: point), size: size))
+        }
+        for marker in planData.markers {
+            addStamp(id: marker.id, text: marker.kindLabel)
+        }
+        for fixture in planData.wallFixtures {
+            addStamp(id: fixture.id, text: fixture.kindLabel)
+        }
+        if showsFurnitureLabels {
+            for item in planData.furniture ?? [] {
+                guard let point = furniture[item.id] else { continue }
+                let size = LabelDeclutter.estimatedSize(of: item.label, fontSize: Layout.furnitureFontSize, horizontalPadding: 13, verticalPadding: 7.5, scale: labelScale)
+                slots.append(.init(key: .init(kind: .furniture, id: item.id), center: point, size: size))
+            }
+        }
+        return slots
     }
 }
 
@@ -1239,6 +1293,12 @@ extension FloorPlan3DView {
         static let zoomRange: ClosedRange<Float> = 0.4...4
         /// 라벨 바로 앞(m)은 가림 판정에서 뺀다. 라벨 자리에 닿은 것을 벽으로 잘못 보지 않게
         static let labelHitMargin: Float = 0.05
+        /// 가구에 가려졌는지 볼 때 라벨 바로 앞 이만큼(m)은 뺀다. 가구 윗면 가까이 놓인 라벨이나 스탬프 라벨을 숨기지 않게 벽보다 넉넉히 잡았다
+        // TEMP: 실기기에서 가구와 겹쳐 보며 정함
+        static let furnitureHitMargin: Float = 0.2
+        /// 이름 라벨 글자 크기 (pt). 겹침 판정의 크기 어림에 쓴다 (RoomLabelView 15 · FurnitureLabelView 12)
+        static let roomFontSize: CGFloat = 15
+        static let furnitureFontSize: CGFloat = 12
         /// 라벨 위치·가림을 다시 계산하는 간격 (초)
         /// TEMP: 우선 여유 있게 잡은 값. 라벨을 아주 많이 띄워 보는 테스트를 하며 알맞은 값으로 조절할 예정
         static let labelUpdateInterval: TimeInterval = 1.0 / 60
