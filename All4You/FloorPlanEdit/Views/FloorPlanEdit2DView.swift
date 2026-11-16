@@ -80,12 +80,12 @@ struct FloorPlanEdit2DView: View {
     @State private var labelEditY: CGFloat?
     /// 손 도구로 고른 벽 묶음 (일직선 줄 전체 또는 한 구간). 비스듬한 벽을 고르면 nil
     @State private var wallSelection: WallSelection?
-    /// 벽을 끌기 시작할 때의 도면과 이동 범위. 끄는 내내 이 도면에 이동량을 더해 계산한다
-    @State private var wallDragBase: (plan: PlanData, limits: MoveLimits)?
+    /// 벽을 끌기 시작할 때의 도면. 끄는 내내 이 도면에 이동량을 더해 계산한다
+    @State private var wallDragBase: PlanData?
     /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
     @State private var wallBlockedReason: String?
-    /// 꼭짓점을 끄는 동안의 미리 보기에서 자동으로 지워진 것의 안내. 손을 떼면 띄운다
-    @State private var vertexRemovedNotice: String?
+    /// 꼭짓점·벽을 끄는 동안의 미리 보기에서 자동으로 지워진 것의 안내. 손을 떼면 띄운다
+    @State private var editRemovedNotice: String?
     /// 지금 끌고 있는 꼭짓점과 손가락 화면 점. 끄는 동안 벽이 나뉘거나 꼭짓점이 합쳐져도 손잡이가 사라져 끌기가 끊기지 않게 한다
     @State private var draggingVertex: (id: String, location: CGPoint)?
     /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
@@ -675,7 +675,7 @@ extension FloorPlanEdit2DView {
                 finishPenStroke()
                 isErasing = false
                 stampDragStart = nil
-                wallDragBase = nil
+                finishWallDrag()
                 if let blockedWhileDragging, wallBlockedReason == nil { showNotice(blockedWhileDragging) }
             }
     }
@@ -805,7 +805,7 @@ extension FloorPlanEdit2DView {
 
 // 벽 고르기·옮기기
 // 손 도구일 때만 벽을 고른다. 한 번 누르면 일직선으로 이어진 줄 전체, 고른 벽을 다시 누르면 그 구간만 고른다.
-// 고른 벽을 끌면 가로 벽은 위아래로, 세로 벽은 좌우로만 옮기고, 다른 벽에 너무 가까워지거나 벽이 너무 짧아지면 멈춘다.
+// 고른 벽을 끌면 가로 벽은 위아래로, 세로 벽은 좌우로만 옮긴다. 멈추지 않고, 다른 벽을 지나면 만나는 자리에서 나눈다.
 // 비스듬한 벽은 줄로 묶지 않고 벽과 수직으로만 평행 이동한다
 extension FloorPlanEdit2DView {
     /// 손 도구로 누른 곳이 벽이면 그 벽을 고른다. 창문·문·스탬프는 도구와 상관없이 그것을 고르고, 바닥은 그 아래 가구를 고른다
@@ -829,7 +829,7 @@ extension FloorPlanEdit2DView {
     /// 고른 벽 위에서 시작한 끌기면 벽을 옮긴다. 옮겼으면 true
     private func dragWall(_ value: DragGesture.Value, screen: PlanScreen) -> Bool {
         guard case .wall(let id)? = selection,
-              case .wall(let startId, _, _) = screen.tap(at: value.startLocation, in: wallDragBase?.plan ?? planData),
+              case .wall(let startId, _, _) = screen.tap(at: value.startLocation, in: wallDragBase ?? planData),
               startId == id || wallSelection?.wallIds.contains(startId) == true else { return false }
         menuTarget = nil
         let moved = screen.plan(value.location) - screen.plan(value.startLocation)
@@ -845,18 +845,26 @@ extension FloorPlanEdit2DView {
             }
             return true
         }
-        let base = wallDragBase ?? (planData, planData.moveLimits(wallSelection))
+        let base = wallDragBase ?? planData
         wallDragBase = base
-        let resolved = base.limits.resolve(moved[wallSelection.axis.across])
-        wallBlockedReason = resolved.blockedBy
-        // 도면이 깨지는 자리면 마지막으로 맞는 미리 보기를 그대로 둔다
-        if let next = base.plan.movingWalls(wallSelection, by: resolved.delta) {
-            dragPreview = next
-        }
+        let outcome = base.movingWalls(wallSelection, by: base.snappedMoveDistance(for: wallSelection, raw: moved[wallSelection.axis.across]))
+        dragPreview = outcome.plan
+        editRemovedNotice = outcome.removedNotice
         return true
     }
 
-    /// 벽이 범위 끝에 막혔을 때 위쪽에 잠깐 보여 주는 이유
+    /// 벽을 끌다 손을 뗐다. 벽이 다른 벽과 만나 나뉘었을 수 있으니 고른 벽 묶음을 다시 잡고, 자동으로 지운 것이 있으면 안내한다
+    private func finishWallDrag() {
+        guard wallDragBase != nil else { return }
+        wallDragBase = nil
+        if case .wall(let id)? = selection, let isWholeLine = wallSelection?.isWholeLine {
+            wallSelection = isWholeLine ? planData.wallLine(containing: id) : planData.wallSegment(id)
+        }
+        if let notice = editRemovedNotice { showNotice(notice) }
+        editRemovedNotice = nil
+    }
+
+    /// 안내를 위쪽에 잠깐 보여 주는 캡슐
     @ViewBuilder
     private var wallBlockedNotice: some View {
         if let wallBlockedReason {
@@ -1077,14 +1085,14 @@ extension FloorPlanEdit2DView {
             snapRadius: Double(Layout.magnetDistance) / Double(screen.length(1))
         )
         dragPreview = outcome.plan
-        vertexRemovedNotice = outcome.removedNotice
+        editRemovedNotice = outcome.removedNotice
     }
 
     /// 손을 떼면 미리 보기를 한 번 반영한다. 자동으로 지운 것이 있으면 그때 안내한다
     private func endVertexDrag() {
-        let notice = vertexRemovedNotice
+        let notice = editRemovedNotice
         let draggedId = draggingVertex?.id
-        vertexRemovedNotice = nil
+        editRemovedNotice = nil
         draggingVertex = nil
         commitPreview()
         // 끈 꼭짓점이 다른 벽을 가로질러 벽이 나뉘면 고른 벽은 앞 조각만 남으므로, 끈 꼭짓점이 있는 조각을 다시 고른다
