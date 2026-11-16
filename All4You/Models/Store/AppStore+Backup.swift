@@ -264,6 +264,23 @@ extension AppStore {
         supportDirectory.appendingPathComponent("UnreadablePlans")
     }
 
+    /// 옛 형식(version 1) 도면을 새 형식으로 처음 덮어쓰기 전에 PlanDataV1/<사건 id>-<시각>.json 으로 원본을 남기고 기록한다.
+    /// 쓰기에 실패하면 기록만 남기고 넘어간다 (저장을 막으면 사용자가 고친 도면을 잃는다)
+    static func keepPlanBeforeMigration(_ data: Data, caseID: UUID?) {
+        let name = "\(caseID?.uuidString ?? "unknown")-\(backupTimestamp()).json"
+        do {
+            try FileManager.default.createDirectory(at: planDataV1Directory, withIntermediateDirectories: true)
+            try data.write(to: planDataV1Directory.appendingPathComponent(name), options: .atomic)
+            record("옛 형식 도면 보관 \(name)")
+        } catch {
+            record("옛 형식 도면 보관 실패 \(name) \(error)")
+        }
+    }
+
+    private static var planDataV1Directory: URL {
+        supportDirectory.appendingPathComponent("PlanDataV1")
+    }
+
     /// 읽지 못한 도면 JSON을 UnreadablePlans/<사건 id>-<시각>.json 으로 남기고 기록한다.
     /// 쓰기에 실패하면 기록만 남기고 넘어간다 (사용자가 이미 새로 만들기를 골랐다)
     static func keepUnreadablePlan(_ data: Data, caseID: UUID) {

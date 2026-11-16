@@ -282,12 +282,12 @@ extension FloorPlanTabView {
                         let focusedRoom = selectedBookmark.flatMap { selected in
                             planData.rooms.first { $0.id == selected.photo.roomKey }
                         }
-                        // 핀이 있는 장소는 핀 캡슐이 이름 라벨을 대신하므로 도면의 이름 라벨은 숨긴다.
+                        // 핀이 있는 장소는 핀 캡슐이 이름 라벨을 대신하므로 도면의 이름 라벨은 숨긴다. 다른 장소의 라벨도 핀과 겹치면 숨긴다.
                         // 북마크 핀을 고르면 도면·장소 핀을 흐리게 하고, 그 사진의 장소 라벨만 위에 진하게 다시 그린다
                         Plan2DView(
                             planData: planData,
                             screen: screen,
-                            hiddenLabelRoomIds: Set(pins.keys).union(focusedRoom.map { [$0.id] } ?? []),
+                            hiddenLabelRoomIds: Set(pins.keys).union(roomIds(coveredBy: pins, in: planData, screen: screen)).union(focusedRoom.map { [$0.id] } ?? []),
                             focusedMarkerID: focusedIgnitionMarkerID,
                             dimsForMemoFocus: focusedMemoID != nil
                         )
@@ -622,11 +622,18 @@ extension FloorPlanTabView {
 }
 // 3D 핀
 extension FloorPlanTabView {
+    /// 사진 핀이 화면에서 차지하는 크기 (대표 사진 + 이름·사진 수 캡슐)
+    private func photoPinSize(of room: Room, count: Int) -> CGSize {
+        let capsule = LabelDeclutter.estimatedSize(of: "\(room.name) · \(count)", fontSize: 15, horizontalPadding: 14, verticalPadding: 6, scale: 1)
+        return CGSize(width: max(PhotoPinView.imageSize, capsule.width), height: PhotoPinView.imageSize + PhotoPinView.spacing + capsule.height)
+    }
+
     /// 사진 핀은 장소 이름 자리에, 메모 핀은 메모를 남긴 자리에 띄운다
     private func pins3D(in planData: PlanData) -> [Plan3DPin] {
         let photoPins = photoPins(in: planData).keys.compactMap { roomID in
             planData.rooms.first { $0.id == roomID }.map { room in
-                Plan3DPin(id: Pin3DID.photo + room.id, point: SIMD2(room.labelX, room.labelY), height: Layout.photoPinHeight)
+                // 앨범 라벨(사진 핀)은 겹치는 공간 이름 라벨을 숨기므로 화면에서 차지하는 크기를 함께 알린다
+                Plan3DPin(id: Pin3DID.photo + room.id, point: SIMD2(room.labelX, room.labelY), height: Layout.photoPinHeight, labelSize: photoPinSize(of: room, count: photoPins(in: planData)[room.id]?.count ?? 0))
             }
         }
         let memoPins = memos.map { memo in
@@ -706,6 +713,29 @@ extension FloorPlanTabView {
 }
 // 사진 핀·놓기
 extension FloorPlanTabView {
+    /// 사진 핀(앨범 라벨)과 화면에서 겹치는 공간 이름 라벨의 장소들. 앨범 라벨이 보이면 겹치는 공간 라벨은 숨긴다.
+    /// 핀은 라벨 자리에서 위로 사진 높이의 절반만큼 올라가 있고, 크기는 글자 수로 어림한다
+    private func roomIds(coveredBy pins: [String: PhotoPin], in planData: PlanData, screen: PlanScreen) -> Set<String> {
+        let pinRects: [CGRect] = planData.rooms.compactMap { room in
+            guard let pin = pins[room.id] else { return nil }
+            let capsule = Plan2DHit.capsuleSize(of: "\(room.name) · \(pin.count)", font: Plan2DHit.roomLabelFont)
+            let size = CGSize(width: max(PhotoPinView.imageSize, capsule.width), height: PhotoPinView.imageSize + PhotoPinView.spacing + capsule.height)
+            let center = screen.point(SIMD2(room.labelX, room.labelY))
+            let middle = CGPoint(x: center.x, y: center.y - (PhotoPinView.imageSize + PhotoPinView.spacing) / 2)
+            return CGRect(x: middle.x - size.width / 2, y: middle.y - size.height / 2, width: size.width, height: size.height)
+        }
+        guard !pinRects.isEmpty else { return [] }
+        return Set(planData.rooms.compactMap { room in
+            let size = Plan2DHit.capsuleSize(of: room.name, font: Plan2DHit.roomLabelFont)
+            let center = screen.point(SIMD2(room.labelX, room.labelY))
+            // 가장자리만 살짝 닿는 정도로는 숨기지 않게, 라벨 크기를 줄여서 겹침을 본다 (3D 라벨과 같은 비율)
+            let width = size.width * LabelDeclutter.overlapTolerance
+            let height = size.height * LabelDeclutter.overlapTolerance
+            let rect = CGRect(x: center.x - width / 2, y: center.y - height / 2, width: width, height: height)
+            return pinRects.contains { $0.intersects(rect) } ? room.id : nil
+        })
+    }
+
     /// 화면에 띄울 핀. 패널을 펼친 동안은 기존 핀을 숨기고, 끌고 있는 사진이 올라간 장소에만 미리보기 핀을 띄운다
     private func visiblePins(in planData: PlanData) -> [String: PhotoPin] {
         guard isPlacingPhotos else { return photoPins(in: planData) }

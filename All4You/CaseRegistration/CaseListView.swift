@@ -198,7 +198,7 @@ struct CaseListView: View {
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다
     private func present(_ fireCase: FireCase, at startTab: CaseStartTab = .floorPlan) {
         fireCase.lastViewedAt = .now
-        // 평면도는 있어도 벽이 없거나 읽을 수 없으면(예전 빌드가 저장한 빈 도면 등) 도면 방식 선택으로 보낸다
+        // 평면도는 있어도 벽·바닥·가구가 없거나 읽을 수 없으면(예전 빌드가 저장한 빈 도면 등) 도면 방식 선택으로 보낸다
         let unusablePlanData = fireCase.floorPlan.flatMap { $0.loadPlanData()?.isUsable == true ? nil : $0.planData }
         openedCase = OpenedCase(
             fireCase: fireCase,

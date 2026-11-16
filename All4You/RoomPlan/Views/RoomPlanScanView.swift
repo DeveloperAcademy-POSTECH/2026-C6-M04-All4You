@@ -321,7 +321,7 @@ private struct RoomPlanScanSessionView: View {
     }
     
     // TEMP: Figma에 없는 화면이라 임시 문구
-    private static let emptyPlanMessage = "벽이 인식되지 않았어요. 벽을 비추며 다시 스캔해 주세요"
+    private static let emptyPlanMessage = "스캔된 것이 없어요. 바닥이나 벽을 비추며 다시 스캔해 주세요"
     
     // 스캔이 끝난 뒤에만 변환한다. 합치는 중에는 결과가 바뀔 수 있어 기다린다
     private func refreshPreviewPlan() {

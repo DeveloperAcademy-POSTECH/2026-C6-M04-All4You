@@ -1,35 +1,24 @@
 // 꼭짓점 하나를 끌어 옮기는 계산. 꼭짓점에 붙은 벽이 함께 늘고 줄며, 벽이 가로·세로가 되는 자리 근처에서는 딱 붙는다.
-// 곧은 벽 중간에 있는 꼭짓점(T자로 붙은 자리 등)은 그 벽의 선을 따라서만 미끄러지고, 떠 있는 벽 끝은 놓은 자리 가까이 다른 벽·꼭짓점이 있으면 붙는다.
-// 옮길 수 없는 자리면 그 이유를 돌려준다 (벽이 너무 짧아짐, 다른 벽을 가로지름, 창문·문·콘센트가 벽 밖으로 나감, 스탬프에 걸림, 방을 다시 만들 수 없음)
+// 곧은 벽 중간에 있는 꼭짓점(T자로 붙은 자리 등)은 그 벽의 선을 따라서만 미끄러지고, 다른 벽과 이어지지 않은 벽 끝(떠 있는 끝)은 놓은 자리 가까이 다른 벽·꼭짓점이 있으면 붙는다.
+// 거절하지 않는다. 벽 길이가 어떻게 되든 벽에 달린 창문·문·콘센트를 맞추고, 다른 벽을 가로지르면 만나는 자리에서 나누고,
+// 겹친 벽은 하나로 합친다 (규칙은 WallEditOutcome.swift 맨 위 설명). 길이가 0이 된 벽은 지우고 두 꼭짓점을 합친다
 
 import Foundation
 
-/// 꼭짓점을 옮기지 못한 이유. message는 화면에 띄워, 어떻게 다시 끌면 되는지 알려 주는 문장이다
-enum VertexMoveFailure: Error {
-    case vertexNotFound
-    case wallTooShort
-    case crossesWall
-    case openingOutsideWall
-    case stampInTheWay
-    case roomsCannotBeRebuilt
-
-    var message: String {
-        switch self {
-        case .vertexNotFound: "옮길 모서리를 찾지 못했어요. 벽을 다시 골라 주세요"
-        case .wallTooShort: "벽이 너무 짧아져요(0.3m 미만). 조금 덜 옮겨 주세요"
-        case .crossesWall: "다른 벽과 부딪혀요. 다른 벽을 지나지 않는 자리로 옮겨 주세요"
-        case .openingOutsideWall: "벽에 달린 창문·문·콘센트가 벽 밖으로 나가요. 벽을 덜 줄여 주세요"
-        case .stampInTheWay: "스탬프가 걸려요. 발화지점·피해자에서 떨어진 자리로 옮겨 주세요"
-        case .roomsCannotBeRebuilt: "방을 다시 만들 수 없어요. 벽이 끊기지 않는 자리로 옮겨 주세요"
-        }
-    }
+/// 꼭짓점 옮기기에서 쓰는 값
+enum VertexMoveRules {
+    /// 떠 있는 끝이 다른 벽의 가운데에 붙는 거리는 꼭짓점에 붙는 거리의 이만큼이다. 넓으면 벽을 가로질러 끌 때 벽에 달라붙어 지나가기 어렵다
+    // TEMP: 붙는 거리는 실기기에서 끌어 보고 정함
+    static let wallSnapFraction = 0.25
 }
 
 extension PlanData {
-    /// 꼭짓점 vertexId를 도면 점 target(m)으로 옮긴 새 도면. snapRadius(m) 안에서는 축 자석(가로·세로)과 떠 있는 끝 붙이기가 맞춰 준다
-    func movingVertex(_ vertexId: String, to target: SIMD2<Double>, snapRadius: Double) -> Result<PlanData, VertexMoveFailure> {
-        guard vertexPoints[vertexId] != nil else { return .failure(.vertexNotFound) }
+    /// 꼭짓점 vertexId를 도면 점 target(m)으로 옮긴 새 도면과 자동으로 지운 것. snapRadius(m) 안에서는 가로·세로로 딱 붙이기(축 자석)와 떠 있는 끝 붙이기가 맞춰 준다.
+    /// 꼭짓점을 찾지 못하면 도면을 바꾸지 않고 돌려준다
+    func movingVertex(_ vertexId: String, to target: SIMD2<Double>, snapRadius: Double) -> WallEditOutcome {
+        guard vertexPoints[vertexId] != nil else { return WallEditOutcome(plan: self) }
         var result = self
+        var removed: [RemovedItem] = []
         let attached = walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }
         var position = target
         var mergeTarget: String?
@@ -42,9 +31,8 @@ extension PlanData {
             switch probe.wallEnd(near: target, outward: .zero, snapRadius: snapRadius) {
             case .vertex(let id) where id != otherId:
                 mergeTarget = id
-            case .wall(let wallId, let point):
-                let end = WallEnd.wall(wallId, point)
-                guard !result.isDoorInTheWay(end), let id = result.splitWall(wallId, at: point), id != otherId else { break }
+            case .wall(let wallId, let point) where Self.length(point - target) <= snapRadius * VertexMoveRules.wallSnapFraction:
+                guard let id = result.splitWall(wallId, at: point, removed: &removed), id != otherId else { break }
                 mergeTarget = id
             default:
                 break
@@ -61,9 +49,9 @@ extension PlanData {
         }
 
         if let mergeTarget, let point = result.vertexPoints[mergeTarget] {
-            return result.finishMove(vertexId, to: point, mergingInto: mergeTarget, original: self)
+            return result.finishMove(vertexId, to: point, mergingInto: mergeTarget, removed: removed)
         }
-        return result.finishMove(vertexId, to: position, mergingInto: nil, original: self)
+        return result.finishMove(vertexId, to: position, mergingInto: nil, removed: removed)
     }
 
     /// 두 벽이 한 직선으로 이어지는 꼭짓점이면 그 직선. 아니면 nil
@@ -129,52 +117,26 @@ extension PlanData {
         return line.start + d * ((value - line.start.y) / d.y)
     }
 
-    /// 꼭짓점을 position으로 옮기고, 옮겨도 되는지 검사한다. mergingInto가 있으면 옮긴 뒤 그 꼭짓점에 합친다 (떠 있는 끝을 다른 벽에 붙일 때).
-    /// original은 옮기기 전 도면 (스탬프가 잘 있었는지 비교용)
-    fileprivate mutating func finishMove(_ vertexId: String, to position: SIMD2<Double>, mergingInto targetId: String?, original: PlanData) -> Result<PlanData, VertexMoveFailure> {
-        guard let index = vertices.firstIndex(where: { $0.id == vertexId }) else { return .failure(.vertexNotFound) }
-        let attachedIds = walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }.map(\.id)
-        // 달린 창문·문·콘센트는 벽 길이가 바뀌어도 밖으로 나가지 않아야 한다. 시작 쪽을 옮기면 벽을 따라 잰 거리의 기준이 바뀌어 그만큼 민다
-        var shifts: [String: Double] = [:]
-        for wallId in attachedIds {
-            guard let wall = wall(id: wallId), let line = line(of: wall) else { continue }
-            let fixed = wall.startVertex == vertexId ? line.end : line.start
-            let newLength = Self.length(position - fixed)
-            if !wall.isVirtual, newLength < WallMoveRules.minWallLength { return .failure(.wallTooShort) }
-            let shift = wall.startVertex == vertexId ? line.length - newLength : 0
-            shifts[wallId] = shift
-            let eps = WallMoveRules.eps
-            for opening in doorWindows where opening.wallId == wallId {
-                let start = opening.centerAlongWall - shift - opening.width / 2
-                if start < -eps || start + opening.width > newLength + eps { return .failure(.openingOutsideWall) }
-            }
-            for fixture in wallFixtures where fixture.wallId == wallId {
-                let at = fixture.positionAlongWall - shift
-                if at < -eps || at > newLength + eps { return .failure(.openingOutsideWall) }
-            }
-        }
-        for (wallId, shift) in shifts where abs(shift) > 0 {
-            for i in doorWindows.indices where doorWindows[i].wallId == wallId { doorWindows[i].centerAlongWall -= shift }
-            for i in wallFixtures.indices where wallFixtures[i].wallId == wallId { wallFixtures[i].positionAlongWall -= shift }
-        }
+    /// 꼭짓점을 position으로 옮기고 도면이 성립하게 맞춘다. mergingInto가 있으면 옮긴 뒤 그 꼭짓점에 합친다 (떠 있는 끝을 다른 벽에 붙일 때).
+    /// removed는 옮기기 전에 이미 지운 것
+    fileprivate mutating func finishMove(_ vertexId: String, to position: SIMD2<Double>, mergingInto targetId: String?, removed earlier: [RemovedItem]) -> WallEditOutcome {
+        var removed = earlier
+        guard let index = vertices.firstIndex(where: { $0.id == vertexId }) else { return WallEditOutcome(plan: self, removed: removed) }
+        let originalVertices = Set(vertices.map(\.id))
+        var touched = Set(walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }.map(\.id))
+        // 벽에 달린 창문·문·콘센트가 원래 있던 자리에 남도록, 옮기기 전 도면 위 자리를 잡아 둔다
+        let placesBefore = attachedPlaces(onWalls: touched)
         vertices[index].x = position.x
         vertices[index].y = position.y
-        var touchedIds = Set(attachedIds)
-        if let targetId {
-            // 떠 있는 끝이던 꼭짓점을 목표 꼭짓점에 합친다. 이미 같은 두 꼭짓점을 잇는 벽이 있으면 붙일 수 없다
-            guard let wallIndex = walls.firstIndex(where: { $0.id == attachedIds.first }) else { return .failure(.vertexNotFound) }
-            let otherId = walls[wallIndex].startVertex == vertexId ? walls[wallIndex].endVertex : walls[wallIndex].startVertex
-            guard !walls.contains(where: { Set([$0.startVertex, $0.endVertex]) == Set([otherId, targetId]) }) else { return .failure(.crossesWall) }
-            if walls[wallIndex].startVertex == vertexId { walls[wallIndex].startVertex = targetId } else { walls[wallIndex].endVertex = targetId }
-            vertices.removeAll { $0.id == vertexId }
-            touchedIds.insert(walls[wallIndex].id)
-        }
-        for wall in walls where touchedIds.contains(wall.id) && !wall.isVirtual && crossesWalls(wall) { return .failure(.crossesWall) }
-        guard retraceRooms(splitsRooms: true) else { return .failure(.roomsCannotBeRebuilt) }
-        cleanUpVirtualWalls()
-        addRoomsClosed(by: touchedIds)
-        guard original.markers.filter(original.fits).allSatisfy(fits) else { return .failure(.stampInTheWay) }
-        refreshRoomLabels()
-        return .success(self)
+        if let targetId { mergeVertex(vertexId, into: targetId) }
+        collapseZeroLengthWalls(among: touched, removed: &removed)
+        touched = touched.filter { wall(id: $0) != nil }
+        fitOpenings(onWalls: touched, placesBefore: placesBefore, removed: &removed)
+        splitCrossings(of: touched, removed: &removed)
+        // 같은 두 꼭짓점을 잇게 된 벽은 하나로 합치고, 지워진 벽에서 달린 것을 받은 벽을 다시 맞춘다
+        let receivers = mergeOverlappingWalls(favoring: touched)
+        fitOpenings(onWalls: receivers, placesBefore: [:], removed: &removed)
+        removeUnusedVertices(keeping: originalVertices)
+        return WallEditOutcome(plan: self, removed: removed)
     }
 }

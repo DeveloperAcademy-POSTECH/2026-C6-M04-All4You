@@ -12,9 +12,10 @@ extension FireCase {
         let existing = Set(photos.map(\.id))
         let session = sessions.max { $0.sessionNumber < $1.sessionNumber }
         let encoder = JSONEncoder()
+        let regions = plan.regions
         for scanPhoto in scanPhotos where !existing.contains(scanPhoto.id) {
             let placement = scanPhoto.pose.flatMap { plan.scanAlignment?.placement(of: $0) }
-            let roomKey = placement.flatMap { plan.room(containing: $0.position)?.id }
+            let roomKey = placement.flatMap { plan.room(containing: $0.position, in: regions)?.id }
             photos.append(EvidencePhoto(
                 id: scanPhoto.id,
                 source: .camera,

@@ -15,6 +15,8 @@ struct Plan2DView: View {
     var selectedRoomId: String? = nil
     /// 함께 고른 벽들 (Wall.id). 일직선 줄 전체를 고르면 여러 개다
     var selectedWallIds: Set<String> = []
+    /// 고른 스캔 바닥 (Floor.id). 테두리를 주황으로 그린다
+    var selectedFloorId: String? = nil
     /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
     var roomLabelActions: RoomLabelActions? = nil
     /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 가구 (Furniture.id). 이 가구의 이름 캡슐은 그리지 않는다
@@ -71,11 +73,15 @@ struct Plan2DView: View {
     
     var body: some View {
         Canvas { context, _ in
+            // 스캔한 바닥을 가장 아래에 그린다. 벽이 없어도 바닥·가구가 보인다
+            for floor in planData.floors ?? [] {
+                drawFloor(floor, in: &context)
+            }
             // 가구를 먼저 그려 벽에 붙은 가구 가장자리가 벽 아래로 들어가게 한다
             for furniture in planData.furniture ?? [] {
                 drawFurniture(furniture, in: &context)
             }
-            for wall in planData.walls where !wall.isVirtual {
+            for wall in planData.walls {
                 guard let line = planData.line(of: wall) else { continue }
                 drawWall(wall, line: line, in: &context)
             }
@@ -113,6 +119,26 @@ struct RoomLabelActions {
     let onDragEnded: () -> Void
     /// 고른 캡슐의 ✕를 눌렀다 (Room.id)
     let onDelete: (String) -> Void
+}
+
+// 스캔한 바닥
+extension Plan2DView {
+    /// 바닥을 옅게 칠하고 점선 테두리를 긋는다. 고른 바닥은 테두리를 주황으로 그린다
+    // TEMP: 바닥 모양이 Figma에 없어 옅은 회색 칠과 점선 테두리로 임시로 정함
+    private func drawFloor(_ floor: Floor, in context: inout GraphicsContext) {
+        guard floor.corners.count >= 3 else { return }
+        let path = Path { shape in
+            shape.addLines(floor.points.map(screen.point))
+            shape.closeSubpath()
+        }
+        context.fill(path, with: .color(.gray100.opacity(Layout.floorFillOpacity)))
+        let isSelected = selectedFloorId == floor.id
+        context.stroke(
+            path,
+            with: .color(isSelected ? .brand500 : .gray500),
+            style: StrokeStyle(lineWidth: isSelected ? Layout.selectionLineWidth : Layout.floorLineWidth, dash: Layout.floorDash)
+        )
+    }
 }
 
 // 벽과 문·창문
@@ -466,6 +492,10 @@ extension Plan2DView {
 // 레이아웃 값
 extension Plan2DView {
     private enum Layout {
+        /// 스캔한 바닥의 칠 진하기와 테두리 굵기·점선 (pt)
+        static let floorFillOpacity = 0.6
+        static let floorLineWidth: CGFloat = 1
+        static let floorDash: [CGFloat] = [6, 4]
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1

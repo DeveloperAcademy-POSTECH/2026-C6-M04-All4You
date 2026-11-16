@@ -1,24 +1,22 @@
-// 공간 스캔 도면의 방 자동 나누기. 스캔은 방 경계를 주지 않고 방 종류와 가운데 점만 주므로, 벽에서 방을 찾는다
+// 공간 스캔 도면의 공간 라벨 자동 만들기. 스캔은 방 경계를 주지 않고 방 종류와 가운데 점만 주므로, 영역(PlanRegions)에서 라벨을 놓을 곳을 찾는다
 //
 // 1) T자 나누기: 떠 있는 벽 끝이 다른 벽 중간 가까이 있으면 그 벽 위에 꼭짓점을 만들고 그 벽을 둘로 나눈다
 //    (스캔의 바깥 벽은 통으로 한 면이라 이 단계가 없으면 칸막이가 방을 닫지 못한다)
-// 2) 틈 메우기: 그래도 떠 있는 끝은 짧은 틈이면 벽을 늘려 가장 가까운 벽에 잇는다.
-//    긴 틈은 남은 떠 있는 끝끼리 가까운 쌍부터 가상 경계선(isVirtual, 그리지 않는 벽)으로 이어 방을 닫는다
-// 3) 방 찾기: 면 따라 돌기로 닫힌 고리를 찾고, 바깥 고리와 아주 작은 칸은 버린다
-// 4) 이름: 방 안에 든 종류를 이어 붙이고("거실·주방"), 없으면 "공간 N", 같은 이름이 여럿이면 번호를 붙인다
-// 벽 없이 이어진 공간(거실–주방 등)은 하나의 방으로 둔다
+// 2) 틈 메우기: 그래도 떠 있는 끝은 짧은 틈이면 벽을 늘려 가장 가까운 벽에 잇는다. 긴 틈은 잇지 않는다 (스캔하지 않은 선을 만들어 넣지 않음)
+// 3) 라벨: 스캔이 알아본 방 종류마다 그 자리에 라벨 하나(같은 영역에 든 종류는 "거실·주방"처럼 이름을 이어 붙임).
+//    라벨이 없는 영역(벽으로 닫힌 칸, 그다음 바닥)에는 가운데에 "공간 N". 같은 이름이 여럿이면 번호를 붙인다
+// 벽 없이 이어진 공간(거실–주방 등)은 하나의 영역으로 둔다
 
 import Foundation
 import simd
 
 extension PlanData {
-    /// 떠 있는 벽 끝을 잇고 방을 만든다. sections: 도면 좌표의 방 종류와 가운데 점
+    /// 떠 있는 벽 끝을 잇고 공간 라벨을 만든다. sections: 도면 좌표의 방 종류와 가운데 점
     mutating func addScanRooms(sections: [(name: String?, point: SIMD2<Double>)]) {
         for vertexId in danglingVertexIds() {
             connectDanglingEnd(vertexId)
         }
-        closeLongGaps()
-        makeRooms(sections: sections)
+        makeRoomLabels(sections: sections)
     }
 }
 
@@ -67,38 +65,6 @@ extension PlanData {
         }
     }
 
-    /// 짧은 틈 메우기로도 남은 떠 있는 끝을 가까운 쌍부터 가상 경계선으로 잇는다.
-    /// 스캔이 벽 한 구간을 놓치면 방이 닫히지 않아 방이 하나도 생기지 않고, 그러면 공간 이름·사진 장소 옮기기가 모두 동작하지 않는다.
-    /// 같은 벽의 양 끝끼리는 잇지 않는다 (벽 하나가 겹쳐 생길 뿐 방을 닫지 못함)
-    private mutating func closeLongGaps() {
-        while true {
-            let dangling = danglingVertexIds().compactMap { id in vertexPoints[id].map { (id: id, point: $0) } }
-            var best: (from: String, to: String, distance: Double)?
-            for (index, first) in dangling.enumerated() {
-                for second in dangling[(index + 1)...] where !sharesWall(first.id, second.id) {
-                    let distance = simd_distance(first.point, second.point)
-                    if distance < best?.distance ?? .infinity {
-                        best = (first.id, second.id, distance)
-                    }
-                }
-            }
-            guard let best else { return }
-            walls.append(Wall(
-                id: Self.newId("w", among: walls.map(\.id)),
-                startVertex: best.from,
-                endVertex: best.to,
-                thickness: ScanRoomRule.virtualWallThickness,
-                height: 0,
-                isVirtual: true
-            ))
-        }
-    }
-
-    /// 두 꼭짓점이 한 벽의 양 끝인지
-    private func sharesWall(_ first: String, _ second: String) -> Bool {
-        walls.contains { Set([$0.startVertex, $0.endVertex]) == Set([first, second]) }
-    }
-
     /// 꼭짓점을 벽 위의 점으로 옮겨 붙인다. 벽 끝 가까이면 그 끝 꼭짓점과 합치고, 중간이면 벽을 둘로 나눈다
     private mutating func attach(_ vertexId: String, to wallId: String, near point: SIMD2<Double>) {
         guard let wall = wall(id: wallId), let line = line(of: wall) else { return }
@@ -125,7 +91,7 @@ extension PlanData {
         let backId = Self.newId("w", among: walls.map(\.id))
         walls[index].endVertex = vertexId
         walls.append(Wall(id: backId, startVertex: vertexId, endVertex: original.endVertex,
-                          thickness: original.thickness, height: original.height, isVirtual: original.isVirtual))
+                          thickness: original.thickness, height: original.height))
         for i in doorWindows.indices where doorWindows[i].wallId == wallId {
             var item = doorWindows[i]
             let pieceLength: Double
@@ -215,48 +181,84 @@ extension PlanData {
     }
 }
 
-// 방 만들기
+// 공간 라벨 만들기
 extension PlanData {
-    private mutating func makeRooms(sections: [(name: String?, point: SIMD2<Double>)]) {
-        guard let loops = faceLoops() else { return }
-        struct Found { let boundary: [RoomEdge]; let name: String?; let label: SIMD2<Double>?; let center: SIMD2<Double> }
-        var found: [Found] = []
-        for loop in loops where loop.area >= ScanRoomRule.minRoomArea {
-            let polygon = polygon(of: Room(id: "", name: "", boundary: loop.edges, labelX: 0, labelY: 0))
-            let inside = sections.filter { Self.polygon(polygon, contains: $0.point) }
-            // 여러 종류가 든 방(벽 없이 이어진 거실·주방)은 이름을 이어 붙인다
-            var names: [String] = []
-            for name in inside.compactMap(\.name) where !names.contains(name) { names.append(name) }
-            found.append(Found(
-                boundary: loop.edges,
-                name: names.isEmpty ? nil : names.joined(separator: "·"),
-                label: inside.first?.point,
-                center: polygon.reduce(.zero, +) / Double(polygon.count)
-            ))
-        }
-        // 번호가 읽는 순서(위 → 아래, 왼쪽 → 오른쪽)로 붙도록 방을 줄 세운다. 1m 안의 높이 차이는 같은 줄로 본다
-        found.sort { ($0.center.y.rounded(), $0.center.x) < ($1.center.y.rounded(), $1.center.x) }
+    private mutating func makeRoomLabels(sections: [(name: String?, point: SIMD2<Double>)]) {
+        let regions = self.regions
+        struct Found { var name: String?; var point: SIMD2<Double> }
 
-        // 이름 없는 방은 "공간 1", "공간 2" …, 같은 이름이 여럿이면 "침실 1", "침실 2" …
+        // 스캔이 알아본 방 종류: 같은 영역에 든 것은 이름을 이어 붙여 하나 (벽 없이 이어진 거실·주방). 어느 영역에도 없으면 그 자리에 따로
+        var groups: [(region: PlanRegions.Region?, names: [String], point: SIMD2<Double>)] = []
+        for section in sections {
+            let region = regions.region(containing: section.point)
+            if let region, let at = groups.firstIndex(where: { $0.region == region }) {
+                if let name = section.name, !groups[at].names.contains(name) { groups[at].names.append(name) }
+            } else {
+                groups.append((region, section.name.map { [$0] } ?? [], section.point))
+            }
+        }
+        var found = groups.map { Found(name: $0.names.isEmpty ? nil : $0.names.joined(separator: "·"), point: $0.point) }
+
+        // 라벨이 없는 영역에는 가운데에 이름 없는 라벨을 놓는다. 닫힌 칸이 먼저이고, 그다음 바닥이다.
+        // 이미 라벨이 있는 영역 안에 든 바닥은 건너뛴다 (닫힌 칸 안에 완전히 든 바닥 등)
+        for region in regions.regions where region.area >= ScanRoomRule.minRoomArea {
+            let point = Self.interiorPoint(of: region.polygon)
+            if region.isClosedCell {
+                guard !found.contains(where: { regions.region(containing: $0.point) == region }) else { continue }
+            } else {
+                guard !found.contains(where: { Self.polygon(region.polygon, contains: $0.point) }),
+                      let holder = regions.region(containing: point),
+                      !found.contains(where: { regions.region(containing: $0.point) == holder }) else { continue }
+            }
+            found.append(Found(name: nil, point: point))
+        }
+        // 번호가 읽는 순서(위 → 아래, 왼쪽 → 오른쪽)로 붙도록 줄 세운다. 1m 안의 높이 차이는 같은 줄로 본다
+        found.sort { ($0.point.y.rounded(), $0.point.x) < ($1.point.y.rounded(), $1.point.x) }
+
+        // 이름 없는 라벨은 "공간 1", "공간 2" …, 같은 이름이 여럿이면 "침실 1", "침실 2" …
         let totals = Dictionary(found.compactMap(\.name).map { ($0, 1) }, uniquingKeysWith: +)
         var seenCount: [String: Int] = [:]
         var unnamedCount = 0
-        rooms = found.enumerated().map { index, room in
+        rooms = found.enumerated().map { index, label in
             let name: String
-            if let base = room.name {
+            if let base = label.name {
                 seenCount[base, default: 0] += 1
                 name = totals[base, default: 0] > 1 ? "\(base) \(seenCount[base]!)" : base
             } else {
                 unnamedCount += 1
                 name = "\(ScanRoomRule.unnamedRoom) \(unnamedCount)"
             }
-            // 이름 자리가 없으면 아래 centerRoomLabel이 방 안으로 놓는다
-            return Room(id: "r\(index + 1)", name: name, boundary: room.boundary,
-                        labelX: room.label?.x ?? .infinity, labelY: room.label?.y ?? .infinity)
+            return Room(id: "r\(index + 1)", name: name, labelX: label.point.x, labelY: label.point.y)
         }
-        for room in rooms where !room.labelX.isFinite {
-            centerRoomLabel(id: room.id)
+    }
+
+    /// 다각형 안의 한 점. 넓이 무게중심이 안에 있으면 그 점, 아니면(ㄷ자 등) 무게중심 높이의 가로선이 다각형 안을 지나는 구간 가운데 가장 긴 구간의 가운데
+    static func interiorPoint(of polygon: [SIMD2<Double>]) -> SIMD2<Double> {
+        let area = signedArea(polygon)
+        var centroid = polygon.reduce(.zero, +) / Double(max(polygon.count, 1))
+        if abs(area) > WallMoveRules.eps {
+            var sum = SIMD2<Double>.zero
+            for index in polygon.indices {
+                let a = polygon[index]
+                let b = polygon[(index + 1) % polygon.count]
+                sum += (a + b) * (a.x * b.y - b.x * a.y)
+            }
+            centroid = sum / (6 * area)
         }
+        if self.polygon(polygon, contains: centroid) { return centroid }
+        var crossings: [Double] = []
+        for index in polygon.indices {
+            let a = polygon[index]
+            let b = polygon[(index + 1) % polygon.count]
+            if (a.y > centroid.y) != (b.y > centroid.y) {
+                crossings.append(a.x + (centroid.y - a.y) / (b.y - a.y) * (b.x - a.x))
+            }
+        }
+        crossings.sort()
+        let widest = stride(from: 0, to: crossings.count - 1, by: 2)
+            .max { crossings[$0 + 1] - crossings[$0] < crossings[$1 + 1] - crossings[$1] }
+        guard let widest else { return centroid }
+        return SIMD2((crossings[widest] + crossings[widest + 1]) / 2, centroid.y)
     }
 }
 
@@ -268,10 +270,8 @@ private enum ScanRoomRule {
     static let gapFillDistance = 0.3
     /// 벽 끝에서 이 거리 안이면 벽을 나누지 않고 끝 꼭짓점과 합친다
     static let endSnapDistance = 0.1
-    /// 이보다 작은 칸은 방으로 보지 않는다
+    /// 이보다 작은 칸·바닥에는 이름 없는 라벨을 놓지 않는다
     static let minRoomArea = 0.5
     /// 이름 없는 방에 붙이는 이름. 뒤에 1부터 번호를 붙인다
     static let unnamedRoom = "공간"
-    /// 가상 경계선 두께. 그리지 않으므로 방 넓이 계산에만 쓰인다
-    static let virtualWallThickness = 0.0
 }

@@ -9,6 +9,4 @@ struct Wall: Codable, Hashable, Identifiable {
     /// 두께·높이 (m)
     var thickness: Double
     var height: Double
-    /// 방을 닫으려고 넣은 가상 경계선. 2D·3D에 벽으로 그리지 않는다
-    var isVirtual: Bool
 }

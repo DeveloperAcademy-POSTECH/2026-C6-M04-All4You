@@ -39,6 +39,7 @@ struct ServerFloorPlan: Decodable {
     struct Room: Decodable {
         let id: String
         let name: String?
+        /// 서버가 주는 방 경계. 앱은 이름 자리(labelPosition)만 쓰고 경계는 읽고 버린다
         let boundary: [RoomEdge]
         /// 이름을 보여 줄 자리 [x, y]
         let labelPosition: [Double]?

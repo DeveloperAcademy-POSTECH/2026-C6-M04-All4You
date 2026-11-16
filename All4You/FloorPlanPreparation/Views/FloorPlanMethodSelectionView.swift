@@ -270,7 +270,7 @@ struct FloorPlanMethodSelectionView: View {
             .accessibilityLabel("도면 변환 중")
     }
 
-    /// 스캔한 도면을 사건의 평면도로 저장한다. 쓸 수 없는 도면(벽이 없음)이거나 저장에 실패하면 저장하지 않고 변환 화면을 닫아 알린다.
+    /// 스캔한 도면을 사건의 평면도로 저장한다. 쓸 수 없는 도면(스캔된 것이 없음)이거나 저장에 실패하면 저장하지 않고 변환 화면을 닫아 알린다.
     /// 평면도는 "있으면 항상 내용이 있다"여야 하므로 빈 도면은 replaceFloorPlan을 부르지 않는다
     private func saveScannedPlan(_ plan: PlanData) {
         guard plan.isUsable else {
@@ -442,7 +442,7 @@ extension FloorPlanMethodSelectionView {
         // TEMP: Figma에 변환 결과에 벽이 없을 때의 문구가 없어 임의로 작성
         static let noWalls = "도면에서 벽을 찾지 못했어요. 다시 그리거나 다른 도면으로 시도해 주세요."
         // TEMP: Figma에 없는 화면이라 임의로 작성
-        static let emptyScan = "벽이 인식되지 않아 도면을 저장하지 못했어요. 벽을 비추며 다시 스캔해 주세요."
+        static let emptyScan = "스캔된 것이 없어 도면을 저장하지 못했어요. 바닥이나 벽을 비추며 다시 스캔해 주세요."
     }
 }
 

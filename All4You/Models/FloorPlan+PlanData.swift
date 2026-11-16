@@ -11,13 +11,18 @@ extension FloorPlan {
         self.init(sourceType: sourceType, planData: try JSONEncoder().encode(plan), roomPlanData: roomPlanData, fireCase: fireCase)
     }
 
-    /// 저장된 JSON을 도면 값으로 읽는다. 형식이 맞지 않으면 nil
+    /// 저장된 JSON을 도면 값으로 읽는다. 옛 형식(version 1)은 지금 형식으로 바꿔 읽는다. 형식이 맞지 않거나 더 새 버전이면 nil
     func loadPlanData() -> PlanData? {
-        try? JSONDecoder().decode(PlanData.self, from: planData)
+        PlanData.decodeStored(planData)
     }
 
-    /// 도면 값을 JSON으로 바꿔 덮어쓴다
+    /// 도면 값을 JSON으로 바꿔 덮어쓴다. 저장돼 있던 JSON이 옛 형식(version 1)이면 바꾸기 전 원본을 파일로 한 번 남긴다
+    /// (읽기만 하고 저장하지 않은 도면은 그대로 version 1이라, 처음 덮어쓰는 이때 한 번만 남는다)
     func storePlanData(_ plan: PlanData) throws {
-        planData = try JSONEncoder().encode(plan)
+        let data = try JSONEncoder().encode(plan)
+        if PlanData.storedVersion(of: planData) == 1 {
+            AppStore.keepPlanBeforeMigration(planData, caseID: fireCase?.id)
+        }
+        planData = data
     }
 }

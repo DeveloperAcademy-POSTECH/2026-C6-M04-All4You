@@ -17,7 +17,8 @@ enum FloorPlan3DBuilder {
         let space = PlanSpace(plan: plan)
         let root = Entity()
         root.addChild(makeFloor(space: space))
-        for wall in plan.walls where !wall.isVirtual {
+        root.addChild(makeScannedFloors(plan.floors ?? [], space: space))
+        for wall in plan.walls {
             guard let line = plan.line(of: wall) else { continue }
             let openings = plan.doorWindows.filter { $0.wallId == wall.id }
             root.addChild(makeWall(wall, line: line, openings: openings, miter: plan.wallMiter(of: wall), space: space, selection: selection))

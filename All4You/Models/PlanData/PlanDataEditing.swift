@@ -10,12 +10,19 @@ extension PlanData {
 
 // 사람·발화지점
 extension PlanData {
-    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다.
-    /// 스탬프가 차지하는 자리가 방 안에 다 들어가지 않으면(벽에 닿음·벽 바깥·도면 밖) 놓지 않고 nil.
-    /// 사람은 늘 누운 자세로 놓는다.
+    /// 바닥 위 point(도면 좌표, m)에 사람·발화지점을 놓고 새 id를 돌려준다. 어디든 놓을 수 있다 (벽과 겹치거나 방 밖이어도).
+    /// 사람은 늘 누운 자세로 놓는다
+    @discardableResult
+    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil, ignitionCause: IgnitionCause? = nil, electricalKind: ElectricalKind? = nil) -> String {
+        let marker = makeMarker(kind, at: point, scale: scale, ignitionCause: ignitionCause, electricalKind: electricalKind)
+        markers.append(marker)
+        return marker.id
+    }
+
+    /// 새로 놓을 사람·발화지점. 아직 도면에 넣지 않는다 (스케치 스탬프가 놓을 자리를 미리 살필 때도 쓴다).
     /// TEMP: 새 스탬프의 높이·방향은 디자인 확인 전이라 바닥(0m)·위쪽(0°)으로 둠
-    mutating func addMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil, ignitionCause: IgnitionCause? = nil, electricalKind: ElectricalKind? = nil) -> String? {
-        let marker = PlanMarker(
+    func makeMarker(_ kind: MarkerKind, at point: SIMD2<Double>, scale: Double? = nil, ignitionCause: IgnitionCause? = nil, electricalKind: ElectricalKind? = nil) -> PlanMarker {
+        PlanMarker(
             id: UUID().uuidString,
             kind: kind,
             position: point,
@@ -26,77 +33,50 @@ extension PlanData {
             ignitionCause: ignitionCause,
             electricalKind: electricalKind
         )
-        guard fits(marker) else { return nil }
-        markers.append(marker)
-        return marker.id
     }
 
-    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다. 옮긴 자리에서 벽에 닿거나 방 밖이면 옮기지 않는다
+    /// 사람·발화지점을 바닥 위 point(도면 좌표, m)로 옮긴다. 어디로든 옮길 수 있다
     mutating func moveMarker(id: String, to point: SIMD2<Double>) {
         updateMarker(id: id) { $0.position = point }
     }
 
-    /// 사람·발화지점의 방향을 yaw(도)로 바꾼다. 0~360° 안으로 맞춘다. 돌린 방향에서 벽에 닿으면 돌리지 않는다
+    /// 사람·발화지점의 방향을 yaw(도)로 바꾼다. 0~360° 안으로 맞춘다
     mutating func rotateMarker(id: String, yaw: Double) {
         let degrees = yaw.truncatingRemainder(dividingBy: 360)
         updateMarker(id: id) { $0.yaw = degrees < 0 ? degrees + 360 : degrees }
     }
 
-    /// 사람·발화지점을 같은 종류·방향·자세·크기로 옆에 하나 더 놓고 새 id를 돌려준다.
-    /// 오른쪽부터 왼쪽·아래·위 순서로 들어가는 자리를 찾고, 없으면 복제하지 않고 nil
+    /// 사람·발화지점을 같은 종류·방향·자세·크기로 오른쪽 옆에 하나 더 놓고 새 id를 돌려준다. 원래 것을 찾지 못하면 nil
     mutating func duplicateMarker(id: String) -> String? {
         guard let original = markers.first(where: { $0.id == id }) else { return nil }
-        let gap = Self.duplicateGap
-        let offsets = [SIMD2(gap, 0), SIMD2(-gap, 0), SIMD2(0, gap), SIMD2(0, -gap)]
-        let copies = offsets.map { offset in
-            PlanMarker(
-                id: UUID().uuidString,
-                kind: original.kind,
-                position: original.position + offset,
-                height: original.kind.sitsOnFurniture ? surfaceHeight(at: original.position + offset) : original.height,
-                yaw: original.yaw,
-                lying: original.lying,
-                scale: original.scale,
-                ignitionCause: original.ignitionCause,
-                electricalKind: original.electricalKind,
-                kindNote: original.kindNote
-            )
-        }
-        guard let copy = copies.first(where: fits) else { return nil }
+        let position = original.position + SIMD2(Self.duplicateGap, 0)
+        let copy = PlanMarker(
+            id: UUID().uuidString,
+            kind: original.kind,
+            position: position,
+            height: original.kind.sitsOnFurniture ? surfaceHeight(at: position) : original.height,
+            yaw: original.yaw,
+            lying: original.lying,
+            scale: original.scale,
+            ignitionCause: original.ignitionCause,
+            electricalKind: original.electricalKind,
+            kindNote: original.kindNote
+        )
         markers.append(copy)
         return copy.id
     }
 
-    /// 사람·발화지점의 크기 배율을 바꾼다. markerScaleRange 안으로 맞추고,
-    /// 그 크기로 벽에 닿으면 지금 크기와 바라는 크기 사이에서 들어가는 가장 가까운 크기로 줄인다
+    /// 사람·발화지점의 크기 배율을 바꾼다. markerScaleRange 안으로 맞춘다
     mutating func resizeMarker(id: String, scale: Double) {
-        guard let original = markers.first(where: { $0.id == id }) else { return }
         let wanted = min(max(scale, Self.markerScaleRange.lowerBound), Self.markerScaleRange.upperBound)
-        var resized = original
-        resized.scale = wanted
-        if !fits(resized) {
-            // 지금 크기(들어감)와 바라는 크기(안 들어감) 사이를 반씩 좁혀 들어가는 가장 큰 크기를 찾는다
-            var fitting = original.drawScale
-            var blocked = wanted
-            for _ in 0..<Self.resizeSearchSteps {
-                let middle = (fitting + blocked) / 2
-                resized.scale = middle
-                if fits(resized) { fitting = middle } else { blocked = middle }
-            }
-            resized.scale = fitting
-        }
-        updateMarker(id: id) { $0.scale = resized.scale }
+        updateMarker(id: id) { $0.scale = wanted }
     }
 
-    /// 들어가는 크기를 찾을 때 반씩 좁히는 횟수. 10번이면 배율 차이가 0.002 안으로 맞는다
-    private static let resizeSearchSteps = 10
-
-    /// 표시 하나를 change대로 바꿔 보고, 바뀐 자리가 방 안에 다 들어갈 때만 반영한다
+    /// 표시 하나를 change대로 바꾼다
     private mutating func updateMarker(id: String, _ change: (inout PlanMarker) -> Void) {
         guard let index = markers.firstIndex(where: { $0.id == id }) else { return }
         var changed = markers[index]
         change(&changed)
-        guard fits(changed) else { return }
         // 가구 위로 옮기면 가구 윗면 위로 올라오고, 바닥으로 옮기면 내려온다
         if changed.kind.sitsOnFurniture { changed.height = surfaceHeight(at: changed.position) }
         markers[index] = changed
@@ -127,16 +107,14 @@ extension PlanData {
 // 콘센트처럼 벽에 붙는 것
 extension PlanData {
     /// 벽 wallId의 면 위 점 point(도면 좌표)와 바닥에서 높이 height(m)에 콘센트 같은 것을 붙이고 새 id를 돌려준다.
-    /// 누른 쪽 면이 방 안을 보지 않으면(벽 바깥) 반대쪽 면에 붙인다. 두 면 다 방 안이 아니거나 벽을 찾지 못하면 nil
+    /// 누른 쪽 면에 붙인다. 벽을 찾지 못하면 nil
     mutating func addWallFixture(_ kind: FixtureKind, wallId: String, at point: SIMD2<Double>, height: Double, electricalKind: ElectricalKind? = nil) -> String? {
         guard let spot = wallSpot(wallId: wallId, point: point, height: height) else { return nil }
-        let otherFace: WallFace = spot.face == .left ? .right : .left
-        guard let face = [spot.face, otherFace].first(where: { facesRoom(wallId: wallId, face: $0, along: spot.along) }) else { return nil }
         let fixture = WallFixture(
             id: UUID().uuidString,
             wallId: wallId,
             kind: kind,
-            face: face,
+            face: spot.face,
             positionAlongWall: spot.along,
             heightFromFloor: spot.height,
             electricalKind: electricalKind
@@ -177,17 +155,6 @@ extension PlanData {
         wallFixtures.removeAll { $0.id == id }
     }
 
-    /// 벽 시작점에서 along(m) 자리의 face 쪽 면 바로 앞이 방 안인지
-    private func facesRoom(wallId: String, face: WallFace, along: Double) -> Bool {
-        guard let wall = wall(id: wallId), let line = line(of: wall) else { return false }
-        let side = face == .left ? 1.0 : -1.0
-        let inFront = line.point(along: along) + line.leftNormal * (side * (wall.thickness / 2 + Self.faceCheckGap))
-        return isInsideRoom(inFront)
-    }
-
-    /// 벽 면 앞 몇 m를 방 안인지 볼지. 면 바로 위는 벽 두께와 겹쳐 조금 떨어진 곳을 본다
-    private static let faceCheckGap = 0.05
-
     /// 도면 점과 높이를 벽 기준 자리로 바꾼다. 벽을 따라간 위치는 벽 안으로, 높이는 벽 높이 안으로 맞춘다
     private func wallSpot(wallId: String, point: SIMD2<Double>, height: Double) -> (face: WallFace, along: Double, height: Double)? {
         guard let wall = wall(id: wallId), let line = line(of: wall) else { return nil }
@@ -211,17 +178,24 @@ extension PlanData {
         rooms[index].name = trimmed
     }
 
-    /// 방(공간 이름)을 지운다. 둘러싼 벽은 그대로라 이름 없는 칸으로 남고, 공간라벨 도구로 다시 달 수 있다.
+    /// point(도면 좌표, m) 자리에 "새 공간" 라벨을 달고 새 id를 돌려준다. 어디든 달 수 있다.
+    /// 영역(닫힌 칸·바닥)은 저장하지 않고 라벨 자리에서 그때그때 계산한다
+    @discardableResult
+    mutating func addRoom(at point: SIMD2<Double>) -> String {
+        let id = UUID().uuidString
+        rooms.append(Room(id: id, name: RoomCopy.newRoomName, labelX: point.x, labelY: point.y))
+        return id
+    }
+
+    /// 방(공간 이름)을 지운다. 벽은 그대로 둔다.
     /// 그 방에 놓였던 사진·메모는 장소가 없어진다
     mutating func removeRoom(id: String) {
         rooms.removeAll { $0.id == id }
-        // 방이 없어져 주인 없는 가상 경계선이 되었으면 정리한다
-        cleanUpVirtualWalls()
     }
 
-    /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
+    /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 어디로든 옮길 수 있다
     mutating func moveRoomLabel(id: String, to point: SIMD2<Double>) {
-        guard room(containing: point)?.id == id, let index = rooms.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = rooms.firstIndex(where: { $0.id == id }) else { return }
         rooms[index].labelX = point.x
         rooms[index].labelY = point.y
     }
@@ -229,13 +203,29 @@ extension PlanData {
 
 // 벽 한 줄
 extension PlanData {
-    /// 벽을 지운다. 방 경계(Room.boundary)가 이 벽을 가리키므로 실제로 빼지 않고 가상 경계선으로 바꿔, 2D·3D에 그리지 않는다.
-    /// 그 벽에 달린 창문·문·콘센트는 붙을 곳이 없어지므로 함께 지운다
-    mutating func removeWall(id: String) {
-        guard let index = walls.firstIndex(where: { $0.id == id }) else { return }
-        walls[index].isVirtual = true
-        doorWindows.removeAll { $0.wallId == id }
-        wallFixtures.removeAll { $0.wallId == id }
+}
+
+// 스캔한 바닥 (지울 수는 없고 크기만 조절한다)
+extension PlanData {
+    /// 바닥의 감싸는 사각형 모서리 하나(cornerIndex, Floor.boundsCorner 참고)를 target(도면 좌표, m)으로 끌어 바닥 크기를 바꾼다.
+    /// 반대쪽 모서리는 그대로 두고, 바닥 모양을 가로·세로로 같은 비율로 늘이고 줄인다. 가로·세로는 각각 Floor.minimumSize보다 작아지지 않고, 모서리가 반대쪽을 넘어가 뒤집히지도 않는다
+    mutating func resizeFloor(id: String, draggingCorner cornerIndex: Int, to target: SIMD2<Double>) {
+        guard let index = floors?.firstIndex(where: { $0.id == id }),
+              let dragged = floors?[index].boundsCorner(cornerIndex),
+              let anchor = floors?[index].boundsCorner((cornerIndex + 2) % 4) else { return }
+        let old = dragged - anchor
+        var new = target - anchor
+        var scale = SIMD2<Double>(1, 1)
+        for axis in 0..<2 where abs(old[axis]) > WallMoveRules.eps {
+            // 끌던 모서리가 있던 쪽(부호)을 지키고, 최소 크기보다 작아지지 않게 한다
+            let sign: Double = old[axis] > 0 ? 1 : -1
+            new[axis] = sign * max(new[axis] * sign, Floor.minimumSize)
+            scale[axis] = new[axis] / old[axis]
+        }
+        let resized = floors?[index].corners.map { corner in
+            FloorCorner(x: anchor.x + (corner.x - anchor.x) * scale.x, y: anchor.y + (corner.y - anchor.y) * scale.y)
+        }
+        if let resized { floors?[index].corners = resized }
     }
 }
 
