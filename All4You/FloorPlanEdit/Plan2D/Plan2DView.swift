@@ -177,8 +177,9 @@ extension Plan2DView {
             let leafEnd = start + line.leftNormal * opening.width
             path.move(to: screen.point(start))
             path.addLine(to: screen.point(leafEnd))
-            let startAngle = Angle(radians: atan2(line.leftNormal.y, line.leftNormal.x))
-            let endAngle = Angle(radians: atan2(line.direction.y, line.direction.x))
+            // 도면을 돌려 놓았으면 호도 그만큼 돌아간다
+            let startAngle = Angle(radians: atan2(line.leftNormal.y, line.leftNormal.x) + screen.rotation)
+            let endAngle = Angle(radians: atan2(line.direction.y, line.direction.x) + screen.rotation)
             path.addArc(center: screen.point(start), radius: screen.length(opening.width), startAngle: startAngle, endAngle: endAngle, clockwise: false)
         case .window:
             let offset = line.leftNormal * (wall.thickness / 4)
@@ -346,7 +347,7 @@ extension Plan2DView {
                 stampIcon(Self.iconName(of: marker.kind), size: Self.iconSize(of: marker))
                 // 테두리도 스탬프와 함께 돈다. 손잡이도 테두리 모서리를 따라 돈다
                     .overlay { selectionBorder(isSelected: selection == .marker(marker.id)) }
-                    .rotationEffect(.degrees(marker.yaw))
+                    .rotationEffect(.degrees(marker.yaw + screen.rotationDegrees))
                     .position(screen.point(marker.position))
                     .opacity(markerOpacity(for: marker.id))
                 // 종류 글자는 스탬프를 돌려도 바로 서고, 스탬프 아래에 놓인다

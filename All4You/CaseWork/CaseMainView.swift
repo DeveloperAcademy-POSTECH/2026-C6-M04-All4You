@@ -14,6 +14,8 @@ struct CaseMainView: View {
     // 뒤로가기, 편집하기(펜 아이콘)
     let onBack: () -> Void
     let onEdit: () -> Void
+    /// 도면 탭의 2D에서 도면을 돌려 놓았다. 돌린 각(라디안, 돌리지 않았으면 nil)을 도면에 저장하려고 바깥(CaseFlowView)에 알린다
+    let onRotatePlan: (Double?) -> Void
     
     // 탭을 오가도 고른 값이 남도록 탭이 아니라 이 화면이 기억한다
     @State private var photoFilter = PhotoFilter()
@@ -39,12 +41,13 @@ struct CaseMainView: View {
     /// 상단 바에서 고른 조사 차수. 처음에는 가장 최근 차수
     @State private var sessionNumber: Int
     
-    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, startTab: CaseStartTab = .floorPlan, onBack: @escaping () -> Void, onEdit: @escaping () -> Void) {
+    init(fireCase: FireCase, planData: PlanData, photoStore: PhotoStore, startTab: CaseStartTab = .floorPlan, onBack: @escaping () -> Void, onEdit: @escaping () -> Void, onRotatePlan: @escaping (Double?) -> Void = { _ in }) {
         self.fireCase = fireCase
         self.planData = planData
         self.photoStore = photoStore
         self.onBack = onBack
         self.onEdit = onEdit
+        self.onRotatePlan = onRotatePlan
         _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
         _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
     }
@@ -162,7 +165,8 @@ extension CaseMainView {
             highlightedMemoID: justAddedMemoID,
             onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
-            onUpdateMemo: updateMemoWithTags
+            onUpdateMemo: updateMemoWithTags,
+            onRotatePlan: onRotatePlan
         )
         .id(floorPlanPresentationID)
         .overlay {

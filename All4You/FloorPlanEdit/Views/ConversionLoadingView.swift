@@ -1,4 +1,4 @@
-// 2D 도면을 3D로 변환하는 동안 보이는 로딩 화면. 흐린 도면 위를 주황 선이 위아래로 훑는다
+// 2D 도면을 3D로 변환하는 동안 보이는 로딩 화면. 흐린 도면 위를 주황 선(Global의 ScanLaserView)이 위아래로 훑는다
 
 import SwiftUI
 
@@ -8,49 +8,22 @@ struct ConversionLoadingView: View {
     let planData: PlanData
     let onFinished: () -> Void
 
-    /// 주황 선이 아래 끝으로 가는 중인지. 바뀔 때마다 선이 위아래로 오간다
-    @State private var isScanningDown = false
-
     var body: some View {
         GeometryReader { proxy in
             let fit = PlanScreen(plan: planData, in: proxy.size, fill: Layout.planFill)
             // 변환할 도면을 흐리게 깐다
             Plan2DView(planData: planData, screen: fit)
                 .opacity(Layout.planOpacity)
-                .overlay(alignment: .topLeading) {
-                    scanLine(width: proxy.size.width, fit: fit)
+                .overlay {
+                    ScanLaserView(range: fit.rect.minY...fit.rect.maxY)
                 }
         }
         .accessibilityElement()
         .accessibilityLabel(Copy.message)
         .navigationBarBackButtonHidden(true)
-        .onAppear {
-            withAnimation(.easeInOut(duration: Layout.scanDuration).repeatForever(autoreverses: true)) {
-                isScanningDown = true
-            }
-        }
         .task {
             await waitForConversion()
         }
-    }
-}
-
-// 서브 뷰
-extension ConversionLoadingView {
-    /// 화면 가로 전체를 가로지르는 주황 선. 위아래로 주황빛이 흐리게 번진다
-    private func scanLine(width: CGFloat, fit: PlanScreen) -> some View {
-        Rectangle()
-            .fill(Color.brand500)
-            .frame(width: width, height: Layout.lineHeight)
-            .background {
-                LinearGradient(
-                    colors: [Color.brand500.opacity(0), Color.brand500.opacity(Layout.glowOpacity), Color.brand500.opacity(0)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: Layout.glowHeight)
-            }
-            .position(x: width / 2, y: isScanningDown ? fit.rect.maxY : fit.rect.minY)
     }
 }
 
@@ -73,12 +46,6 @@ extension ConversionLoadingView {
         static let planFill = 0.8
         /// 흐리게 깐 도면의 진하기
         static let planOpacity = 0.3
-        static let lineHeight: CGFloat = 3
-        /// 선 위아래로 번지는 주황빛의 전체 높이 (pt)
-        static let glowHeight: CGFloat = 60
-        static let glowOpacity = 0.25
-        /// 선이 위에서 아래로 한 번 가는 시간 (초)
-        static let scanDuration = 1.2
         /// 로딩 화면을 보여 주는 시간
         static let minimumDuration = Duration.seconds(2)
     }

@@ -55,7 +55,7 @@ struct CaseFlowView: View {
     var body: some View {
         Group {
             if isCaseMainShown {
-                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, startTab: startTab, onBack: onClose, onEdit: showEdit)
+                CaseMainView(fireCase: fireCase, planData: planData, photoStore: photoStore, startTab: startTab, onBack: onClose, onEdit: showEdit, onRotatePlan: { planData.planRotation = $0 })
             } else {
                 NavigationStack(path: $path) {
                     editScreen
