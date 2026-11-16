@@ -81,6 +81,8 @@ struct FloorPlan3DView: View {
     @State private var pinPoints: [String: CGPoint] = [:]
     /// 매 프레임 신호를 받는 구독. 화면이 사라지면 함께 없어진다
     @State private var frameUpdates: EventSubscription?
+    /// 장면에 있는 발화지점 불꽃들. 장면을 다시 만들 때마다 모아 두고 매 프레임 흔든다
+    @State private var flames: [Entity] = []
     /// 마지막으로 라벨 위치를 계산한 뒤 지난 시간 (초)
     @State private var timeSinceLabelUpdate: TimeInterval = 0
     /// 지금 하고 있는 한 손가락 끌기. 고른 스탬프 위에서 시작했으면 스탬프 이동, 고른 창문 테두리 손잡이면 크기 조절, 아니면 카메라 회전
@@ -165,6 +167,8 @@ struct FloorPlan3DView: View {
             content.add(camera)
             cameraContent = content
             frameUpdates = content.subscribe(to: SceneEvents.Update.self) { [content] event in
+                // 불꽃은 부드럽게 보여야 해서 아래 라벨 계산 간격과 상관없이 매 프레임 흔든다
+                animateFlames()
                 // 라벨마다 벽에 가려졌는지 직선을 그어 확인하므로 매 프레임이 아니라 labelUpdateInterval마다 한 번만 계산한다
                 timeSinceLabelUpdate += event.deltaTime
                 guard timeSinceLabelUpdate >= Layout.labelUpdateInterval else { return }
@@ -1149,6 +1153,16 @@ extension FloorPlan3DView {
     }
 }
 
+// 불꽃 흔들기
+extension FloorPlan3DView {
+    /// 지금 시각으로 불꽃을 흔든다. 흔드는 빠르기가 모두 정수라 시간을 2π로 나눈 나머지를 써도 이어지고, 값이 커져 Float 정밀도가 떨어지지 않는다
+    private func animateFlames() {
+        guard !flames.isEmpty else { return }
+        let seconds = Date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2 * .pi)
+        FloorPlan3DBuilder.animateFlames(flames, time: Float(seconds))
+    }
+}
+
 // 장면 만들기
 extension FloorPlan3DView {
     /// 창문 테두리를 끄는 중이면 미리 보기 도면으로 만든다
@@ -1162,6 +1176,7 @@ extension FloorPlan3DView {
         let space = PlanSpace(plan: plan)
         sceneRoot.addChild(FloorPlan3DBuilder.makeDimensionLines(dimensionMarks.lines, space: space))
         sceneRoot.addChild(makeDimensionAnchors(for: dimensionMarks, space: space))
+        flames = FloorPlan3DBuilder.flames(in: sceneRoot)
         selectedWindowTop = windowTop(of: selection, in: plan)
         switch selection {
         case .marker?, .wallFixture?, .furniture?:
