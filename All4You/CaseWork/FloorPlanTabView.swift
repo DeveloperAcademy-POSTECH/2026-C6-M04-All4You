@@ -404,6 +404,7 @@ extension FloorPlanTabView {
                         onEdit: { _ in },
                         pins: pins3D(in: planData),
                         pinView: { id in pinView3D(id: id, in: planData) },
+                        photoMarkers: photoMarkers3D(in: planData),
                         showsResetButton: true,
                         showsCompass: true,
                         compassTopInset: Layout.compassTopInset
@@ -644,6 +645,13 @@ extension FloorPlanTabView {
         }
         return photoPins.sorted { $0.id < $1.id } + memoPins
     }
+    /// 북마크 사진의 촬영 자리 표시. 2D 번호 핀과 같은 조건으로 띄운다
+    private func photoMarkers3D(in planData: PlanData) -> [Plan3DPhotoMarker] {
+        guard showsBookmarkMarkers else { return [] }
+        return bookmarkMarkers(in: planData).map { marker in
+            Plan3DPhotoMarker(id: marker.id, placement: marker.placement, showsDirection: false, isDimmed: false)
+        }
+    }
     /// 핀 id로 그릴 핀을 고른다
     private func pinView3D(id: String, in planData: PlanData) -> AnyView {
         if id.hasPrefix(Pin3DID.photo) {
@@ -697,7 +705,7 @@ extension FloorPlanTabView {
         }
         return pins
     }
-    /// 북마크 번호 핀을 보여 줄지. 사진을 끌어다 놓는 동안은 숨긴다 (3D에는 아직 없음)
+    /// 북마크 번호 핀을 보여 줄지. 사진을 끌어다 놓는 동안은 숨긴다
     private var showsBookmarkMarkers: Bool {
         photoFilter.isPhotoVisible && photoFilter.scope == .bookmarked && !isPlacingPhotos
     }
