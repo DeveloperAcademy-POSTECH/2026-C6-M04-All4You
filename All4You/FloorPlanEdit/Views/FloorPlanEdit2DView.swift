@@ -834,15 +834,13 @@ extension FloorPlanEdit2DView {
         menuTarget = nil
         let moved = screen.plan(value.location) - screen.plan(value.startLocation)
         guard let wallSelection else {
-            // 비스듬한 벽: 그 벽만 수직으로 평행 이동하고 다른 벽은 제자리. 막히면 마지막으로 맞는 미리 보기를 두고 위쪽에 이유를 띄운다
-            guard let wall = planData.wall(id: id), let line = planData.line(of: wall) else { return true }
-            switch planData.movingSlantedWall(id: id, by: (moved * line.leftNormal).sum()) {
-            case .success(let next):
-                dragPreview = next
-                wallBlockedReason = nil
-            case .failure(let block):
-                wallBlockedReason = block.message
-            }
+            // 비스듬한 벽: 그 벽만 수직으로 평행 이동하고 다른 벽은 제자리. 거절하지 않는다
+            let base = wallDragBase ?? planData
+            wallDragBase = base
+            guard let wall = base.wall(id: id), let line = base.line(of: wall) else { return true }
+            let outcome = base.movingSlantedWall(id: id, by: (moved * line.leftNormal).sum())
+            dragPreview = outcome.plan
+            editRemovedNotice = outcome.removedNotice
             return true
         }
         let base = wallDragBase ?? planData

@@ -406,36 +406,6 @@ extension PlanData {
         return vertex.id
     }
 
-    func hasWall(between a: String, and b: String) -> Bool {
-        walls.contains { Set([$0.startVertex, $0.endVertex]) == Set([a, b]) }
-    }
-
-    /// 벽이 꼭짓점을 함께 쓰지 않는 진짜 벽과 닿거나 가로지르는지
-    func crossesWalls(_ wall: Wall) -> Bool {
-        guard let new = line(of: wall) else { return true }
-        let ends: Set = [wall.startVertex, wall.endVertex]
-        return walls.contains { other in
-            guard !other.isVirtual, ends.isDisjoint(with: [other.startVertex, other.endVertex]),
-                  let line = line(of: other) else { return false }
-            return Self.segmentsTouch(new, line)
-        }
-    }
-
-    static func segmentsTouch(_ p: WallLine, _ q: WallLine) -> Bool {
-        func cross(_ o: SIMD2<Double>, _ a: SIMD2<Double>, _ b: SIMD2<Double>) -> Double {
-            (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-        }
-        let eps = WallMoveRules.eps
-        let d1 = cross(q.start, q.end, p.start)
-        let d2 = cross(q.start, q.end, p.end)
-        let d3 = cross(p.start, p.end, q.start)
-        let d4 = cross(p.start, p.end, q.end)
-        if d1 * d2 < -eps, d3 * d4 < -eps { return true }
-        // 한 끝이 다른 선분 위에 닿는 경우
-        return p.distance(to: q.start) < eps || p.distance(to: q.end) < eps
-            || q.distance(to: p.start) < eps || q.distance(to: p.end) < eps
-    }
-
     static func length(_ v: SIMD2<Double>) -> Double {
         (v * v).sum().squareRoot()
     }

@@ -23,8 +23,6 @@ enum WallMoveRules {
     /// 좌표 비교 오차
     static let eps = 1e-6
     /// TEMP: 디자인·실측 확인 전이라 임시로 정한 값
-    /// 줄어드는 벽의 가장 짧은 길이 (비스듬한 벽 옮기기가 아직 쓴다)
-    static let minWallLength = 0.3
     /// 창문·문과 벽 끝 사이 여백
     static let openingMargin = 0.1
     /// 이만큼 안으로 끌면 움직이지 않은 것으로, 합쳐지는 자리 이만큼 앞이면 그 자리에 붙인다
