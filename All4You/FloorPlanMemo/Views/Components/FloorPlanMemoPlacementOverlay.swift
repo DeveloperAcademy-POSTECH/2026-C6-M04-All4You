@@ -30,6 +30,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     var screen: PlanScreen? = nil
     
     @State private var isTextFieldFocused = false
+    @State private var draftFocusRequestID = 0
     @State private var selectedMemoID: FloorPlanMemo.ID?
     @State private var editingMemoID: FloorPlanMemo.ID?
     @State private var editingContent = ""
@@ -37,6 +38,7 @@ struct FloorPlanMemoPlacementOverlay: View {
     @State private var editingMarkerTokens: [String: String] = [:]
     @State private var confirmedEditingTagInput: String?
     @State private var isEditingFocused = false
+    @State private var editingFocusRequestID = 0
     @State private var previewPhoto: LoadedPhoto?
     @State private var isTagPickerPresented = false
     @State private var keyboardFrame: CGRect = .null
@@ -233,6 +235,7 @@ private extension FloorPlanMemoPlacementOverlay {
                         text: Binding(get: { editingContent }, set: updateEditingContent),
                         isFocused: $isEditingFocused,
                         taggedTokens: Set(editingPhotoTokens.values).union(editingMarkerTokens.values),
+                        focusRequestID: editingFocusRequestID,
                         onSubmit: submitEditingMemo,
                         textColor: .label
                     )
@@ -417,7 +420,8 @@ private extension FloorPlanMemoPlacementOverlay {
         }
         isTagPickerPresented = false
         confirmedEditingTagInput = editingContent
-        Task { @MainActor in isEditingFocused = true }
+        isEditingFocused = true
+        editingFocusRequestID += 1
     }
     
     func submitEditingMemo(_ text: String) {
@@ -459,6 +463,7 @@ private extension FloorPlanMemoPlacementOverlay {
                     text: draftContent,
                     isFocused: $isTextFieldFocused,
                     taggedTokens: Set(taggedPhotoTokens.values).union(taggedMarkerTokens.values),
+                    focusRequestID: draftFocusRequestID,
                     onSubmit: submitDraft
                 )
                 if draft.content.isEmpty {
@@ -621,7 +626,8 @@ private extension FloorPlanMemoPlacementOverlay {
         draft = updated
         isTagPickerPresented = false
         confirmedPhotoTagInput = updated.content
-        Task { @MainActor in isTextFieldFocused = true }
+        isTextFieldFocused = true
+        draftFocusRequestID += 1
     }
     
     func tagMarker(_ marker: PlanMarker, number: Int) {
@@ -640,7 +646,8 @@ private extension FloorPlanMemoPlacementOverlay {
         draft = updated
         isTagPickerPresented = false
         confirmedPhotoTagInput = updated.content
-        Task { @MainActor in isTextFieldFocused = true }
+        isTextFieldFocused = true
+        draftFocusRequestID += 1
     }
     
     func appendTag(_ tag: String, to draft: inout FloorPlanMemoDraft) {

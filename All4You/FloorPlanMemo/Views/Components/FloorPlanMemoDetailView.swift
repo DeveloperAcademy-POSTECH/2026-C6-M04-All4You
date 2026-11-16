@@ -26,6 +26,7 @@ struct FloorPlanMemoDetailView: View {
     @State private var photoNavigationRequest = 0
     @State private var taggedPhotoTokens: [UUID: String] = [:]
     @State private var taggedMarkerTokens: [String: String] = [:]
+    @State private var editorFocusRequestID = 0
     @State private var isTagPickerPresented = false
     @State private var confirmedPhotoTagInput: String?
     
@@ -185,6 +186,7 @@ struct FloorPlanMemoDetailView: View {
                         text: Binding(get: { editedContent }, set: updateEditedContent),
                         isFocused: $isEditorFocused,
                         taggedTokens: Set(taggedPhotoTokens.values).union(taggedMarkerTokens.values),
+                        focusRequestID: editorFocusRequestID,
                         onSubmit: submitEditing,
                         textColor: .label
                     )
@@ -258,6 +260,7 @@ struct FloorPlanMemoDetailView: View {
         Task { @MainActor in
             guard isEditing else { return }
             isEditorFocused = true
+            editorFocusRequestID += 1
         }
     }
     
@@ -350,10 +353,8 @@ struct FloorPlanMemoDetailView: View {
         taggedPhotoTokens[photo.id] = token
         isTagPickerPresented = false
         confirmedPhotoTagInput = editedContent
-        Task { @MainActor in
-            guard isEditing else { return }
-            isEditorFocused = true
-        }
+        isEditorFocused = true
+        editorFocusRequestID += 1
     }
     
     private func tagMarker(_ marker: PlanMarker, number: Int) {
@@ -369,10 +370,8 @@ struct FloorPlanMemoDetailView: View {
         taggedMarkerTokens[marker.id] = token
         isTagPickerPresented = false
         confirmedPhotoTagInput = editedContent
-        Task { @MainActor in
-            guard isEditing else { return }
-            isEditorFocused = true
-        }
+        isEditorFocused = true
+        editorFocusRequestID += 1
     }
     
     private func submitEditing(_ inputText: String) {
