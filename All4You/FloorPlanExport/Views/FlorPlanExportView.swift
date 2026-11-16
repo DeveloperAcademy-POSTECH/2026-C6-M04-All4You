@@ -11,7 +11,7 @@ struct FloorPlanExportView: View {
     
     @Environment(\.dismiss) private var dismiss
     @State private var planType: SavedPlanType = .twoD
-    @State private var photoDisplay: PhotoDisplayOption = .bookmarked
+    @State private var photoDisplay: PhotoDisplayOption
     @State private var showsCaptureDirection = true
     @State private var showsRoomNames = true
     @State private var showsFurnitureLabels = true
@@ -28,6 +28,12 @@ struct FloorPlanExportView: View {
     /// 도면에 사진 핀으로 보일 사진 (메인에서 고른 조사 차수의 사진)
     let photos: [LoadedPhoto]
     
+    init(planData: PlanData, photos: [LoadedPhoto]) {
+        self.planData = planData
+        self.photos = photos
+        _photoDisplay = State(initialValue: photos.isEmpty ? .hidden : .bookmarked)
+    }
+    
     var body: some View {
         NavigationStack {
             HStack(spacing: 24) {
@@ -39,12 +45,15 @@ struct FloorPlanExportView: View {
                     showsCaptureDirection: $showsCaptureDirection,
                     showsRoomNames: $showsRoomNames,
                     showsFurnitureLabels: $showsFurnitureLabels,
-                    showsStamps: $showsStamps
+                    showsStamps: $showsStamps,
+                    hasPhotos: content.hasPhotos,
+                    hasVisiblePhotos: content.hasVisiblePhotos,
+                    hasDirectionalPhotos: content.hasDirectionalPhotos
                 )
                 .frame(width: 370)
+                .offset(y: -80)
             }
             .padding(24)
-            .offset(y: -80)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -191,6 +200,9 @@ private struct FloorPlanSavePreview: View {
                     onEdit: { _ in },
                     pins: pins3D,
                     pinView: pinView3D,
+                    photoMarkers: photoMarkers3D,
+                    showsCompass: true,
+                    compassTopInset: 16,
                     showsFurnitureLabels: content.showsFurnitureLabels
                 )
             }
@@ -219,6 +231,18 @@ extension FloorPlanSavePreview {
             .map { Plan3DPin(id: $0.id, point: SIMD2($0.labelX, $0.labelY), height: Self.photoPinHeight) }
     }
     
+    /// 촬영 위치 원형 마커는 유지하고, 방향 원뿔만 토글로 표시
+    private var photoMarkers3D: [Plan3DPhotoMarker] {
+        content.photoMarkers.map { marker in
+            Plan3DPhotoMarker(
+                id: marker.id,
+                placement: marker.placement,
+                showsDirection: content.showsCaptureDirection && marker.placement.yaw != nil,
+                isDimmed: false
+            )
+        }
+    }
+    
     private func pinView3D(_ roomID: String) -> AnyView {
         guard let room = content.planData.rooms.first(where: { $0.id == roomID }),
               let pin = content.pins[roomID] else { return AnyView(EmptyView()) }
@@ -239,6 +263,9 @@ private struct FloorPlanSaveOptions: View {
     @Binding var showsRoomNames: Bool
     @Binding var showsFurnitureLabels: Bool
     @Binding var showsStamps: Bool
+    let hasPhotos: Bool
+    let hasVisiblePhotos: Bool
+    let hasDirectionalPhotos: Bool
     
     var body: some View {
         
@@ -249,14 +276,33 @@ private struct FloorPlanSaveOptions: View {
                 selection: $planType
             )
             
-            FloorPlanSavePickerSection(
-                title: "사진 표시",
-                selection: $photoDisplay
-            )
+            VStack(alignment: .leading, spacing: 8) {
+                FloorPlanSavePickerSection(
+                    title: "사진 표시",
+                    selection: $photoDisplay,
+                    isEnabled: hasPhotos
+                )
+                if !hasPhotos {
+                    Text("표시할 사진이 없어요")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
             
             VStack(spacing: 16) {
-                Toggle("촬영 방향", isOn: $showsCaptureDirection)
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("촬영 방향", isOn: Binding(
+                        get: { hasDirectionalPhotos && showsCaptureDirection },
+                        set: { showsCaptureDirection = $0 }
+                    ))
                     .tint(Color("Brand500"))
+                    .disabled(!hasDirectionalPhotos)
+                    if hasPhotos && !hasDirectionalPhotos {
+                        Text(directionUnavailableMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Toggle("공간 이름", isOn: $showsRoomNames)
                     .tint(Color("Brand500"))
                 Toggle("가구 이름", isOn: $showsFurnitureLabels)
@@ -270,11 +316,23 @@ private struct FloorPlanSaveOptions: View {
         .padding(20)
         
     }
+    
+    private var directionUnavailableMessage: String {
+        switch photoDisplay {
+        case .hidden:
+            return "사진 표시를 켜면 촬영 방향을 선택할 수 있어요"
+        case .all:
+            return "북마크를 선택하면 촬영 방향을 표시할 수 있어요"
+        case .bookmarked:
+            return hasVisiblePhotos ? "방향 정보가 포함된 사진이 없어요" : "북마크한 사진이 없어요"
+        }
+    }
 }
 
 private struct FloorPlanSavePickerSection<Option>: View where Option: CaseIterable & Hashable & Identifiable & TitledOption {
     let title: LocalizedStringKey
     @Binding var selection: Option
+    var isEnabled = true
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -290,6 +348,7 @@ private struct FloorPlanSavePickerSection<Option>: View where Option: CaseIterab
             .labelsHidden()
             .pickerStyle(.segmented)
             .controlSize(.large)
+            .disabled(!isEnabled)
         }
     }
 }

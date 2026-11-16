@@ -22,6 +22,8 @@ struct FloorPlanTabView: View {
     var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     /// 2D에서 도면을 돌려 놓으면 돌린 각(라디안, 돌리지 않았으면 nil)을 알린다. 도면에 저장하는 일은 바깥이 한다
     var onRotatePlan: (Double?) -> Void = { _ in }
+    /// 메모 입력 중 키보드 위로 올라오는 2D/3D 선택기가 태그 목록과 겹치지 않도록 숨김
+    var hidesDimensionPicker = false
     /// 2D 도면이 화면에 놓인 배율과 자리. 화면 크기를 알게 되면 만든다
     @State private var screen: PlanScreen?
     /// 도면 영역의 크기. 처음 시야로 되돌릴 때 이 크기에 맞춰 다시 놓는다
@@ -116,7 +118,9 @@ struct FloorPlanTabView: View {
                     .overlay(alignment: .bottom) {
                         // 토글은 항상 기존 하단 중앙에 둔다.
                         // 패널 드래그 범위에서 최소 도면 폭을 확보해 초기화 버튼과 겹치지 않게 한다.
-                        dimensionPicker
+                        if !hidesDimensionPicker {
+                            dimensionPicker
+                        }
                     }
                     .frame(width: canvasWidth)
                 if hasPhotoPanel {
@@ -325,6 +329,12 @@ extension FloorPlanTabView {
                             )
                             .opacity(focusedMemoID == nil ? 1 : Layout.focusDimmedOpacity)
                         }
+                        // 방위표를 메모 미리보기보다 먼저 그려 두 요소가 겹쳐도 미리보기가 앞에 보이도록 함
+                        CompassView(northAngle: .radians((planData.northAngle ?? 0) + screen.rotation))
+                            .padding(.trailing, BarLayout.edgeInset)
+                            .padding(.top, Layout.compassTopInset)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .allowsHitTesting(false)
                         // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
                         FloorPlanMemoPlacementOverlay(
                             planData: planData,
@@ -373,16 +383,6 @@ extension FloorPlanTabView {
                 .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture.simultaneously(with: rotateGesture))
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
-                .overlay(alignment: .bottomTrailing) {
-                    ResetViewButton { resetView(planData) }
-                        .padding([.trailing, .bottom], BarLayout.edgeInset)
-                }
-                .overlay(alignment: .topTrailing) {
-                    // 2D 수정에서 정한 북쪽. 도면을 돌려 놓은 만큼 함께 돈다. 메인에서는 보기만 하고 방위표는 돌리지 않는다
-                    CompassView(northAngle: .radians((planData.northAngle ?? 0) + (screen?.rotation ?? 0)))
-                        .padding(.trailing, BarLayout.edgeInset)
-                        .padding(.top, Layout.compassTopInset)
-                }
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
                 if isThreeDReady {
                     // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다
@@ -692,9 +692,9 @@ extension FloorPlanTabView {
                     BookmarkNumberBadge(number: marker.number, size: Layout.bookmarkBadgeSize, font: AppTypography.subheadlineEmphasized)
                         .opacity(isBookmarkDimmed(marker.id) ? Layout.bookmarkDimmedOpacity : 1)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("북마크 사진 \(marker.number)번")
-                .accessibilityAddTraits(marker.id == selectedBookmarkID ? .isSelected : [])
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("북마크 사진 \(marker.number)번")
+                    .accessibilityAddTraits(marker.id == selectedBookmarkID ? .isSelected : [])
             )
         }
         let memoID = String(id.dropFirst(Pin3DID.memo.count))
@@ -832,7 +832,7 @@ extension FloorPlanTabView {
                 lastMagnification = 1
             }
     }
-
+    
     /// 두 손가락이 비틀린 만큼 도면을 돌린다. 손가락 사이가 제자리에 있고, 손을 떼면 90° 방향에 붙여 알린다
     private var rotateGesture: some Gesture {
         RotateGesture()
@@ -850,7 +850,7 @@ extension FloorPlanTabView {
                 finishPlanRotation()
             }
     }
-
+    
     /// 손을 뗐다. 도면을 90° 방향 가까이면 그 방향으로 붙이고, 돌린 각을 알려 도면에 저장하게 한다
     private func finishPlanRotation() {
         guard let screen else { return }
@@ -859,7 +859,7 @@ extension FloorPlanTabView {
         }
         onRotatePlan(screen.savedRotation)
     }
-
+    
     /// 두 손가락으로 끈 만큼 도면을 옮긴다
     private func panPlan(to location: CGPoint, from previous: CGPoint) {
         screen = screen?.moved(by: CGSize(width: location.x - previous.x, height: location.y - previous.y))

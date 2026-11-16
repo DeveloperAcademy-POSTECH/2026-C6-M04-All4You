@@ -17,6 +17,7 @@ struct FloorPlanMemoDetailView: View {
     let presentation: Presentation
     let bookmarkedPhotos: [LoadedPhoto]
     var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
+    var onMarkerTap: (String) -> Void = { _ in }
     
     @State private var isEditing = false
     @State private var editedContent = ""
@@ -25,6 +26,7 @@ struct FloorPlanMemoDetailView: View {
     @State private var photoNavigationRequest = 0
     @State private var taggedPhotoTokens: [UUID: String] = [:]
     @State private var taggedMarkerTokens: [String: String] = [:]
+    @State private var editorFocusRequestID = 0
     @State private var isTagPickerPresented = false
     @State private var confirmedPhotoTagInput: String?
     
@@ -184,6 +186,7 @@ struct FloorPlanMemoDetailView: View {
                         text: Binding(get: { editedContent }, set: updateEditedContent),
                         isFocused: $isEditorFocused,
                         taggedTokens: Set(taggedPhotoTokens.values).union(taggedMarkerTokens.values),
+                        focusRequestID: editorFocusRequestID,
                         onSubmit: submitEditing,
                         textColor: .label
                     )
@@ -231,10 +234,11 @@ struct FloorPlanMemoDetailView: View {
                 memo: memo,
                 bookmarkedPhotos: bookmarkedPhotos,
                 onPhotoTap: showPhoto,
+                onMarkerTap: onMarkerTap,
                 onBodyTap: beginEditing
             )
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-            .accessibilityHint("태그를 누르면 해당 사진을 보고, 다른 부분을 두 번 탭하면 메모를 수정할 수 있습니다")
+            .accessibilityHint("태그를 누르면 해당 사진이나 발화지점을 보고, 다른 부분을 두 번 탭하면 메모를 수정할 수 있습니다")
         }
     }
     
@@ -256,6 +260,7 @@ struct FloorPlanMemoDetailView: View {
         Task { @MainActor in
             guard isEditing else { return }
             isEditorFocused = true
+            editorFocusRequestID += 1
         }
     }
     
@@ -348,10 +353,8 @@ struct FloorPlanMemoDetailView: View {
         taggedPhotoTokens[photo.id] = token
         isTagPickerPresented = false
         confirmedPhotoTagInput = editedContent
-        Task { @MainActor in
-            guard isEditing else { return }
-            isEditorFocused = true
-        }
+        isEditorFocused = true
+        editorFocusRequestID += 1
     }
     
     private func tagMarker(_ marker: PlanMarker, number: Int) {
@@ -367,10 +370,8 @@ struct FloorPlanMemoDetailView: View {
         taggedMarkerTokens[marker.id] = token
         isTagPickerPresented = false
         confirmedPhotoTagInput = editedContent
-        Task { @MainActor in
-            guard isEditing else { return }
-            isEditorFocused = true
-        }
+        isEditorFocused = true
+        editorFocusRequestID += 1
     }
     
     private func submitEditing(_ inputText: String) {

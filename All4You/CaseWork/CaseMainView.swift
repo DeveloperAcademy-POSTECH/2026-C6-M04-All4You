@@ -112,6 +112,7 @@ struct CaseMainView: View {
         } memo: {
             FloorPlanMemoView(
                 sections: memoSections,
+                planData: planData,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                 onDeleteMemo: deleteMemo,
                 onUpdateMemo: updateMemoWithTags
@@ -196,7 +197,8 @@ extension CaseMainView {
             onClearMemoHighlight: { justAddedMemoID = nil },
             onDeleteMemo: deleteMemo,
             onUpdateMemo: updateMemoWithTags,
-            onRotatePlan: onRotatePlan
+            onRotatePlan: onRotatePlan,
+            hidesDimensionPicker: isAddingMemo
         )
         .id(floorPlanPresentationID)
         .overlay {
