@@ -17,6 +17,7 @@ struct FloorPlanMemoDetailView: View {
     let presentation: Presentation
     let bookmarkedPhotos: [LoadedPhoto]
     var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
+    var onMarkerTap: (String) -> Void = { _ in }
     
     @State private var isEditing = false
     @State private var editedContent = ""
@@ -231,10 +232,11 @@ struct FloorPlanMemoDetailView: View {
                 memo: memo,
                 bookmarkedPhotos: bookmarkedPhotos,
                 onPhotoTap: showPhoto,
+                onMarkerTap: onMarkerTap,
                 onBodyTap: beginEditing
             )
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-            .accessibilityHint("태그를 누르면 해당 사진을 보고, 다른 부분을 두 번 탭하면 메모를 수정할 수 있습니다")
+            .accessibilityHint("태그를 누르면 해당 사진이나 발화지점을 보고, 다른 부분을 두 번 탭하면 메모를 수정할 수 있습니다")
         }
     }
     

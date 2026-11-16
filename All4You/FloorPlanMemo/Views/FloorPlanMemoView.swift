@@ -9,6 +9,8 @@ import SwiftUI
 
 struct FloorPlanMemoView: View {
     let sections: [FloorPlanMemoSection]
+    /// 현재 조사 차수의 도면. 태그한 발화지점을 상세 영역에서 찾을 때 사용
+    let planData: PlanData?
     let bookmarkedPhotos: [LoadedPhoto]
     var onDeleteMemo: (FloorPlanMemo.ID) -> Void = { _ in }
     var onUpdateMemo: (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
@@ -16,6 +18,7 @@ struct FloorPlanMemoView: View {
     // nil이면 전체, 값이 있으면 Room.id에 해당하는 메모만 보여줌
     @State private var selectedLocationID: String?
     @State private var selectedMemoID: FloorPlanMemo.ID?
+    @State private var focusedMarkerID: String?
     @State private var isDetailExpanded = false
     @State private var listWidthFraction: CGFloat = 890 / 1352
     @State private var dragStartListWidth: CGFloat?
@@ -27,11 +30,13 @@ struct FloorPlanMemoView: View {
     
     init(
         sections: [FloorPlanMemoSection] = [],
+        planData: PlanData? = nil,
         bookmarkedPhotos: [LoadedPhoto] = [],
         onDeleteMemo: @escaping (FloorPlanMemo.ID) -> Void = { _ in },
         onUpdateMemo: @escaping (FloorPlanMemo.ID, String, [UUID], [String]) -> Void = { _, _, _, _ in }
     ) {
         self.sections = sections
+        self.planData = planData
         self.bookmarkedPhotos = bookmarkedPhotos
         self.onDeleteMemo = onDeleteMemo
         self.onUpdateMemo = onUpdateMemo
@@ -43,6 +48,7 @@ struct FloorPlanMemoView: View {
         isDetailExpanded: Bool
     ) {
         self.sections = sections
+        self.planData = nil
         self.bookmarkedPhotos = []
         self.onDeleteMemo = { _ in }
         self.onUpdateMemo = { _, _, _, _ in }
@@ -65,9 +71,9 @@ struct FloorPlanMemoView: View {
                         Color(.systemBackground)
                         
                         // 드래그 위치를 바로 두 영역의 너비에 반영
-                        memoList
+                        listOrFocusedPlan
                             .frame(width: currentListWidth, height: proxy.size.height)
-                            .clipped()
+                            .zIndex(focusedMarkerID == nil ? 0 : 1)
                         
                         detailView(for: selectedMemo, presentation: .split)
                             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -152,7 +158,7 @@ struct FloorPlanMemoView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .bottom) {
-            if !isDetailExpanded && !sections.isEmpty {
+            if !isDetailExpanded && focusedMarkerID == nil && !sections.isEmpty {
                 locationPicker
                     .padding(.bottom, 32)
             }
@@ -168,8 +174,12 @@ struct FloorPlanMemoView: View {
         }
         .onChange(of: selectedLocationID) {
             selectedMemoID = nil
+            focusedMarkerID = nil
             isDetailExpanded = false
             restoreDragWidth = 0
+        }
+        .onChange(of: selectedMemoID) {
+            focusedMarkerID = nil
         }
     }
     
@@ -212,6 +222,19 @@ struct FloorPlanMemoView: View {
         .scrollIndicators(.hidden)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Color.clear.frame(height: pickerBottomClearance)
+        }
+    }
+    
+    @ViewBuilder
+    private var listOrFocusedPlan: some View {
+        if let focusedMarkerID, let planData,
+           planData.markers.contains(where: { $0.id == focusedMarkerID && $0.kind == .ignitionPoint }) {
+            FloorPlanMemoMarkerFocusView(planData: planData, markerID: focusedMarkerID) {
+                self.focusedMarkerID = nil
+            }
+        } else {
+            memoList
+                .clipped()
         }
     }
     
@@ -300,7 +323,13 @@ struct FloorPlanMemoView: View {
             memo: memo,
             presentation: presentation,
             bookmarkedPhotos: bookmarkedPhotos,
-            onUpdateMemo: onUpdateMemo
+            onUpdateMemo: onUpdateMemo,
+            onMarkerTap: { id in
+                guard planData?.markers.contains(where: { $0.id == id && $0.kind == .ignitionPoint }) == true else { return }
+                focusedMarkerID = id
+                isDetailExpanded = false
+                restoreDragWidth = 0
+            }
         )
         .id(memo.id)
     }

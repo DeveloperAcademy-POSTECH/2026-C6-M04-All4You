@@ -87,6 +87,7 @@ struct CaseMainView: View {
         } memo: {
             FloorPlanMemoView(
                 sections: memoSections,
+                planData: planData,
                 bookmarkedPhotos: photoStore.photos.filter(\.isBookmarked),
                 onDeleteMemo: deleteMemo,
                 onUpdateMemo: updateMemoWithTags

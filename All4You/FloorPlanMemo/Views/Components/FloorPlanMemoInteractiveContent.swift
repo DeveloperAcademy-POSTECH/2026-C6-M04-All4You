@@ -5,7 +5,7 @@
 //  Created by 채유성 on 11/09/26.
 //
 
-// 메모 상세 본문의 일반 텍스트 탭과 사진 태그 탭을 구분하는 읽기 전용 텍스트 뷰
+// 메모 상세 본문의 일반 텍스트·사진 태그·발화지점 태그 탭을 구분하는 읽기 전용 텍스트 뷰
 import SwiftUI
 import UIKit
 
@@ -13,6 +13,7 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
     let memo: FloorPlanMemo
     let bookmarkedPhotos: [LoadedPhoto]
     let onPhotoTap: (LoadedPhoto) -> Void
+    let onMarkerTap: (String) -> Void
     let onBodyTap: () -> Void
     
     func makeUIView(context: Context) -> UITextView {
@@ -31,7 +32,8 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
     }
     
     func updateUIView(_ view: UITextView, context: Context) {
-        let matches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
+        let photoMatches = FloorPlanMemoPhotoTags.matches(in: memo, bookmarkedPhotos: bookmarkedPhotos)
+        let markerMatches = FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 7
         let text = NSMutableAttributedString(string: memo.content, attributes: [
@@ -39,13 +41,13 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
             .foregroundColor: UIColor.label,
             .paragraphStyle: paragraph
         ])
-        for match in matches where match.photo != nil {
+        for match in photoMatches where match.photo != nil {
             text.addAttributes([
                 .foregroundColor: UIColor(Color.brand500),
                 .underlineStyle: NSUnderlineStyle.single.rawValue
             ], range: match.range)
         }
-        for match in FloorPlanMemoIgnitionTags.matches(in: memo.content, markers: memo.ignitionMarkers, taggedIDs: memo.taggedMarkerIDs) {
+        for match in markerMatches {
             text.addAttributes([
                 .foregroundColor: UIColor(Color.brand500),
                 .underlineStyle: NSUnderlineStyle.single.rawValue
@@ -54,10 +56,11 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
         view.attributedText = text
         view.accessibilityLabel = memo.content
         context.coordinator.view = view
-        context.coordinator.links = matches.compactMap { match in
-            match.photo.map { Link(range: match.range, photo: $0) }
-        }
+        context.coordinator.links = photoMatches.compactMap { match in
+            match.photo.map { Link(range: match.range, target: .photo($0)) }
+        } + markerMatches.map { Link(range: $0.range, target: .marker($0.markerID)) }
         context.coordinator.onPhotoTap = onPhotoTap
+        context.coordinator.onMarkerTap = onMarkerTap
         context.coordinator.onBodyTap = onBodyTap
     }
     
@@ -72,13 +75,19 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
     
     struct Link {
         let range: NSRange
-        let photo: LoadedPhoto
+        let target: Target
+    }
+    
+    enum Target {
+        case photo(LoadedPhoto)
+        case marker(String)
     }
     
     final class Coordinator: NSObject {
         weak var view: UITextView?
         var links: [Link] = []
         var onPhotoTap: ((LoadedPhoto) -> Void)?
+        var onMarkerTap: ((String) -> Void)?
         var onBodyTap: (() -> Void)?
         
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
@@ -100,7 +109,10 @@ struct FloorPlanMemoInteractiveContent: UIViewRepresentable {
             if glyphRect.contains(point) {
                 let characterIndex = view.layoutManager.characterIndexForGlyph(at: glyphIndex)
                 if let link = links.first(where: { NSLocationInRange(characterIndex, $0.range) }) {
-                    onPhotoTap?(link.photo)
+                    switch link.target {
+                    case .photo(let photo): onPhotoTap?(photo)
+                    case .marker(let id): onMarkerTap?(id)
+                    }
                     return
                 }
             }
