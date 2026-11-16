@@ -418,11 +418,9 @@ extension FloorPlanEdit2DView {
         case (.furniture?, .floor(let point)):
             if let furniture = planData.furniture(at: point) {
                 selectOrEditFurniture(furniture.id)
-            } else if let newId = planData.addFurniture(at: point) {
-                startFurnitureEditing(newId)
-                selectedTool = nil
             } else {
-                showNotice(planData.furniturePlacementHint(at: point))
+                startFurnitureEditing(planData.addFurniture(at: point))
+                selectedTool = nil
             }
         case (let tool?, _):
             // 발화지점·전기는 종류를 먼저 골라야 놓는다
@@ -437,7 +435,7 @@ extension FloorPlanEdit2DView {
                 // 기타로 놓았으면 바로 라벨 글자를 적게 한다
                 if stampOption?.isOther == true, let id = placed.stampId { startKindNoteEditing(id) }
             } else {
-                // 벽에 닿거나 방 밖이거나 도구와 맞지 않는 자리면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
+                // 도구가 받을 수 없는 자리(바닥 도구로 벽을 누름 등)면 놓이지 않는다. 말없이 안 놓이면 고장 난 것처럼 보여 안내한다
                 showNotice(planData.placementHint(for: tool, at: tap))
             }
         }
@@ -661,11 +659,9 @@ extension FloorPlanEdit2DView {
                 guard let start = stampDragStart else { return }
                 menuTarget = nil
                 let point = start + screen.plan(value.location) - screen.plan(value.startLocation)
-                // 방 밖으로 끌면 옮겨지지 않으므로, 직전 미리 보기에서 이어 가 마지막으로 놓을 수 있던 자리에 멈춰 있게 한다
                 var preview = dragPreview ?? planData
                 preview.moveStamp(selection, to: point)
                 dragPreview = preview
-                showFurnitureBlocked(furniture(of: selection, in: preview).map { $0.center != point } ?? false)
             }
             .onEnded { _ in
                 // 끄는 동안 띄운 막힘 이유는 손을 떼도 잠깐 남겨 읽을 수 있게 한다. 벽 그리기 실패 안내는 그 뒤에 띄워 바로 지워지지 않게 한다
@@ -931,9 +927,6 @@ extension FloorPlanEdit2DView {
         var preview = dragPreview ?? planData
         _ = preview.apply(edit, selection: selection)
         dragPreview = preview
-        if case .rotateFurniture(let id, let rotation) = edit {
-            showFurnitureBlocked(preview.furniture?.first { $0.id == id }.map { $0.rotation != rotation } ?? false)
-        }
     }
 
     /// 크기 손잡이가 손가락 자리에 오도록 가로·세로를 바꾼다. 가운데는 그대로라 양쪽이 함께 늘고 준다.
@@ -948,13 +941,6 @@ extension FloorPlanEdit2DView {
         var next = dragPreview ?? planData
         next.resizeFurniture(id: furniture.id, width: width, depth: depth)
         dragPreview = next
-        let resized = next.furniture?.first { $0.id == furniture.id }
-        showFurnitureBlocked(resized.map { $0.width != width || $0.depth != depth } ?? false)
-    }
-
-    /// 가구가 벽에 막혀 손가락을 따라가지 못하면 위쪽에 이유를 띄우고, 다시 따라가면 내린다 (벽이 막힐 때와 같은 캡슐)
-    private func showFurnitureBlocked(_ isBlocked: Bool) {
-        wallBlockedReason = isBlocked ? Copy.furnitureBlocked : nil
     }
 
     /// 위쪽 캡슐로 안내를 잠깐 띄운다. 끄는 동안 계속 보여야 하는 막힘 안내와 달리 시간이 지나면 스스로 내려간다
@@ -1235,7 +1221,6 @@ extension FloorPlanEdit2DView {
     private enum Copy {
         /// 라벨 글자를 비워 두면 보이는 글자
         static let otherKind = IgnitionCause.other.title
-        static let furnitureBlocked = "벽에 막혀 더 움직일 수 없어요"
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요

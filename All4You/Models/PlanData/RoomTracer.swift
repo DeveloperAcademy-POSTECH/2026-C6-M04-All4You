@@ -48,11 +48,6 @@ extension PlanData {
         return loops
     }
 
-    /// 벽으로 닫힌 칸들의 꼭짓점 점들. 공간 라벨이 있든 없든 모두 포함한다. 가구처럼 방이 아니어도 놓을 수 있는 것이 칸 안인지 볼 때 쓴다
-    func closedCellPolygons() -> [[SIMD2<Double>]] {
-        (faceLoops() ?? []).filter { $0.area > WallMoveRules.eps }.map { points(of: $0.edges) }
-    }
-
     /// 점을 경계 다각형 안에 품은 방. 이름 자리를 옮길 때만 쓴다 (공간 라벨의 영역은 room(containing:))
     // TEMP: 방 경계(Room.boundary)를 없애는 커밋에서 이 함수와 이름 자리 옮기기를 함께 지운다
     private func roomByBoundary(containing point: SIMD2<Double>) -> Room? {
