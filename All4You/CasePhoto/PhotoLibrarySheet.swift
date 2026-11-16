@@ -23,9 +23,9 @@ struct LibraryPhoto {
 /// 사진을 하나씩 누르거나, 사진 위에서 옆으로 밀기 시작해 훑어 여러 장을 한 번에 고르거나, 왼쪽 날짜를 눌러 그날 찍은 사진을 모두 고른다
 struct PhotoLibrarySheet: View {
     let onConfirm: ([LibraryPhoto]) -> Void
-
+    
     @Environment(\.dismiss) private var dismiss
-
+    
     @State private var sections: [PhotoDateSection<PHAsset>] = []
     /// 보관함 사진 id를 화면에 놓인 순서대로. 훑어 고를 때 처음 사진~지금 사진 사이를 고르는 데 쓴다
     @State private var orderedIDs: [String] = []
@@ -39,7 +39,7 @@ struct PhotoLibrarySheet: View {
     @State private var isLoading = false
     @State private var showsLoadError = false
     @State private var imageManager = PHCachingImageManager()
-
+    
     /// 훑어 고르기 한 번의 상태
     private struct DragSelection {
         /// 처음 손가락을 댄 사진의 순서
@@ -49,7 +49,7 @@ struct PhotoLibrarySheet: View {
         /// 훑기 전에 골라져 있던 사진
         let baseSelection: [String]
     }
-
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -127,7 +127,7 @@ extension PhotoLibrarySheet {
         }
         .padding(.horizontal, Layout.horizontalPadding)
     }
-
+    
     /// 누르면 그날 찍은 사진을 모두 고른다. 이미 모두 골라져 있으면 모두 뺀다
     private func dateButton(_ section: PhotoDateSection<PHAsset>) -> some View {
         let ids = section.items.map(\.localIdentifier)
@@ -142,11 +142,17 @@ extension PhotoLibrarySheet {
                 .frame(width: Layout.dateWidth, alignment: .trailing)
                 .padding(.top, Layout.dateTopPadding)
                 .contentShape(.rect)
+            // 날짜 전체 선택 시 숫자와 한글의 글꼴/색상이 함께 즉시 갱신되도록 한다.
+                .transaction { transaction in
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
         }
         .buttonStyle(.plain)
+        .animation(nil, value: isAllSelected)
         .accessibilityHint(isAllSelected ? Copy.deselectDayHint : Copy.selectDayHint)
     }
-
+    
     /// 사진 한 칸. 한 장이라도 고르면 고르지 않은 사진은 흐려진다
     private func tile(_ asset: PHAsset) -> some View {
         let isSelected = selectedIDs.contains(asset.localIdentifier)
@@ -177,7 +183,7 @@ extension PhotoLibrarySheet {
             selectedIDs.append(id)
         }
     }
-
+    
     private func toggleAll(_ ids: [String], isAllSelected: Bool) {
         if isAllSelected {
             selectedIDs.removeAll { ids.contains($0) }
@@ -185,7 +191,7 @@ extension PhotoLibrarySheet {
             selectedIDs += ids.filter { !selectedIDs.contains($0) }
         }
     }
-
+    
     /// 손가락 아래 사진까지 훑은 범위를 고르거나 뺀다. 사진 사이 틈에 있으면 그대로 둔다
     private func dragSelect(at location: CGPoint) {
         guard let id = tileFrames.first(where: { $0.value.contains(location) })?.key,
@@ -222,7 +228,7 @@ extension PhotoLibrarySheet {
         }
         return PhotoDateSection<PHAsset>.group(assets, by: .day) { $0.creationDate ?? .distantPast }
     }
-
+    
     /// 고른 사진을 고른 순서대로 불러와 넘기고 시트를 닫는다. 한 장도 못 불러오면 알림을 띄운다
     private func loadSelectedPhotos() {
         let assets = PHAsset.fetchAssets(withLocalIdentifiers: selectedIDs, options: nil)
@@ -248,7 +254,7 @@ extension PhotoLibrarySheet {
             dismiss()
         }
     }
-
+    
     /// 증거 사진으로 쓸 만큼 큰 사진을 불러온다. iCloud에만 있는 사진은 내려받는다
     private static func requestImage(for asset: PHAsset) async -> UIImage? {
         let options = PHImageRequestOptions()
@@ -273,7 +279,7 @@ extension PhotoLibrarySheet {
 struct PhotoLibrarySheetSizing: PresentationSizing {
     /// 시트를 띄우는 화면의 크기
     let containerSize: CGSize
-
+    
     func proposedSize(for root: PresentationSizingRoot, context: PresentationSizingContext) -> ProposedViewSize {
         // 화면 크기를 아직 못 쟀으면 종이 한 장 크기(.page)로 띄운다. .unspecified를 넘기면 내용 최소 크기로 아주 작게 뜬다
         guard containerSize.width > 0, containerSize.height > 0 else {
@@ -284,7 +290,7 @@ struct PhotoLibrarySheetSizing: PresentationSizing {
             height: containerSize.height * Self.heightRatio
         )
     }
-
+    
     private static let widthRatio: CGFloat = 0.82
     private static let heightRatio: CGFloat = 0.9
 }
@@ -296,17 +302,17 @@ private struct HorizontalStartPanGesture: UIGestureRecognizerRepresentable {
     /// 손가락 위치 (coordinateSpace 기준)
     let onChanged: (CGPoint) -> Void
     let onEnded: () -> Void
-
+    
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
         Coordinator()
     }
-
+    
     func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
         let recognizer = UIPanGestureRecognizer()
         recognizer.delegate = context.coordinator
         return recognizer
     }
-
+    
     func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
         switch recognizer.state {
         case .began, .changed:
@@ -317,7 +323,7 @@ private struct HorizontalStartPanGesture: UIGestureRecognizerRepresentable {
             break
         }
     }
-
+    
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         /// 가로로 더 빠르게 밀 때만 시작한다
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
@@ -332,10 +338,10 @@ private struct HorizontalStartPanGesture: UIGestureRecognizerRepresentable {
 private struct LibraryAssetThumbnail: View {
     let asset: PHAsset
     let imageManager: PHCachingImageManager
-
+    
     @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
-
+    
     var body: some View {
         Color.gray100
             .aspectRatio(1, contentMode: .fit)
@@ -351,7 +357,7 @@ private struct LibraryAssetThumbnail: View {
                 image = await loadThumbnail()
             }
     }
-
+    
     private func loadThumbnail() async -> UIImage? {
         let options = PHImageRequestOptions()
         options.deliveryMode = .highQualityFormat
