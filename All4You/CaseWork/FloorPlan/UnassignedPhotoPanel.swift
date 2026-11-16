@@ -29,7 +29,12 @@ struct UnassignedPhotoPanel: View {
             VStack(alignment: .leading, spacing: Layout.sectionSpacing) {
                 header
                 if let previewPhoto {
-                    preview(previewPhoto)
+                    VStack(alignment: .leading) {
+                        preview(previewPhoto)
+                        PhotoTakenAtLabel(date: previewPhoto.takenAt)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 12)
+                    }
                 }
                 LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                     ForEach(photos.filter { $0.id != previewPhoto?.id }) { photo in
@@ -104,6 +109,13 @@ extension UnassignedPhotoPanel {
                         .scaledToFill()
                 }
                 .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                        .strokeBorder(
+                            Color.black.opacity(0.12),
+                            lineWidth: 1
+                        )
+                }
         }
         .buttonStyle(.plain)
         .draggablePhoto(photo, onDragStart: onDragStart)
