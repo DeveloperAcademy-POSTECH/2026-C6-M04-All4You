@@ -205,6 +205,15 @@ extension PlanData {
 extension PlanData {
 }
 
+// 스캔한 바닥
+extension PlanData {
+    /// 스캔한 바닥을 지운다. 벽·가구·공간 라벨은 그대로 둔다
+    mutating func removeFloor(id: String) {
+        floors?.removeAll { $0.id == id }
+        if floors?.isEmpty == true { floors = nil }
+    }
+}
+
 // 창문
 extension PlanData {
     /// 새 창문 크기 (m)

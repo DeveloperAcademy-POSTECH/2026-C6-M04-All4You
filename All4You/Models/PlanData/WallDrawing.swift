@@ -247,7 +247,7 @@ extension PlanData {
     }
 
     /// 그은 선의 한쪽 끝 point가 붙을 자리. 앞 조건이 맞으면 거기서 멈춘다:
-    /// ① snapRadius 안의 꼭짓점 (떠 있는 벽 끝도 포함) → ② snapRadius 안의 벽 → ③ outward 방향으로 extendDistance 안쪽만 늘이면 닿는 벽·꼭짓점 → ④ 그은 자리의 떠 있는 끝
+    /// ① snapRadius 안의 꼭짓점 (떠 있는 벽 끝도 포함) → ② 스캔 바닥 꼭짓점 → ③ snapRadius 안의 벽 → ④ 스캔 바닥 테두리 → ⑤ outward 방향으로 extendDistance 안쪽만 늘이면 닿는 벽·꼭짓점 → ⑥ 그은 자리의 떠 있는 끝
     func wallEnd(near point: SIMD2<Double>, outward: SIMD2<Double>, snapRadius: Double) -> WallEnd {
         let pos = vertexPoints
         let usedVertices = Set(walls.flatMap { [$0.startVertex, $0.endVertex] })
@@ -256,6 +256,8 @@ extension PlanData {
             .filter { $0.distance <= snapRadius }
             .min { $0.distance < $1.distance }
         if let nearVertex { return .vertex(nearVertex.id) }
+        // 스캔한 바닥 꼭짓점: 바닥은 나누거나 바꾸지 않고 좌표만 빌린다
+        if let corner = nearestFloorCorner(to: point, within: snapRadius) { return .free(corner) }
 
         // 벽 위에는 가상 경계선도 붙을 수 있다 (스캔 틈을 메울 때 틈의 일부만 그을 수 있게)
         var nearWall: (id: String, distance: Double)?
@@ -269,8 +271,26 @@ extension PlanData {
             return .wall(nearWall.id, line.point(along: along))
         }
 
+        // 스캔한 바닥 테두리: 바닥 모양을 따라 벽을 그을 수 있게 테두리 위 점을 빌린다
+        if let edgePoint = nearestFloorEdgePoint(to: point, within: snapRadius) { return .free(edgePoint) }
+
         if let extended = extendedEnd(from: point, toward: outward, snapRadius: snapRadius) { return extended }
         return .free(point)
+    }
+
+    /// 점에서 radius(m) 안의 가장 가까운 스캔 바닥 꼭짓점
+    private func nearestFloorCorner(to point: SIMD2<Double>, within radius: Double) -> SIMD2<Double>? {
+        (floors ?? []).flatMap(\.points)
+            .map { (point: $0, distance: Self.length($0 - point)) }
+            .filter { $0.distance <= radius }
+            .min { $0.distance < $1.distance }?.point
+    }
+
+    /// 점에서 radius(m) 안의 가장 가까운 스캔 바닥 테두리 위의 점
+    private func nearestFloorEdgePoint(to point: SIMD2<Double>, within radius: Double) -> SIMD2<Double>? {
+        (floors ?? []).compactMap { $0.nearestEdgePoint(to: point) }
+            .filter { $0.distance <= radius }
+            .min { $0.distance < $1.distance }?.point
     }
 
     /// origin에서 direction으로 extendDistance 안쪽만 가면 처음 닿는 벽 또는 꼭짓점.

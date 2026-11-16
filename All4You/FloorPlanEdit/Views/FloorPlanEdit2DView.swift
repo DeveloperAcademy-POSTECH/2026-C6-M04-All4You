@@ -754,7 +754,10 @@ extension FloorPlanEdit2DView {
             plan.eraseWall(id: id)
             return true
         case .floor:
-            return false
+            // 바닥은 테두리 가까이를 눌렀을 때만 지운다. 바닥 안쪽 빈 곳은 지우지 않는다
+            guard let floorId = screen.floorEdge(at: location, in: plan) else { return false }
+            plan.removeFloor(id: floorId)
+            return true
         }
     }
 

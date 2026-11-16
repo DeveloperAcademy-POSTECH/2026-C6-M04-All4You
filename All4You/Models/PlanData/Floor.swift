@@ -14,3 +14,23 @@ struct FloorCorner: Codable, Hashable {
     var x: Double
     var y: Double
 }
+
+extension Floor {
+    /// 꼭짓점을 돌아가는 순서의 도면 점들
+    var points: [SIMD2<Double>] { corners.map { SIMD2($0.x, $0.y) } }
+
+    /// 점 point에서 가장 가까운 바닥 테두리 위의 점과 그 거리 (m)
+    func nearestEdgePoint(to point: SIMD2<Double>) -> (point: SIMD2<Double>, distance: Double)? {
+        let points = self.points
+        var best: (point: SIMD2<Double>, distance: Double)?
+        for index in points.indices {
+            let edge = WallLine(start: points[index], end: points[(index + 1) % points.count])
+            let along = min(max(((point - edge.start) * edge.direction).sum(), 0), edge.length)
+            let onEdge = edge.point(along: along)
+            let delta = point - onEdge
+            let distance = (delta * delta).sum().squareRoot()
+            if distance < best?.distance ?? .infinity { best = (onEdge, distance) }
+        }
+        return best
+    }
+}

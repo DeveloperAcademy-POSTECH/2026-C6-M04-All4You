@@ -82,6 +82,17 @@ extension PlanScreen {
         }?.id
     }
 
+    /// 테두리를 누른 스캔 바닥 (Floor.id). 벽 지우기와 같은 판정 거리라 바닥 안쪽 빈 곳은 맞지 않는다. 가까운 바닥이 여럿이면 가장 가까운 것
+    func floorEdge(at point: CGPoint, in plan: PlanData) -> String? {
+        let planPoint = self.plan(point)
+        let margin = Plan2DHit.fingerMargin / scale
+        return (plan.floors ?? [])
+            .compactMap { floor in floor.nearestEdgePoint(to: planPoint).map { (id: floor.id, distance: $0.distance) } }
+            .filter { $0.distance <= margin }
+            .min { $0.distance < $1.distance }?
+            .id
+    }
+
     /// 벽 wallId에서 planPoint 자리에 달린 창문·문 (DoorWindow.id). 문짝 없는 개구부는 고르지 않는다
     private func opening(on wallId: String, at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         guard let wall = plan.wall(id: wallId), let line = plan.line(of: wall) else { return nil }

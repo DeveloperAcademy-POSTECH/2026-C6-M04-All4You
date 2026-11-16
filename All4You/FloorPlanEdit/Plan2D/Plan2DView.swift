@@ -71,6 +71,10 @@ struct Plan2DView: View {
     
     var body: some View {
         Canvas { context, _ in
+            // 스캔한 바닥을 가장 아래에 그린다. 벽이 없어도 바닥·가구가 보인다
+            for floor in planData.floors ?? [] {
+                drawFloor(floor, in: &context)
+            }
             // 가구를 먼저 그려 벽에 붙은 가구 가장자리가 벽 아래로 들어가게 한다
             for furniture in planData.furniture ?? [] {
                 drawFurniture(furniture, in: &context)
@@ -113,6 +117,21 @@ struct RoomLabelActions {
     let onDragEnded: () -> Void
     /// 고른 캡슐의 ✕를 눌렀다 (Room.id)
     let onDelete: (String) -> Void
+}
+
+// 스캔한 바닥
+extension Plan2DView {
+    /// 바닥을 옅게 칠하고 점선 테두리를 긋는다. 누르지 않는 요소라 선택 표시는 없다
+    // TEMP: 바닥 모양이 Figma에 없어 옅은 회색 칠과 점선 테두리로 임시로 정함
+    private func drawFloor(_ floor: Floor, in context: inout GraphicsContext) {
+        guard floor.corners.count >= 3 else { return }
+        let path = Path { shape in
+            shape.addLines(floor.points.map(screen.point))
+            shape.closeSubpath()
+        }
+        context.fill(path, with: .color(.gray100.opacity(Layout.floorFillOpacity)))
+        context.stroke(path, with: .color(.gray500), style: StrokeStyle(lineWidth: Layout.floorLineWidth, dash: Layout.floorDash))
+    }
 }
 
 // 벽과 문·창문
@@ -466,6 +485,10 @@ extension Plan2DView {
 // 레이아웃 값
 extension Plan2DView {
     private enum Layout {
+        /// 스캔한 바닥의 칠 진하기와 테두리 굵기·점선 (pt)
+        static let floorFillOpacity = 0.6
+        static let floorLineWidth: CGFloat = 1
+        static let floorDash: [CGFloat] = [6, 4]
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1
