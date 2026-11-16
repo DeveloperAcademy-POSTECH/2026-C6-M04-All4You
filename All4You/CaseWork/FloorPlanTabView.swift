@@ -362,8 +362,8 @@ extension FloorPlanTabView {
                         dropPhoto(on: room, at: location)
                     }
                 ))
-                // 처음 맞출 때 도면이 위 필터 메뉴·아래 2D/3D 막대와 겹치지 않게 한다
-                .padding(.vertical, Layout.overlayInset)
+                // 위 필터 메뉴·아래 2D/3D 막대가 리퀴드 글래스라 도면이 그 밑으로 비쳐 보인다 (도면 수정 화면·3D와 같다).
+                // 도면 영역을 줄이지 않고, 처음 맞출 때만 막대를 피해 놓는다
                 .background(.white)
                 // 옮기거나 확대한 도면이 상단 바 위로 넘쳐 보이지 않게 한다
                 .clipped()
@@ -777,7 +777,10 @@ extension FloorPlanTabView {
     /// 도면을 화면 크기에 맞춰 다시 놓는다
     private func fitPlan(_ planData: PlanData, in size: CGSize) {
         canvasSize = size
-        screen = PlanScreen(plan: planData, in: size, fill: Layout.planFill)
+        // 위·아래 막대를 뺀 영역 가운데에 맞춘 뒤 아래로 내려, 처음에는 도면이 막대와 겹치지 않게 한다. 도면 수정 화면과 같다
+        let inner = CGSize(width: size.width, height: max(size.height - Layout.overlayInset * 2, 1))
+        screen = PlanScreen(plan: planData, in: inner, fill: Layout.planFill)
+            .moved(by: CGSize(width: 0, height: Layout.overlayInset))
     }
     /// 확대하거나 옮긴 도면을 처음 맞춘 배율·자리로 되돌린다
     private func resetView(_ planData: PlanData) {
@@ -839,7 +842,7 @@ extension FloorPlanTabView {
         static let planFill = 0.7
         /// 북마크 핀을 골랐을 때 나머지 도면·장소 핀을 흐리게 하는 정도
         static let focusDimmedOpacity = 0.35
-        /// 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
+        /// 처음 맞출 때 위 필터 메뉴·아래 2D/3D 막대와 도면이 겹치지 않게 비우는 위·아래 높이 (pt)
         static let overlayInset: CGFloat = 80
         /// 2D·3D가 서로 바뀌는 시간 (초)
         static let dimensionFadeDuration = 0.3
