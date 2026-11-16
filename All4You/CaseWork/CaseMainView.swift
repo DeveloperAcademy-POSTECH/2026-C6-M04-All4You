@@ -48,15 +48,38 @@ struct CaseMainView: View {
         self.onBack = onBack
         self.onEdit = onEdit
         self.onRotatePlan = onRotatePlan
-        _sessionNumber = State(initialValue: fireCase.sessions.map(\.sessionNumber).max() ?? 1)
+        _sessionNumber = State(initialValue: Self.firstSessionNumber(of: fireCase))
         _selection = State(initialValue: Self.firstSelection(of: startTab, planData: planData, fireCase: fireCase))
+    }
+    
+    /// 처음 고를 조사 차수. 마지막으로 보던 차수가 아직 있으면 그 차수, 아니면 가장 큰 차수
+    private static func firstSessionNumber(of fireCase: FireCase) -> Int {
+        if let last = fireCase.lastViewedSessionNumber, fireCase.sessions.contains(where: { $0.sessionNumber == last }) {
+            return last
+        }
+        return fireCase.sessions.map(\.sessionNumber).max() ?? 1
+    }
+    
+    /// 마지막으로 보던 탭. 가리키는 장소가 도면에서 없어졌으면 앨범은 전체, 그 밖에는 도면 2D로 둔다. 저장된 것이 없으면 nil
+    private static func lastViewedSelection(of fireCase: FireCase, planData: PlanData) -> CaseTabSelection? {
+        guard let stored = fireCase.lastViewedTab, let tab = CaseTabSelection(storageValue: stored) else { return nil }
+        let roomNames = Set(planData.rooms.map(\.name))
+        switch tab {
+        case .album(let name):
+            return name == CaseAlbumView.unassignedName || roomNames.contains(name) ? tab : .albumOverview
+        case .memo(let name):
+            return roomNames.contains(name) ? tab : .floorPlan2D
+        case .floorPlan2D, .floorPlan3D, .albumOverview:
+            return tab
+        }
     }
     
     /// 처음 고를 줄. 앨범은 전체, 메모는 메모가 있는 첫 장소(없으면 첫 장소)
     private static func firstSelection(of startTab: CaseStartTab, planData: PlanData, fireCase: FireCase) -> CaseTabSelection {
         switch startTab {
         case .floorPlan:
-            return .floorPlan2D
+            // 미리보기의 앨범·메모 버튼이 아니라 그냥 열면 마지막으로 보던 탭으로 연다
+            return lastViewedSelection(of: fireCase, planData: planData) ?? .floorPlan2D
         case .album:
             return .albumOverview
         case .memo:
@@ -94,9 +117,14 @@ struct CaseMainView: View {
             .id(sessionNumber)
             .navigationBarTitleDisplayMode(.inline)
         }
-        // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다
+        // 고른 차수의 사진만 보이고, 새 사진은 고른 차수에 들어가게 사진 모음에 알린다. 마지막으로 본 차수로 다시 열도록 사건에도 남긴다
         .onChange(of: sessionNumber, initial: true) {
             photoStore.sessionNumber = sessionNumber
+            fireCase.lastViewedSessionNumber = sessionNumber
+        }
+        // 마지막으로 보던 탭을 사건에 남겨, 앱을 껐다 켜거나 다시 열 때 그 탭으로 연다
+        .onChange(of: selection) {
+            fireCase.lastViewedTab = selection.storageValue
         }
         // 상단 바는 탭마다 붙지만 알림은 화면에 하나만 있으면 되므로 탭 바깥에 붙인다
         .alert(
