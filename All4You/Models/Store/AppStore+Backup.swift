@@ -233,3 +233,24 @@ extension AppStore {
         return total
     }
 }
+
+// 읽지 못한 도면 보관
+
+extension AppStore {
+    private static var unreadablePlansDirectory: URL {
+        supportDirectory.appendingPathComponent("UnreadablePlans")
+    }
+
+    /// 읽지 못한 도면 JSON을 UnreadablePlans/<사건 id>-<시각>.json 으로 남기고 기록한다.
+    /// 쓰기에 실패하면 기록만 남기고 넘어간다 (사용자가 이미 새로 만들기를 골랐다)
+    static func keepUnreadablePlan(_ data: Data, caseID: UUID) {
+        let name = "\(caseID.uuidString)-\(backupTimestamp()).json"
+        do {
+            try FileManager.default.createDirectory(at: unreadablePlansDirectory, withIntermediateDirectories: true)
+            try data.write(to: unreadablePlansDirectory.appendingPathComponent(name), options: .atomic)
+            record("읽지 못한 도면 보관 \(name)")
+        } catch {
+            record("읽지 못한 도면 보관 실패 \(name) \(error)")
+        }
+    }
+}
