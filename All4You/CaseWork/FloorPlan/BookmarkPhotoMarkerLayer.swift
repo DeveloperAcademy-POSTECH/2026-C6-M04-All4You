@@ -123,7 +123,7 @@ struct BookmarkPhotoMarkerLayer: View {
     private func editingControls(number: Int, position: SIMD2<Double>) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.brand500, lineWidth: 2)
+                .stroke(Color.orange400, lineWidth: 2)
                 .frame(width: 80, height: 80)
                 .allowsHitTesting(false)
             
@@ -131,7 +131,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 .font(AppTypography.headlineEmphasized)
                 .foregroundStyle(.white)
                 .frame(width: Layout.markerSize, height: Layout.markerSize)
-                .background(.brand500, in: .circle)
+                .background(.orange400, in: .circle)
                 .contentShape(.circle)
                 .highPriorityGesture(
                     DragGesture(minimumDistance: 2, coordinateSpace: .named("bookmarkPhotoMap"))
@@ -148,7 +148,7 @@ struct BookmarkPhotoMarkerLayer: View {
             
             Image(systemName: "arrow.clockwise")
                 .font(AppTypography.title3)
-                .foregroundStyle(.brand500)
+                .foregroundStyle(.orange400)
                 .frame(width: 44, height: 44)
                 .glassEffect(.regular, in: .circle)
                 .contentShape(.circle)
@@ -171,7 +171,7 @@ struct BookmarkPhotoMarkerLayer: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(AppTypography.title3)
-                .foregroundStyle(.brand500)
+                .foregroundStyle(.orange400)
                 .frame(width: 44, height: 44)
                 .contentShape(.circle)
         }
@@ -184,14 +184,11 @@ struct BookmarkPhotoMarkerLayer: View {
         Button {
             onTap(marker.id)
         } label: {
-            Text("#\(marker.number)")
-                .font(style == .compact ? AppTypography.subheadlineEmphasized : AppTypography.headlineEmphasized)
-                .monospacedDigit()
-                .foregroundStyle(.white)
-                .frame(width: markerSize, height: markerSize)
-                .background(.brand500, in: .circle)
-                .shadow(color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius, y: 1)
-                .contentShape(.circle)
+            BookmarkNumberBadge(
+                number: marker.number,
+                size: markerSize,
+                font: style == .compact ? AppTypography.subheadlineEmphasized : AppTypography.headlineEmphasized
+            )
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -234,7 +231,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 var coneContext = context
                 coneContext.opacity = isDimmed(marker) ? Layout.dimmedOpacity : 1
                 coneContext.fill(cone, with: .linearGradient(
-                    Gradient(colors: [Color.brand500.opacity(Layout.coneOpacity), Color.brand500.opacity(0)]),
+                    Gradient(colors: [Color.orange400.opacity(Layout.coneOpacity), Color.orange400.opacity(0)]),
                     startPoint: screen.point(center),
                     endPoint: screen.point(center + SIMD2(sin(yaw * .pi / 180), -cos(yaw * .pi / 180)) * Layout.coneLength)
                 ))
@@ -248,8 +245,6 @@ struct BookmarkPhotoMarkerLayer: View {
         static let markerSize: CGFloat = 40
         /// 사건 목록 미리보기의 작은 핀 지름
         static let compactMarkerSize: CGFloat = 32
-        static let shadowOpacity = 0.25
-        static let shadowRadius: CGFloat = 3
         /// 부채꼴 길이 (도면 m)
         static let coneLength = 0.5
         /// 광각 사진도 부채꼴이 너무 벌어지지 않게
@@ -264,6 +259,30 @@ struct BookmarkPhotoMarkerLayer: View {
         static func markerLabel(_ number: Int) -> String {
             "북마크 사진 \(number)번"
         }
+    }
+}
+
+/// "#1" 번호가 적힌 주황 원. 2D 번호 핀과 3D 번호 배지가 같은 모양을 쓴다
+struct BookmarkNumberBadge: View {
+    let number: Int
+    /// 원 지름 (pt)
+    let size: CGFloat
+    let font: Font
+
+    var body: some View {
+        Text("#\(number)")
+            .font(font)
+            .monospacedDigit()
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(.orange400, in: .circle)
+            .shadow(color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius, y: 1)
+            .contentShape(.circle)
+    }
+
+    private enum Layout {
+        static let shadowOpacity = 0.25
+        static let shadowRadius: CGFloat = 3
     }
 }
 

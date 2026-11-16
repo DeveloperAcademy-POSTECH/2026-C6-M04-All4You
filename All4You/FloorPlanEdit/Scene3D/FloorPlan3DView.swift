@@ -18,6 +18,10 @@ struct FloorPlan3DView: View {
     var pins: [Plan3DPin] = []
     /// 핀 하나를 그리는 뷰 (Plan3DPin.id를 받음). nil이면 핀을 그리지 않는다
     var pinView: ((String) -> AnyView)? = nil
+    /// 사진을 찍은 자리 표시 (구·기둥). 핀과 달리 3D 도형이라 벽 뒤에 있으면 벽에 가려진다. 바뀌어도 도면은 다시 만들지 않는다
+    var photoMarkers: [Plan3DPhotoMarker] = []
+    /// 사진 구를 누르면 그 사진 id를 알린다. nil이면 구는 누를 수 없고 눌러도 도면을 누른 것으로 본다
+    var onTapPhotoMarker: ((UUID) -> Void)? = nil
     /// 오른쪽 아래에 처음 시야로 되돌리는 버튼을 띄울지
     var showsResetButton = false
     /// 오른쪽 위에 방위표를 띄울지. 카메라를 돌리는 대로 실시간으로 함께 돈다
@@ -228,6 +232,10 @@ struct FloorPlan3DView: View {
         }
         .onChange(of: pins) {
             rebuildScene()
+        }
+        // 필터를 켜고 끌 때마다 벽 전체를 다시 만들지 않게 사진 표시만 바꾼다
+        .onChange(of: photoMarkers) {
+            rebuildPhotoMarkers()
         }
         .onChange(of: selection) {
             // 다른 것을 고르면 메뉴를 닫는다. 나중에 같은 스탬프를 다시 눌러도 꾹 누르기 전에는 메뉴가 뜨지 않게
@@ -559,6 +567,13 @@ extension FloorPlan3DView {
                 // 이름을 고치는 중에 다른 곳을 누르면 고치기만 끝낸다
                 if labelEdit != nil {
                     finishLabelEdit()
+                    return
+                }
+                // 가장 먼저 부딪힌 것이 사진 구면 도면을 누른 것으로 알리지 않고 그 사진을 알린다 (벽 뒤의 구는 벽이 먼저라 안 눌린다)
+                if let onTapPhotoMarker,
+                   let hit = firstHit(at: value.location, excludingFurniture: tapsThroughFurniture),
+                   let photoID = FloorPlan3DBuilder.photoID(of: hit.entity) {
+                    onTapPhotoMarker(photoID)
                     return
                 }
                 onTap(tapResult(at: value.location, excludingFurniture: tapsThroughFurniture))
@@ -1155,8 +1170,16 @@ extension FloorPlan3DView {
         case .doorWindow?, .wall?, nil:
             selectedStampEntity = nil
         }
+        rebuildPhotoMarkers()
     }
-    
+
+    /// 사진 표시 묶음만 지우고 다시 붙인다. 장면을 통째로 다시 만들 때도 부른다 (children.removeAll()이 함께 지우므로)
+    private func rebuildPhotoMarkers() {
+        sceneRoot.findEntity(named: FloorPlan3DBuilder.photoMarkersName)?.removeFromParent()
+        let space = PlanSpace(plan: windowPreview ?? planData)
+        sceneRoot.addChild(FloorPlan3DBuilder.makePhotoMarkers(photoMarkers, space: space))
+    }
+
     /// 위에서 비스듬히 비추는 빛. 벽 면마다 밝기가 달라 모양이 잘 보인다
     private func makeLight() -> DirectionalLight {
         let light = DirectionalLight()
@@ -1230,4 +1253,27 @@ struct Plan3DPin: Identifiable, Equatable {
     let point: SIMD2<Double>
     /// 바닥에서 높이 (m)
     let height: Double
+}
+
+/// 3D 도면에 그릴 사진 표시 하나 (북마크 사진을 찍은 자리)
+struct Plan3DPhotoMarker: Identifiable, Equatable {
+    /// 사진 id (EvidencePhoto.id)
+    let id: UUID
+    /// 찍은 자리와 방향
+    let placement: PhotoPlacement
+    /// 촬영 방향 원뿔을 그릴지 (필터의 "촬영 방향")
+    let showsDirection: Bool
+    /// 다른 사진을 골라 흐리게 그릴지
+    let isDimmed: Bool
+
+    /// 높이를 모르는 사진(사용자가 놓은 일반 사진)의 구 높이 (m)
+    // TEMP: 실기기에서 보고 조절. 서서 찍은 높이쯤으로 시작
+    static let defaultHeight = 1.4
+    /// 구가 바닥 아래로 내려가지 않게 하는 가장 낮은 높이 (m). 스캔 오차로 높이가 0 아래로 나올 수 있다
+    static let minHeight = 0.3
+
+    /// 구 가운데의 바닥에서 높이 (m). 구를 그리는 쪽과 번호 배지를 띄우는 쪽이 같이 쓴다
+    var sphereHeight: Float {
+        Float(max(placement.height ?? Self.defaultHeight, Self.minHeight))
+    }
 }
