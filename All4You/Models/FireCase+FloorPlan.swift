@@ -9,6 +9,10 @@ extension FireCase {
     @MainActor
     func replaceFloorPlan(with plan: PlanData, sourceType: FloorPlanSourceType, roomPlanData: Data? = nil) throws {
         if let floorPlan {
+            // 읽지 못한 옛 도면 JSON은 덮어쓰기 전에 파일로 남긴다 (더 새 버전에서 다시 읽을 수 있게)
+            if floorPlan.loadPlanData() == nil {
+                AppStore.keepUnreadablePlan(floorPlan.planData, caseID: id)
+            }
             floorPlan.sourceType = sourceType
             floorPlan.roomPlanData = roomPlanData
             try floorPlan.storePlanData(plan)

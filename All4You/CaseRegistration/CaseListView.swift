@@ -32,6 +32,8 @@ struct CaseListView: View {
     @State private var openedCase: OpenedCase?
     /// 앱을 켠 뒤 열어 두었던 사건을 되살리는 일을 이미 했는지 (목록이 다시 보여도 두 번 하지 않게)
     @State private var didRestoreOpenedCase = false
+    /// 도면 JSON을 읽지 못한 사건. 값이 있으면 "도면을 읽지 못했어요" 알림이 뜬다
+    @State private var unreadablePlanCase: FireCase?
     
     /// 사이드바를 펼쳤는지(.all) 접었는지(.detailOnly)
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -87,6 +89,17 @@ struct CaseListView: View {
             Text(Copy.deleteFolderMessage)
         }
         
+        // 도면을 읽지 못했을 때: 새로 만들면 기존 도면이 덮어써지므로 먼저 묻는다
+        .alert(
+            Copy.unreadablePlanTitle,
+            isPresented: isUnreadablePlanAlertShown,
+            presenting: unreadablePlanCase
+        ) { fireCase in
+            Button(Copy.close, role: .cancel) {}
+            Button(Copy.createNewPlan, role: .destructive) { present(fireCase) }
+        } message: { _ in
+            Text(Copy.unreadablePlanMessage)
+        }
         .sheet(
             isPresented: $isPresentingRegistration,
             onDismiss: {
@@ -173,8 +186,17 @@ struct CaseListView: View {
         open(latest)
     }
     
-    /// 사건을 연 시각을 남기고 사건 화면을 띄운다
+    /// 사건을 연다. 평면도는 있는데 JSON을 읽지 못하면(더 새 버전이 저장한 도면 등) 덮어쓰지 않게 먼저 묻는다
     private func open(_ fireCase: FireCase, at startTab: CaseStartTab = .floorPlan) {
+        if let floorPlan = fireCase.floorPlan, floorPlan.loadPlanData() == nil {
+            unreadablePlanCase = fireCase
+            return
+        }
+        present(fireCase, at: startTab)
+    }
+
+    /// 사건을 연 시각을 남기고 사건 화면을 띄운다
+    private func present(_ fireCase: FireCase, at startTab: CaseStartTab = .floorPlan) {
         fireCase.lastViewedAt = .now
         // 평면도는 있어도 벽이 없거나 읽을 수 없으면(예전 빌드가 저장한 빈 도면 등) 도면 방식 선택으로 보낸다
         let unusablePlanData = fireCase.floorPlan.flatMap { $0.loadPlanData()?.isUsable == true ? nil : $0.planData }
@@ -518,6 +540,13 @@ extension CaseListView {
         )
     }
     
+    private var isUnreadablePlanAlertShown: Binding<Bool> {
+        Binding(
+            get: { unreadablePlanCase != nil },
+            set: { if !$0 { unreadablePlanCase = nil } }
+        )
+    }
+
     private var isDeleteAlertShown: Binding<Bool> {
         Binding(
             get: { deletingFolder != nil },
@@ -739,6 +768,11 @@ extension CaseListView {
         static let cancel = "취소"
         static let save = "저장"
         static let delete = "삭제"
+        static let close = "닫기"
+        // TEMP: 도면을 읽지 못했을 때의 알림 문구는 확정 전
+        static let unreadablePlanTitle = "이 사건의 도면을 읽지 못했어요"
+        static let unreadablePlanMessage = "더 새 버전의 앱에서 만든 도면일 수 있어요. 새로 만들면 지금 도면은 쓸 수 없게 돼요."
+        static let createNewPlan = "도면 새로 만들기"
         // TEMP: Figma에 새 목록 만들기 알림이 없어 이름 변경 알림과 같은 형식으로 작성 — 팀 확인 필요
         static let newFolderTitle = "새로운 목록"
         static let renameFolderTitle = "목록 이름 변경"
