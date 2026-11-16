@@ -147,9 +147,10 @@ extension PlanData {
     /// 그 방에 놓였던 사진·메모는 장소가 없어진다(라벨을 지울 때와 같다)
     private mutating func removeRoomsWithoutWalls() {
         let realWalls = Set(walls.filter { !$0.isVirtual }.map(\.id))
+        // 경계 없이 라벨만 있는 방은 지우지 않는다
         let empty = Set(rooms.filter { room in
-            !room.boundary.contains { realWalls.contains($0.wallId) }
-                || abs(Self.signedArea(polygon(of: room))) <= WallMoveRules.eps
+            !room.boundary.isEmpty && (!room.boundary.contains { realWalls.contains($0.wallId) }
+                || abs(Self.signedArea(polygon(of: room))) <= WallMoveRules.eps)
         }.map(\.id))
         rooms.removeAll { empty.contains($0.id) }
     }

@@ -73,8 +73,10 @@ extension PlanData {
     func dimensionMarks(kinds: Set<DimensionKind>) -> DimensionMarks {
         var marks = DimensionMarks()
         if kinds.contains(.room) { marks.areas += roomAreas() }
-        if kinds.contains(.wall) { marks.lines += wallLines() }
-        if kinds.contains(.opening) { marks.lines += openingLines() }
+        // 벽 바깥쪽을 정하려고 닫힌 칸을 돌아보는 계산은 벽 수에 비례하므로 한 번만 한다
+        let cellSides = kinds.isDisjoint(with: [.wall, .opening]) ? [:] : closedCellSides()
+        if kinds.contains(.wall) { marks.lines += wallLines(cellSides: cellSides) }
+        if kinds.contains(.opening) { marks.lines += openingLines(cellSides: cellSides) }
         if kinds.contains(.furniture) {
             marks.lines += furnitureLines()
             marks.areas += furnitureAreas()
@@ -83,24 +85,25 @@ extension PlanData {
         return marks
     }
 
-    /// 방마다 바닥 면적과 색칠할 영역. 글자는 이름 캡슐 바로 아래에 놓는다
+    /// 영역마다 한 번, 그 영역 안의 첫 라벨 아래에 바닥 면적과 색칠할 영역을 놓는다. 영역 없는 라벨은 면적이 없다
     private func roomAreas() -> [DimensionArea] {
-        rooms.compactMap { room in
-            let points = polygon(of: room)
-            let area = abs(Self.signedArea(points))
-            guard area > WallMoveRules.eps else { return nil }
+        let regions = regions
+        var shown: [PlanRegions.Region] = []
+        return rooms.compactMap { room in
+            guard let region = self.region(of: room, in: regions), !shown.contains(region) else { return nil }
+            shown.append(region)
             return DimensionArea(
-                id: "room/\(room.id)", kind: .room, text: Self.areaText(area),
-                point: SIMD2(room.labelX, room.labelY), height: DimensionRule.roomHeight, below: .room, polygon: points
+                id: "room/\(room.id)", kind: .room, text: Self.areaText(region.area),
+                point: SIMD2(room.labelX, room.labelY), height: DimensionRule.roomHeight, below: .room, polygon: region.polygon
             )
         }
     }
 
     /// 벽마다 길이 선. 벽의 바깥쪽(방이 없는 쪽)에 나란히 긋는다
-    private func wallLines() -> [DimensionLine] {
+    private func wallLines(cellSides: [String: Set<Double>]) -> [DimensionLine] {
         walls.compactMap { wall in
             guard !wall.isVirtual, let line = line(of: wall), line.length >= DimensionRule.minimumWallLength else { return nil }
-            let side = outwardNormal(of: wall, line: line)
+            let side = outwardNormal(of: wall, line: line, cellSides: cellSides)
             let face = line.leftNormal * (wall.thickness / 2) * side.sign
             return DimensionLine(
                 id: "wall/\(wall.id)", kind: .wall,
@@ -113,10 +116,10 @@ extension PlanData {
     }
 
     /// 창문·문마다 폭을 재는 선. 벽 바로 옆(벽 길이 선보다 안쪽 줄)에 긋는다
-    private func openingLines() -> [DimensionLine] {
+    private func openingLines(cellSides: [String: Set<Double>]) -> [DimensionLine] {
         doorWindows.compactMap { opening in
             guard let wall = wall(id: opening.wallId), !wall.isVirtual, let line = line(of: wall) else { return nil }
-            let side = outwardNormal(of: wall, line: line)
+            let side = outwardNormal(of: wall, line: line, cellSides: cellSides)
             let face = side.vector * (wall.thickness / 2)
             let from = line.point(along: opening.centerAlongWall - opening.width / 2)
             let to = line.point(along: opening.centerAlongWall + opening.width / 2)
@@ -205,11 +208,19 @@ extension PlanData {
         }
     }
 
-    /// 벽에서 방이 없는 쪽을 가리키는 방향. 방이 한쪽에만 있으면 그 반대쪽, 양쪽이나 없으면 벽의 왼쪽.
-    /// 방은 화면에서 시계 방향으로 도므로, 경계가 벽을 시작 → 끝으로 돌면 방은 벽의 오른쪽에 있다
-    private func outwardNormal(of wall: Wall, line: WallLine) -> (vector: SIMD2<Double>, sign: Double) {
-        let roomSides = Set(rooms.flatMap(\.boundary).filter { $0.wallId == wall.id }.map { $0.forward ? -1.0 : 1.0 })
-        let sign = roomSides.count == 1 ? -roomSides.first! : 1.0
+    /// 벽마다, 벽으로 닫힌 칸이 붙어 있는 쪽의 부호. 칸은 화면에서 시계 방향으로 도므로, 벽을 시작 → 끝으로 돌면 칸은 벽의 오른쪽(-1), 끝 → 시작이면 왼쪽(+1)에 있다
+    private func closedCellSides() -> [String: Set<Double>] {
+        var sides: [String: Set<Double>] = [:]
+        for loop in faceLoops() ?? [] where loop.area > WallMoveRules.eps {
+            for edge in loop.edges { sides[edge.wallId, default: []].insert(edge.forward ? -1.0 : 1.0) }
+        }
+        return sides
+    }
+
+    /// 벽에서 닫힌 칸이 없는 쪽을 가리키는 방향. 칸이 한쪽에만 있으면 그 반대쪽, 양쪽이나 없으면 벽의 왼쪽
+    private func outwardNormal(of wall: Wall, line: WallLine, cellSides: [String: Set<Double>]) -> (vector: SIMD2<Double>, sign: Double) {
+        let sides = cellSides[wall.id] ?? []
+        let sign = sides.count == 1 ? -sides.first! : 1.0
         return (line.leftNormal * sign, sign)
     }
 }

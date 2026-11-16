@@ -15,8 +15,10 @@ extension PlanData {
     mutating func retraceRooms(splitsRooms: Bool = false, mergesRooms: Bool = false) -> Bool {
         guard let loops = faceLoops() else { return false }
 
+        // 경계 없이 라벨만 있는 방은 벽과 짝을 맞추지 않고 그대로 둔다
+        let boundedRooms = rooms.filter { !$0.boundary.isEmpty }
         var roomOfSide: [String: String] = [:]
-        for room in rooms { for edge in room.boundary { roomOfSide["\(edge.wallId)/\(edge.forward)"] = room.id } }
+        for room in boundedRooms { for edge in room.boundary { roomOfSide["\(edge.wallId)/\(edge.forward)"] = room.id } }
 
         var loopsOfRoom: [String: [[RoomEdge]]] = [:]
         var mergedRoomIds = Set<String>()
@@ -26,7 +28,7 @@ extension PlanData {
             if area > WallMoveRules.eps {
                 // 방이 아닌 닫힌 고리(이름이 없는 칸)는 그대로 둔다
                 guard names.count <= 1 || mergesRooms else { return false }
-                guard let name = rooms.first(where: { names.contains($0.id) })?.id else { continue }
+                guard let name = boundedRooms.first(where: { names.contains($0.id) })?.id else { continue }
                 mergedRoomIds.formUnion(names.subtracting([name]))
                 loopsOfRoom[name, default: []].append(loop)
             } else {
@@ -35,7 +37,7 @@ extension PlanData {
             }
         }
         // 실패하면 도면을 바꾸지 않아야 하므로, 합쳐져 빠질 방은 끝에서 한 번에 뺀다
-        let keptRooms = rooms.filter { !mergedRoomIds.contains($0.id) }
+        let keptRooms = boundedRooms.filter { !mergedRoomIds.contains($0.id) }
         guard outerCount >= 1, loopsOfRoom.count == keptRooms.count else { return false }
         var boundaries: [String: [RoomEdge]] = [:]
         var newRooms: [Room] = []
@@ -65,7 +67,9 @@ extension PlanData {
             }
             retraced[index].boundary = boundary
         }
-        rooms = retraced + newRooms
+        // 라벨만 있는 방은 원래 자리(순서)에 두고, 합쳐져 빠진 방만 뺀다
+        let retracedById = Dictionary(uniqueKeysWithValues: retraced.map { ($0.id, $0) })
+        rooms = rooms.compactMap { retracedById[$0.id] ?? ($0.boundary.isEmpty ? $0 : nil) } + newRooms
         return true
     }
 
@@ -131,6 +135,12 @@ extension PlanData {
         return polygons
     }
 
+    /// 점을 경계 다각형 안에 품은 방. 이름 자리를 옮길 때만 쓴다 (공간 라벨의 영역은 room(containing:))
+    // TEMP: 방 경계(Room.boundary)를 없애는 커밋에서 이 함수와 이름 자리 옮기기를 함께 지운다
+    private func roomByBoundary(containing point: SIMD2<Double>) -> Room? {
+        rooms.first { Self.polygon(polygon(of: $0), contains: point) }
+    }
+
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
     func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
         polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
@@ -146,7 +156,7 @@ extension PlanData {
             }
             let polygon = polygon(of: rooms[index])
             let label = SIMD2(rooms[index].labelX, rooms[index].labelY)
-            guard room(containing: label)?.id != rooms[index].id,
+            guard roomByBoundary(containing: label)?.id != rooms[index].id,
                   let center = Self.largestCellCenter(polygon, inside: rooms[index].id, of: self) else { continue }
             rooms[index].labelX = center.x
             rooms[index].labelY = center.y
@@ -166,7 +176,7 @@ extension PlanData {
             center += (a + b) * (a.x * b.y - b.x * a.y)
         }
         center /= 6 * area
-        if room(containing: center)?.id == id {
+        if roomByBoundary(containing: center)?.id == id {
             rooms[index].labelX = center.x
             rooms[index].labelY = center.y
         } else {
@@ -211,7 +221,7 @@ extension PlanData {
             for j in ys.indices.dropLast() {
                 let center = SIMD2((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2)
                 let area = (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j])
-                if plan.room(containing: center)?.id == roomId, best == nil || area > best!.area {
+                if plan.roomByBoundary(containing: center)?.id == roomId, best == nil || area > best!.area {
                     best = (center, area)
                 }
             }
@@ -220,34 +230,8 @@ extension PlanData {
     }
 }
 
-// 이름 없는 칸에 공간 이름 달기
-extension PlanData {
-    /// 점 point를 품은, 아직 방(Room)이 없는 닫힌 칸의 경계. 이미 방 안이거나 벽으로 닫힌 칸이 아니면 nil.
-    /// 칸이 겹쳐 있으면(칸 안의 칸) 가장 작은 칸
-    func unlabeledCell(containing point: SIMD2<Double>) -> [RoomEdge]? {
-        guard room(containing: point) == nil, let loops = faceLoops() else { return nil }
-        let takenSides = Set(rooms.flatMap(\.boundary).map { "\($0.wallId)/\($0.forward)" })
-        return loops
-            .filter { loop in
-                loop.area > WallMoveRules.eps
-                    && !loop.edges.contains { takenSides.contains("\($0.wallId)/\($0.forward)") }
-                    && Self.polygon(points(of: loop.edges), contains: point)
-            }
-            .min { $0.area < $1.area }?
-            .edges
-    }
-
-    /// 이름 없는 칸에 공간 이름을 point 자리에 새로 단다. 달았으면 새 방의 id, 달 칸이 없으면 nil
-    mutating func addRoom(at point: SIMD2<Double>) -> String? {
-        guard let boundary = unlabeledCell(containing: point) else { return nil }
-        let id = UUID().uuidString
-        rooms.append(Room(id: id, name: RoomCopy.newRoomName, boundary: boundary, labelX: point.x, labelY: point.y))
-        return id
-    }
-}
-
 // 문구
-private enum RoomCopy {
+enum RoomCopy {
     /// 벽을 그려 새로 생긴 방의 이름. 공간라벨로 고칠 수 있다
     static let newRoomName = "새 공간"
 }

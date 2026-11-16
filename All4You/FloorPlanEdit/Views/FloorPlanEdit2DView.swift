@@ -408,16 +408,9 @@ extension FloorPlanEdit2DView {
         case (nil, _):
             selection = nil
         case (.roomName?, .floor(let point)):
-            if planData.room(containing: point) != nil {
-                // 닫힌 공간 하나에는 라벨 하나만 둘 수 있다. 라벨 자리는 라벨을 끌어 옮긴다
-                showNotice(Copy.roomLabelExists)
-            } else if let newId = planData.addRoom(at: point) {
-                // 이름 없는 닫힌 칸이면 새 공간 이름을 달고 바로 고친다
-                startRoomEditing(newId)
-                selectedTool = nil
-            } else {
-                showNotice(Copy.roomNotClosed)
-            }
+            // 누른 자리에 새 공간 라벨을 달고 바로 이름을 고친다
+            startRoomEditing(planData.addRoom(at: point))
+            selectedTool = nil
         case (.furniture?, .floor(let point)):
             if let furniture = planData.furniture(at: point) {
                 selectOrEditFurniture(furniture.id)
@@ -506,7 +499,7 @@ extension FloorPlanEdit2DView {
         labelEditY = nil
     }
 
-    /// 고른 캡슐을 끄는 동안은 미리 보기 도면에서만 옮긴다. 그 방 밖으로는 나가지 않는다. 고르지 않은 캡슐은 끌리지 않는다
+    /// 고른 캡슐을 끄는 동안은 미리 보기 도면에서만 옮긴다. 어디로든 옮길 수 있다. 고르지 않은 캡슐은 끌리지 않는다
     private func dragRoomLabel(_ roomId: String, translation: CGSize) {
         guard roomId == selectedRoomId, editingRoomId == nil, let screen, let room = planData.rooms.first(where: { $0.id == roomId }) else { return }
         let start = labelDragStart ?? SIMD2(room.labelX, room.labelY)
@@ -518,7 +511,7 @@ extension FloorPlanEdit2DView {
         dragPreview = preview
     }
 
-    /// 고른 공간 이름을 지운다. 벽은 그대로라 그 칸은 이름 없는 칸이 되고, 공간라벨 도구로 다시 달 수 있다
+    /// 고른 공간 이름을 지운다. 벽은 그대로 두고, 공간라벨 도구로 다시 달 수 있다
     private func deleteRoomLabel(_ roomId: String) {
         planData.removeRoom(id: roomId)
         selectedRoomId = nil
@@ -1239,8 +1232,6 @@ extension FloorPlanEdit2DView {
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
-        static let roomLabelExists = "닫힌 공간 하나에는 라벨을 하나만 만들 수 있어요"
-        static let roomNotClosed = "벽으로 닫힌 공간에만 라벨을 만들 수 있어요"
     }
 }
 

@@ -211,17 +211,26 @@ extension PlanData {
         rooms[index].name = trimmed
     }
 
-    /// 방(공간 이름)을 지운다. 둘러싼 벽은 그대로라 이름 없는 칸으로 남고, 공간라벨 도구로 다시 달 수 있다.
+    /// point(도면 좌표, m) 자리에 "새 공간" 라벨을 달고 새 id를 돌려준다. 어디든 달 수 있다.
+    /// 영역(닫힌 칸·바닥)은 저장하지 않고 라벨 자리에서 그때그때 계산한다
+    @discardableResult
+    mutating func addRoom(at point: SIMD2<Double>) -> String {
+        let id = UUID().uuidString
+        rooms.append(Room(id: id, name: RoomCopy.newRoomName, boundary: [], labelX: point.x, labelY: point.y))
+        return id
+    }
+
+    /// 방(공간 이름)을 지운다. 벽은 그대로 둔다.
     /// 그 방에 놓였던 사진·메모는 장소가 없어진다
     mutating func removeRoom(id: String) {
         rooms.removeAll { $0.id == id }
-        // 방이 없어져 주인 없는 가상 경계선이 되었으면 정리한다
+        // TEMP: 가상 경계선을 없애는 커밋에서 이 정리도 함께 지운다
         cleanUpVirtualWalls()
     }
 
-    /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 그 방 안이 아니면 옮기지 않는다
+    /// 방 이름을 보여 줄 자리를 point(도면 좌표, m)로 옮긴다. 어디로든 옮길 수 있다
     mutating func moveRoomLabel(id: String, to point: SIMD2<Double>) {
-        guard room(containing: point)?.id == id, let index = rooms.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = rooms.firstIndex(where: { $0.id == id }) else { return }
         rooms[index].labelX = point.x
         rooms[index].labelY = point.y
     }

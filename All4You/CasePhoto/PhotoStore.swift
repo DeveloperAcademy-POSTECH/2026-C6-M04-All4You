@@ -187,11 +187,12 @@ final class PhotoStore {
     @discardableResult
     func assignUnplacedPhotos(in plan: PlanData) -> Int {
         let roomIDs = Set(plan.rooms.map(\.id))
+        let regions = plan.regions
         var assigned = 0
         for index in allPhotos.indices {
             if let roomKey = allPhotos[index].roomKey, roomIDs.contains(roomKey) { continue }
             guard let placement = allPhotos[index].placement(in: plan),
-                  let room = plan.room(containing: placement.position) else { continue }
+                  let room = plan.room(containing: placement.position, in: regions) else { continue }
             allPhotos[index].roomKey = room.id
             allPhotos[index].record?.roomKey = room.id
             assigned += 1
