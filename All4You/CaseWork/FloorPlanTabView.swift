@@ -54,7 +54,6 @@ struct FloorPlanTabView: View {
     @State private var photoPanelDragOffset: CGFloat = 0
     /// 필터 칩과 전체 수정 완료 버튼이 한 줄에서 실제 차지하는 너비
     @State private var topControlsWidth: CGFloat = 0
-    
     private struct BookmarkEditDraft {
         let id: UUID
         var position: SIMD2<Double>
@@ -69,7 +68,6 @@ struct FloorPlanTabView: View {
             let dividerWidth: CGFloat = 14
             let panelWidth = constrainedPhotoPanelWidth(in: geometry.size.width)
             let canvasWidth = hasPhotoPanel ? max(0, geometry.size.width - panelWidth - dividerWidth) : geometry.size.width
-            
             HStack(spacing: 0) {
                 floorPlanArea
                     .overlay(alignment: .topLeading) {
@@ -116,7 +114,6 @@ struct FloorPlanTabView: View {
                         dimensionPicker
                     }
                     .frame(width: canvasWidth)
-                
                 if hasPhotoPanel {
                     photoPanelDivider(in: geometry.size.width)
                     photoPanelContent
@@ -162,7 +159,6 @@ struct FloorPlanTabView: View {
         }
     }
 }
-
 // 사진 패널의 분할 레이아웃
 extension FloorPlanTabView {
     /// 기존 패널들의 내용은 변경하지 않고 공통 분할 영역에 배치한다.
@@ -215,11 +211,9 @@ extension FloorPlanTabView {
             .transition(.move(edge: .trailing))
         }
     }
-    
     private var hasPhotoPanel: Bool {
         isPlacingPhotos || selectedBookmarkPanelPhoto != nil || selectedRoom != nil
     }
-    
     /// 홈 화면과 동일하게 최소 폭을 지키면서 오른쪽 사진 패널 폭을 계산한다.
     private func panelWidthLimits(in totalWidth: CGFloat) -> (minPanel: CGFloat, maxPanel: CGFloat) {
         let dividerWidth: CGFloat = 14
@@ -233,14 +227,12 @@ extension FloorPlanTabView {
         let maxPanel = max(minPanel, availablePanelWidth)
         return (minPanel, maxPanel)
     }
-    
     private func constrainedPhotoPanelWidth(in totalWidth: CGFloat) -> CGFloat {
         let limits = panelWidthLimits(in: totalWidth)
         // 오른쪽 패널은 구분선을 왼쪽으로 당길수록 넓어진다.
         let proposed = (photoPanelDragStartWidth ?? photoPanelWidth) - photoPanelDragOffset
         return min(max(proposed, limits.minPanel), limits.maxPanel)
     }
-    
     /// 사건 목록 화면의 구분선과 동일한 고정 좌표계 / 드래그 처리.
     private func resizePanelGesture(in totalWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 1, coordinateSpace: .named("photoSplitArea"))
@@ -258,7 +250,6 @@ extension FloorPlanTabView {
                 photoPanelDragOffset = 0
             }
     }
-    
     /// 홈 화면처럼 전체 높이의 선을 별도 오버레이에 그리고,
     /// 실제 드래그 영역은 투명한 14pt로 유지한다. 중앙 캡슐은 표시하지 않는다.
     private func photoPanelDivider(in totalWidth: CGFloat) -> some View {
@@ -269,9 +260,7 @@ extension FloorPlanTabView {
             .gesture(resizePanelGesture(in: totalWidth))
             .accessibilityLabel("사진 패널 크기 조절")
     }
-    
 }
-
 // 서브 뷰
 extension FloorPlanTabView {
     /// 2D는 화면에 맞춰 그리고 두 손가락으로 확대·이동하며, 3D는 돌리고 확대해 볼 수만 있다. 둘 다 고치기는 받지 않는다.
@@ -484,7 +473,6 @@ extension FloorPlanTabView {
         } else {
             guard selectedBookmarkID != id else { return }
         }
-        
         onClearMemoHighlight()
         focusedIgnitionMarkerID = nil
         focusedMemoID = nil
@@ -499,7 +487,6 @@ extension FloorPlanTabView {
             selectedBookmarkID = id
         }
     }
-    
     /// 메모에 연결된 실제 발화지점만 강조하고 다른 패널 선택은 해제
     private func focusIgnitionMarker(_ id: String?) {
         guard let id else {
@@ -511,7 +498,6 @@ extension FloorPlanTabView {
         selectedBookmarkID = nil
         focusedIgnitionMarkerID = id
     }
-    
     private func focusMemo(_ id: FloorPlanMemo.ID?) {
         focusedMemoID = id
         focusedIgnitionMarkerID = nil
@@ -965,8 +951,12 @@ private struct RoomPhotoPanel: View {
                                         .scaledToFill()
                                 }
                                 .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                                        .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+                                }
+                                .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
                                 .modifier(BookmarkPhotoDragModifier(photo: selectedPhoto, onDragStart: onDragStart))
-                            
                             PhotoTakenAtLabel(date: selectedPhoto.takenAt)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.top, 12)
@@ -989,11 +979,9 @@ private struct RoomPhotoPanel: View {
             Text(roomName)
                 .font(AppTypography.title2Emphasized)
                 .lineLimit(1)
-            
             Text(Copy.photoCount(photos.count))
                 .font(AppTypography.subheadline)
                 .lineLimit(1)
-            
                 .padding(.horizontal, Layout.countPadding)
                 .padding(.vertical, Layout.countVerticalPadding)
                 .background(.gray100, in: .capsule)
@@ -1032,10 +1020,11 @@ private struct RoomPhotoPanel: View {
                     }
                 }
                 .overlay {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: Layout.cornerRadius)
-                            .strokeBorder(Color.brand500, lineWidth: Layout.selectedBorderWidth)
-                    }
+                    RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                        .strokeBorder(
+                            isSelected ? Color.brand500 : Color.gray.opacity(0.3),
+                            lineWidth: isSelected ? Layout.selectedBorderWidth : 1
+                        )
                 }
         }
         .buttonStyle(.plain)

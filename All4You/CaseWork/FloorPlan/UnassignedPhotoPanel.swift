@@ -109,6 +109,13 @@ extension UnassignedPhotoPanel {
                         .scaledToFill()
                 }
                 .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: Layout.cornerRadius)
+                        .strokeBorder(
+                            Color.black.opacity(0.12),
+                            lineWidth: 1
+                        )
+                }
         }
         .buttonStyle(.plain)
         .draggablePhoto(photo, onDragStart: onDragStart)
