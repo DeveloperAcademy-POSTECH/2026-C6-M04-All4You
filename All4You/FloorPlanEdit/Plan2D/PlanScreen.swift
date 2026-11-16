@@ -29,8 +29,12 @@ struct PlanScreen: Equatable {
         // 돌린 도면을 감싸는 가로·세로 (m). 돌리지 않았으면 도면 크기 그대로다
         let cosine = abs(cos(angle))
         let sine = abs(sin(angle))
-        let boundsWidth = planSize.x * cosine + planSize.y * sine
-        let boundsHeight = planSize.x * sine + planSize.y * cosine
+        // 배율은 도면이 아주 작아도 최소 minimumFitExtent(m)짜리 도면인 것처럼 정한다.
+        // 가구 하나만 스캔한 도면처럼 작은 도면을 화면에 꽉 차게 키우면, 같은 두께의 벽이 화면에서 지나치게 두꺼워 보이기 때문이다.
+        // 도면 자리는 실제 크기(planSize)로 가운데에 놓는다
+        let fitSize = SIMD2(max(planSize.x, Self.minimumFitExtent), max(planSize.y, Self.minimumFitExtent))
+        let boundsWidth = fitSize.x * cosine + fitSize.y * sine
+        let boundsHeight = fitSize.x * sine + fitSize.y * cosine
         // 화면이 막 생길 때는 가로·세로가 0(드물게 음수)인 크기가 먼저 올 수 있다. 그대로 쓰면 배율이 0이 되어
         // 콘센트 크기(outletSize)가 무한대가 되므로, 1pt 이상으로 맞춰 배율이 늘 0보다 크고 유한하게 한다
         let fitWidth = max(size.width, Self.minimumFitSide)
@@ -43,6 +47,10 @@ struct PlanScreen: Equatable {
         let turnedHalf = Self.turned(halfExtent, by: angle)
         origin = CGPoint(x: fitWidth / 2 - turnedHalf.x, y: fitHeight / 2 - turnedHalf.y)
     }
+
+    /// 처음 맞출 때 도면을 이 크기(m)보다 작은 것으로 보지 않는다. 이보다 작은 도면은 화면에 꽉 차지 않고 작게 보인다
+    // TEMP: 3m는 작은 방 하나가 화면에 맞는 정도로 임시로 정했다. 실기기에서 작은 스캔을 보고 정한다
+    private static let minimumFitExtent = 3.0
 
     /// 도면을 맞출 화면의 가장 작은 가로·세로 (pt)
     private static let minimumFitSide: CGFloat = 1
