@@ -1,6 +1,7 @@
 // 사진 한 장을 크게 보는 화면. 북마크·마크업·삭제를 하고, 옆으로 넘기거나 아래 띠에서 다른 사진을 고른다
 
 import SwiftUI
+import PencilKit
 
 /// 사진 보기를 띄울 때 넘기는 값. 넘겨 볼 사진 묶음(순서대로)과 처음 보여 줄 사진
 struct PhotoViewerContext: Identifiable {
@@ -77,7 +78,9 @@ extension PhotoDetailView {
         TabView(selection: $currentID) {
             ForEach(photos) { photo in
                 ZoomablePhotoView(
-                    image: photo.image,
+                    // 저장된 획이 있다면 합성 JPEG 대신 원본 + PencilKit 획을 표시한다.
+                    image: photo.markupDrawingData == nil ? photo.image : photo.markupBaseImage,
+                    drawingData: photo.markupDrawingData,
                     isSelected: currentID == photo.id
                 )
                 .tag(Optional(photo.id))
@@ -187,18 +190,17 @@ extension PhotoDetailView {
     }
 }
 
-/// 손가락 위치를 기준으로 확대·축소하는 사진 뷰
+/// 원본 사진과 PencilKit 획을 같은 좌표계에 겹쳐 확대·축소한다.
+/// 저장된 합성 JPEG를 확대하는 대신 PKDrawing을 표시해 획의 선명도를 유지한다.
 private struct ZoomablePhotoView: UIViewRepresentable {
     let image: UIImage
+    let drawingData: Data?
     let isSelected: Bool
     
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
     
     func makeUIView(context: Context) -> UIScrollView {
         let scrollView = UIScrollView()
-        
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 5
@@ -207,171 +209,134 @@ private struct ZoomablePhotoView: UIViewRepresentable {
         scrollView.showsVerticalScrollIndicator = false
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.backgroundColor = .clear
-        
-        // 기본 크기에서는 기존 TabView의 페이지 넘기기 유지
+        // 기본 배율에서는 TabView의 사진 넘기기를 허용한다.
         scrollView.panGestureRecognizer.isEnabled = false
         
+        let contentView = UIView()
         let imageView = UIImageView(image: image)
-        imageView.contentMode = .scaleAspectFit
-        imageView.isUserInteractionEnabled = true
+        imageView.contentMode = .scaleToFill
+        imageView.isUserInteractionEnabled = false
+        contentView.addSubview(imageView)
         
-        scrollView.addSubview(imageView)
+        let drawingView = PKCanvasView()
+        drawingView.backgroundColor = .clear
+        drawingView.isOpaque = false
+        drawingView.isScrollEnabled = false
+        drawingView.isUserInteractionEnabled = false
+        drawingView.drawing = drawingData.flatMap { try? PKDrawing(data: $0) } ?? PKDrawing()
+        contentView.addSubview(drawingView)
+        scrollView.addSubview(contentView)
         
-        context.coordinator.imageView = imageView
-        context.coordinator.currentImage = image
-        context.coordinator.isSelected = isSelected
+        let coordinator = context.coordinator
+        coordinator.contentView = contentView
+        coordinator.imageView = imageView
+        coordinator.drawingView = drawingView
+        coordinator.currentImage = image
+        coordinator.currentDrawingData = drawingData
+        coordinator.isSelected = isSelected
         
-        // 더블 탭 위치를 기준으로 확대
         let doubleTap = UITapGestureRecognizer(
-            target: context.coordinator,
+            target: coordinator,
             action: #selector(Coordinator.handleDoubleTap(_:))
         )
         doubleTap.numberOfTapsRequired = 2
-        
         scrollView.addGestureRecognizer(doubleTap)
-        
         return scrollView
     }
     
-    func updateUIView(
-        _ scrollView: UIScrollView,
-        context: Context
-    ) {
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
         let coordinator = context.coordinator
-        
-        if coordinator.currentImage !== image {
+        if coordinator.currentImage !== image || coordinator.currentDrawingData != drawingData {
             coordinator.currentImage = image
+            coordinator.currentDrawingData = drawingData
             coordinator.imageView?.image = image
+            coordinator.drawingView?.drawing = drawingData.flatMap {
+                try? PKDrawing(data: $0)
+            } ?? PKDrawing()
             coordinator.previousSize = .zero
             scrollView.setZoomScale(1, animated: false)
         }
         
         if coordinator.isSelected != isSelected {
             coordinator.isSelected = isSelected
-            
             if !isSelected {
                 scrollView.setZoomScale(1, animated: false)
-                coordinator.centerImage(in: scrollView)
+                coordinator.centerContent(in: scrollView)
             }
         }
         
-        // 화면 크기가 정해진 뒤 사진 배치
         DispatchQueue.main.async { [weak scrollView] in
             guard let scrollView else { return }
-            coordinator.layoutImage(in: scrollView)
+            coordinator.layoutContent(in: scrollView)
         }
     }
     
     final class Coordinator: NSObject, UIScrollViewDelegate {
+        weak var contentView: UIView?
         weak var imageView: UIImageView?
-        
+        weak var drawingView: PKCanvasView?
         var currentImage: UIImage?
+        var currentDrawingData: Data?
         var isSelected = false
         var previousSize: CGSize = .zero
         
-        func viewForZooming(
-            in scrollView: UIScrollView
-        ) -> UIView? {
-            imageView
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { contentView }
+        
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            centerContent(in: scrollView)
+            scrollView.panGestureRecognizer.isEnabled = scrollView.zoomScale > 1.01
         }
         
-        func scrollViewDidZoom(
-            _ scrollView: UIScrollView
-        ) {
-            centerImage(in: scrollView)
-            
-            // 확대된 경우에만 사진 드래그 허용
-            scrollView.panGestureRecognizer.isEnabled =
-            scrollView.zoomScale > 1.01
-        }
-        
-        func layoutImage(in scrollView: UIScrollView) {
+        func layoutContent(in scrollView: UIScrollView) {
             let size = scrollView.bounds.size
-            
-            guard size.width > 0,
-                  size.height > 0,
-                  let imageView,
+            guard size.width > 0, size.height > 0,
                   let image = currentImage,
-                  image.size.width > 0,
-                  image.size.height > 0
-            else { return }
-            
+                  let contentView, let imageView, let drawingView,
+                  image.size.width > 0, image.size.height > 0 else { return }
             guard previousSize != size else { return }
-            
             previousSize = size
             
-            let ratio = min(
-                size.width / image.size.width,
-                size.height / image.size.height
-            )
-            
+            let ratio = min(size.width / image.size.width, size.height / image.size.height)
             let fittedSize = CGSize(
                 width: image.size.width * ratio,
                 height: image.size.height * ratio
             )
-            
             scrollView.setZoomScale(1, animated: false)
-            
-            imageView.frame = CGRect(
-                origin: .zero,
-                size: fittedSize
-            )
-            
+            contentView.frame = CGRect(origin: .zero, size: fittedSize)
+            imageView.frame = contentView.bounds
+            drawingView.frame = contentView.bounds
             scrollView.contentSize = fittedSize
-            
-            centerImage(in: scrollView)
+            centerContent(in: scrollView)
         }
         
-        func centerImage(in scrollView: UIScrollView) {
-            guard let imageView else { return }
-            
-            let bounds = scrollView.bounds.size
-            
-            let offsetX = max(
-                (bounds.width - scrollView.contentSize.width) / 2,
-                0
-            )
-            
-            let offsetY = max(
-                (bounds.height - scrollView.contentSize.height) / 2,
-                0
-            )
-            
-            imageView.center = CGPoint(
-                x: scrollView.contentSize.width / 2 + offsetX,
-                y: scrollView.contentSize.height / 2 + offsetY
-            )
+        func centerContent(in scrollView: UIScrollView) {
+            guard let contentView else { return }
+            let size = scrollView.bounds.size
+            var frame = contentView.frame
+            frame.origin.x = max((size.width - frame.width) / 2, 0)
+            frame.origin.y = max((size.height - frame.height) / 2, 0)
+            contentView.frame = frame
         }
         
-        @objc func handleDoubleTap(
-            _ gesture: UITapGestureRecognizer
-        ) {
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
             guard let scrollView = gesture.view as? UIScrollView,
-                  let imageView else { return }
-            
-            if scrollView.zoomScale > 1 {
+                  let contentView else { return }
+            if scrollView.zoomScale > 1.01 {
                 scrollView.setZoomScale(1, animated: true)
                 return
             }
-            
-            let point = gesture.location(in: imageView)
+            let point = gesture.location(in: contentView)
             let targetScale: CGFloat = 2
-            
             let zoomRect = CGRect(
-                x: point.x - imageView.bounds.width / (targetScale * 2),
-                y: point.y - imageView.bounds.height / (targetScale * 2),
-                width: imageView.bounds.width / targetScale,
-                height: imageView.bounds.height / targetScale
+                x: point.x - scrollView.bounds.width / (2 * targetScale),
+                y: point.y - scrollView.bounds.height / (2 * targetScale),
+                width: scrollView.bounds.width / targetScale,
+                height: scrollView.bounds.height / targetScale
             )
-            
-            scrollView.zoom(
-                to: zoomRect,
-                animated: true
-            )
+            scrollView.zoom(to: zoomRect, animated: true)
         }
     }
 }
-
 
 
 // 삭제
