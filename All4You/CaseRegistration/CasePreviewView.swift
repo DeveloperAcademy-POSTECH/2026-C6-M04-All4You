@@ -90,8 +90,9 @@ extension CasePreviewView {
     /// 사건에 저장된 도면을 2D 미리보기로 표시
     @ViewBuilder
     private var floorPlan: some View {
+        // 벽이 없어도 바닥이나 가구가 있으면 도면이므로 꼭짓점이 아니라 쓸 수 있는 도면인지로 본다
         if let planData = fireCase.floorPlan?.loadPlanData(),
-           !planData.vertices.isEmpty {
+           planData.isUsable {
 
             GeometryReader { geometry in
                 // 도면과 북마크 핀이 같은 화면 자리를 쓰도록 screen을 하나 만들어 함께 넘긴다
