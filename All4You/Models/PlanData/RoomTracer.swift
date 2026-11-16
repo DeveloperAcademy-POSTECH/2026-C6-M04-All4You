@@ -1,4 +1,4 @@
-// 벽 연결에서 닫힌 칸(면 따라 돌기)을 찾는다. 공간 스캔 변환이 방 이름 자리를 정할 때 쓰는 계산도 함께 있다
+// 벽 연결에서 닫힌 칸(면 따라 돌기)을 찾는다
 //
 // 면 따라 돌기: 벽 하나를 방향이 반대인 두 "면"으로 본다. 면을 따라가다 꼭짓점에 닿으면 가장 오른쪽으로 꺾는다.
 // 이렇게 돌면 닫힌 칸은 화면에서 시계 방향(넓이 +)으로, 건물 바깥은 반시계 방향(넓이 −)으로 한 바퀴 돈다.
@@ -48,39 +48,9 @@ extension PlanData {
         return loops
     }
 
-    /// 점을 경계 다각형 안에 품은 방. 이름 자리를 옮길 때만 쓴다 (공간 라벨의 영역은 room(containing:))
-    // TEMP: 방 경계(Room.boundary)를 없애는 커밋에서 이 함수와 이름 자리 옮기기를 함께 지운다
-    private func roomByBoundary(containing point: SIMD2<Double>) -> Room? {
-        rooms.first { Self.polygon(polygon(of: $0), contains: point) }
-    }
-
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
     func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
         polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
-    }
-
-    /// 방 이름 자리를 방 넓이의 무게중심으로 옮긴다. 무게중심이 방 밖이면(ㄷ자 방 등) 방 안 가장 넓은 칸 가운데로
-    mutating func centerRoomLabel(id: String) {
-        guard let index = rooms.firstIndex(where: { $0.id == id }) else { return }
-        let points = polygon(of: rooms[index])
-        let area = Self.signedArea(points)
-        guard abs(area) > WallMoveRules.eps else { return }
-        var center = SIMD2<Double>(0, 0)
-        for i in points.indices {
-            let a = points[i]
-            let b = points[(i + 1) % points.count]
-            center += (a + b) * (a.x * b.y - b.x * a.y)
-        }
-        center /= 6 * area
-        if roomByBoundary(containing: center)?.id == id {
-            rooms[index].labelX = center.x
-            rooms[index].labelY = center.y
-        } else {
-            // 가장 넓은 칸도 못 찾으면(세모 방 등) 무게중심에라도 둔다. 이름 자리가 비어 화면 밖에 그려지지 않게
-            let spot = Self.largestCellCenter(points, inside: id, of: self) ?? center
-            rooms[index].labelX = spot.x
-            rooms[index].labelY = spot.y
-        }
     }
 
     /// 화면 시계 방향이면 양수인 다각형 넓이
@@ -107,22 +77,6 @@ extension PlanData {
             if dangling.isEmpty { return remaining }
             for wall in dangling { remaining.remove(wall.id) }
         }
-    }
-
-    private static func largestCellCenter(_ polygon: [SIMD2<Double>], inside roomId: String, of plan: PlanData) -> SIMD2<Double>? {
-        let xs = Array(Set(polygon.map(\.x))).sorted()
-        let ys = Array(Set(polygon.map(\.y))).sorted()
-        var best: (point: SIMD2<Double>, area: Double)?
-        for i in xs.indices.dropLast() {
-            for j in ys.indices.dropLast() {
-                let center = SIMD2((xs[i] + xs[i + 1]) / 2, (ys[j] + ys[j + 1]) / 2)
-                let area = (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j])
-                if plan.roomByBoundary(containing: center)?.id == roomId, best == nil || area > best!.area {
-                    best = (center, area)
-                }
-            }
-        }
-        return best?.point
     }
 }
 

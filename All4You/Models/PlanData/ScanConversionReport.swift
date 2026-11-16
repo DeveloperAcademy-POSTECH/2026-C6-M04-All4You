@@ -62,7 +62,7 @@ struct ScanConversionReport: Equatable {
 
     /// 원본 면·물체 개수
     var sourceCounts: [Kind: Int] = [:]
-    /// 도면에 나온 개수 (벽은 가상 경계선을 뺀 개수)
+    /// 도면에 나온 개수
     var planCounts: [Kind: Int] = [:]
     var omissions: [Omission] = []
     /// 벽 끝점이 원본에서 움직인 가장 먼 거리 (m). 4° 직각 맞춤·바깥 밀기·모서리 잇기·꼭짓점 합치기를 모두 합친 값
