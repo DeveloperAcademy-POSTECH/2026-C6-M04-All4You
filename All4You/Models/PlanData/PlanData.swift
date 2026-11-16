@@ -15,6 +15,9 @@ struct PlanData: Codable, Hashable {
     var markers: [PlanMarker]
     /// 가구. 이 칸이 생기기 전에 저장한 도면도 그대로 읽히게 옵셔널
     var furniture: [Furniture]? = nil
+    /// 스캔한 바닥. 벽과 별개로 저장해 항상 그린다. 스캔이 아닌 도면은 nil, 이 칸이 생기기 전에 저장한 도면도 읽히게 옵셔널
+    // TEMP: ERD에 없는 값이라 PlanData에 먼저 둠 — ERD 반영 때 이름·자리가 바뀔 수 있음
+    var floors: [Floor]? = nil
     /// 공간 스캔 월드 좌표 → 도면 좌표 변환 (바닥 높이 포함). 스캔으로 만든 도면만 있다.
     /// 스캔·AR 촬영 사진의 카메라 자세를 도면 위치·방향으로 바꿀 때 쓴다
     var scanAlignment: ScanAlignment? = nil

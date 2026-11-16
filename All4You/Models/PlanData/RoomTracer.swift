@@ -132,7 +132,7 @@ extension PlanData {
     }
 
     /// 방 경계 벽들을 도는 방향 쪽 시작점으로 바꾼 점들
-    private func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
+    func points(of boundary: [RoomEdge]) -> [SIMD2<Double>] {
         polygon(of: Room(id: "", name: "", boundary: boundary, labelX: 0, labelY: 0))
     }
 
