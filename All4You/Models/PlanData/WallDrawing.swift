@@ -1,25 +1,23 @@
 // 펜으로 새 벽을 그리고 지우개로 벽을 지우는 계산
 //
 // 그리기: 그은 직선 한 줄. 양 끝을 각각 가까우면 붙고 멀면 그은 자리에서 끝난다 (꼭짓점 → 벽 → 조금 늘여 닿는 벽 → 떠 있는 끝).
+//   떠 있는 끝 = 다른 벽과 이어지지 않고 그은 자리에서 끝나는 벽 끝
 // 벽에 붙을 때는 그 벽을 둘로 나눠 붙인다. 거의 가로·세로면 가로·세로로 맞춘다.
-// 그리기는 거절하지 않는다. 다른 벽을 가로지르면 만나는 자리에서 나누고, 이미 벽이 있는 자리는 기존 벽을 남기고 겹치지 않는 부분만 벽으로 넣는다 (WallEditOutcome.swift)
+// 그리기는 거절하지 않는다. 다른 벽을 가로지르면 만나는 자리에서 나누고, 이미 벽이 있는 자리는 기존 벽을 남기고 겹치지 않는 부분만 벽으로 넣는다 (규칙은 WallEditOutcome.swift 맨 위 설명)
 // 지우기: 벽과 거기 달린 창문·문·콘센트를 뺀다
 
 import Foundation
 
 /// 새 벽 그리기 규칙
 enum WallDrawingRules {
+    // TEMP: 아래 네 값은 임시로 정함. 맞춤 각도와 늘여 붙는 거리는 실기기에서 그려 보고, 벽 두께·높이는 팀 논의 후 정한다
     /// 이 각도(도)보다 덜 기울었으면 가로·세로로 맞춘다
-    // TEMP: 맞춤 각도는 실기기에서 그려 보고 정함
     static let straightenAngle = 2.0
     /// 끝점에서 그은 방향으로 이만큼(m) 안쪽만 늘이면 벽에 닿을 때 늘여서 붙인다
-    // TEMP: 늘여 붙는 거리는 실기기에서 그려 보고 정함
     static let extendDistance = 0.5
     /// 도면에 벽이 하나도 없을 때 그리는 벽의 두께 (m). 스캔 변환이 주는 두께와 같다
-    // TEMP: 벽 두께는 팀 논의 후 정함
     static let defaultThickness = 0.15
     /// 도면에 벽이 하나도 없을 때 그리는 벽의 높이 (m)
-    // TEMP: 벽 높이는 팀 논의 후 정함
     static let defaultHeight = 2.4
 }
 
@@ -237,8 +235,13 @@ extension PlanData {
         return anchor + direction * t
     }
 
-    /// 그은 선의 한쪽 끝 point가 붙을 자리. 앞 조건이 맞으면 거기서 멈춘다:
-    /// ① snapRadius 안의 꼭짓점 (떠 있는 벽 끝도 포함) → ② 스캔 바닥 꼭짓점 → ③ snapRadius 안의 벽 → ④ 스캔 바닥 테두리 → ⑤ outward 방향으로 extendDistance 안쪽만 늘이면 닿는 벽·꼭짓점 → ⑥ 그은 자리의 떠 있는 끝
+    /// 그은 선의 한쪽 끝 point가 붙을 자리. 아래 순서로 보고, 앞 조건이 맞으면 거기서 멈춘다.
+    /// ① snapRadius 안의 꼭짓점 (떠 있는 벽 끝도 포함)
+    /// ② snapRadius 안의 스캔 바닥 꼭짓점 (바닥은 나누거나 바꾸지 않고 좌표만 빌린다)
+    /// ③ snapRadius 안의 벽
+    /// ④ snapRadius 안의 스캔 바닥 테두리 (좌표만 빌린다)
+    /// ⑤ outward 방향으로 extendDistance 안쪽만 늘이면 닿는 벽·꼭짓점
+    /// ⑥ 어디에도 안 닿으면 그은 자리에서 끝나는 떠 있는 끝
     func wallEnd(near point: SIMD2<Double>, outward: SIMD2<Double>, snapRadius: Double) -> WallEnd {
         let pos = vertexPoints
         let usedVertices = Set(walls.flatMap { [$0.startVertex, $0.endVertex] })

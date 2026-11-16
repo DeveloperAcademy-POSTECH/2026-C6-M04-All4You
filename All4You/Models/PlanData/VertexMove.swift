@@ -1,7 +1,7 @@
 // 꼭짓점 하나를 끌어 옮기는 계산. 꼭짓점에 붙은 벽이 함께 늘고 줄며, 벽이 가로·세로가 되는 자리 근처에서는 딱 붙는다.
-// 곧은 벽 중간에 있는 꼭짓점(T자로 붙은 자리 등)은 그 벽의 선을 따라서만 미끄러지고, 떠 있는 벽 끝은 놓은 자리 가까이 다른 벽·꼭짓점이 있으면 붙는다.
-// 거절하지 않는다. 벽 길이가 어떻게 되든 달린 창문·문·콘센트를 맞추고(fitOpenings), 다른 벽을 가로지르면 만나는 자리에서 나누고,
-// 겹친 벽은 하나로 합친다 (WallEditOutcome.swift). 길이가 0이 된 벽은 지우고 두 꼭짓점을 합친다
+// 곧은 벽 중간에 있는 꼭짓점(T자로 붙은 자리 등)은 그 벽의 선을 따라서만 미끄러지고, 다른 벽과 이어지지 않은 벽 끝(떠 있는 끝)은 놓은 자리 가까이 다른 벽·꼭짓점이 있으면 붙는다.
+// 거절하지 않는다. 벽 길이가 어떻게 되든 벽에 달린 창문·문·콘센트를 맞추고, 다른 벽을 가로지르면 만나는 자리에서 나누고,
+// 겹친 벽은 하나로 합친다 (규칙은 WallEditOutcome.swift 맨 위 설명). 길이가 0이 된 벽은 지우고 두 꼭짓점을 합친다
 
 import Foundation
 
@@ -13,7 +13,7 @@ enum VertexMoveRules {
 }
 
 extension PlanData {
-    /// 꼭짓점 vertexId를 도면 점 target(m)으로 옮긴 새 도면과 자동으로 지운 것. snapRadius(m) 안에서는 축 자석(가로·세로)과 떠 있는 끝 붙이기가 맞춰 준다.
+    /// 꼭짓점 vertexId를 도면 점 target(m)으로 옮긴 새 도면과 자동으로 지운 것. snapRadius(m) 안에서는 가로·세로로 딱 붙이기(축 자석)와 떠 있는 끝 붙이기가 맞춰 준다.
     /// 꼭짓점을 찾지 못하면 도면을 바꾸지 않고 돌려준다
     func movingVertex(_ vertexId: String, to target: SIMD2<Double>, snapRadius: Double) -> WallEditOutcome {
         guard vertexPoints[vertexId] != nil else { return WallEditOutcome(plan: self) }
@@ -124,7 +124,7 @@ extension PlanData {
         guard let index = vertices.firstIndex(where: { $0.id == vertexId }) else { return WallEditOutcome(plan: self, removed: removed) }
         let originalVertices = Set(vertices.map(\.id))
         var touched = Set(walls.filter { $0.startVertex == vertexId || $0.endVertex == vertexId }.map(\.id))
-        // 달린 것은 도면 위 제자리를 지키도록 옮기기 전 자리를 잡아 둔다
+        // 벽에 달린 창문·문·콘센트가 원래 있던 자리에 남도록, 옮기기 전 도면 위 자리를 잡아 둔다
         let placesBefore = attachedPlaces(onWalls: touched)
         vertices[index].x = position.x
         vertices[index].y = position.y
@@ -133,7 +133,7 @@ extension PlanData {
         touched = touched.filter { wall(id: $0) != nil }
         fitOpenings(onWalls: touched, placesBefore: placesBefore, removed: &removed)
         splitCrossings(of: touched, removed: &removed)
-        // 같은 두 꼭짓점을 잇게 된 벽은 하나로 합치고, 달린 것을 받은 벽을 다시 맞춘다
+        // 같은 두 꼭짓점을 잇게 된 벽은 하나로 합치고, 지워진 벽에서 달린 것을 받은 벽을 다시 맞춘다
         let receivers = mergeOverlappingWalls(favoring: touched)
         fitOpenings(onWalls: receivers, placesBefore: [:], removed: &removed)
         removeUnusedVertices(keeping: originalVertices)

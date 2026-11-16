@@ -1,7 +1,8 @@
 // 스캔한 바닥 하나. 벽과 별개로 저장해, 벽을 고치거나 없어도 바닥은 그대로 남는다
 
+// TEMP: Floor·FloorCorner는 ERD에 없는 값이라 PlanData에 먼저 둠 — ERD 반영 때 이름·자리가 바뀔 수 있음
+
 /// 스캔한 바닥 하나. 꼭짓점을 벽과 함께 쓰지 않아, 벽을 고쳐도 바닥은 그대로다
-// TEMP: ERD에 없는 값 — ERD 반영 때 이름·자리가 바뀔 수 있음
 struct Floor: Codable, Hashable, Identifiable {
     let id: String
     /// 바닥 둘레를 돌아가는 순서의 꼭짓점. 3개 이상
@@ -9,7 +10,6 @@ struct Floor: Codable, Hashable, Identifiable {
 }
 
 /// 바닥 꼭짓점 하나. 도면 좌표 (m)
-// TEMP: ERD에 없는 값 — ERD 반영 때 이름·자리가 바뀔 수 있음
 struct FloorCorner: Codable, Hashable {
     var x: Double
     var y: Double
@@ -34,8 +34,10 @@ extension Floor {
         return best
     }
 
-    /// 귀 자르기로 나눈 삼각형의 꼭짓점 번호들 (세 개씩 한 삼각형, corners의 번호). 오목한 다각형도 나눈다.
-    /// 3개 미만이거나 넓이가 없으면 빈 배열이고, 어긋난 모양(스스로 겹침)이라 귀를 못 찾으면 남은 꼭짓점을 부채꼴로 잇는다
+    /// 바닥을 삼각형으로 나눈 결과. 3D는 삼각형으로만 면을 그릴 수 있어서 필요하다. 세 개씩 한 삼각형이고, 값은 corners의 번호다.
+    /// 귀 자르기(ear clipping)로 나눠서 ㄱ자·ㄷ자 같은 오목한 모양도 맞게 나뉜다.
+    /// 귀 자르기: 볼록한 꼭짓점 하나와 이웃한 두 꼭짓점으로 삼각형을 만들었을 때 그 안에 다른 꼭짓점이 없으면 그 삼각형을 떼어 내고, 남은 모양에 같은 일을 되풀이한다.
+    /// 꼭짓점이 3개 미만이거나 넓이가 없으면 빈 배열이다. 모양이 스스로 겹쳐 귀를 못 찾으면 남은 꼭짓점을 부채꼴로 잇는다
     var triangleIndices: [UInt32] {
         let points = self.points
         guard points.count >= 3, abs(PlanData.signedArea(points)) > WallMoveRules.eps else { return [] }

@@ -1,10 +1,15 @@
-// 벽 편집(펜·꼭짓점 손잡이)이 거절하지 않고 스스로 처리하는 규칙 모음
+// 벽 편집이 사용자의 동작을 거절하지 않고 스스로 처리하는 규칙 모음.
+// 펜으로 벽 그리기, 꼭짓점 손잡이 끌기, 가로·세로 벽 옮기기, 비스듬한 벽 옮기기가 모두 이 규칙을 쓴다.
 //
-// 수정 화면은 사용자의 동작을 거절하지 않는다. 대신 데이터가 성립하도록 아래를 자동으로 한다.
-// - 달린 것 맞추기: 벽 길이가 바뀌면 그 벽의 창문·문·콘센트를 제자리 → 밀기 → 폭 줄이기 → 지우기 순으로 맞춘다
-// - 가로지르면 나누기: 벽이 다른 벽을 가로지르거나 닿으면 만나는 자리에 꼭짓점을 만들어 양쪽 벽을 나눈다
-// - 겹친 벽 합치기: 같은 두 꼭짓점을 잇는 벽이 둘이면 하나만 남기고 달린 것은 남는 벽으로 옮긴다
-// 지워진 것은 WallEditOutcome.removed에 담아, 손을 뗀 뒤 안내한다
+// 용어
+// - 꼭짓점: 벽의 양 끝점 (Vertex). 벽은 꼭짓점 두 개를 이은 선이다
+// - 달린 것: 벽에 달린 창문·문·개구부(DoorWindow)와 콘센트(WallFixture)
+//
+// 벽을 고치면 도면이 어긋날 수 있다. 막지 않고 아래를 자동으로 해서 도면이 맞게 한다.
+// 1) 달린 것 맞추기(fitOpenings): 벽 길이가 바뀌면 그 벽의 창문·문을 원래 자리 → 벽 안으로 밀기 → 폭 줄이기 → 지우기 순으로 맞춘다
+// 2) 가로지르면 나누기(splitCrossings): 벽이 다른 벽을 가로지르거나 닿으면 만나는 자리에 꼭짓점을 만들어 양쪽 벽을 나눈다
+// 3) 겹친 벽 합치기(mergeOverlappingWalls): 같은 두 꼭짓점을 잇는 벽이 둘이면 하나만 남기고, 달린 것은 남는 벽으로 옮긴다
+// 자동으로 지운 것은 WallEditOutcome.removed에 담아 두고, 손을 뗀 뒤 "창문 1개가 지워졌어요"처럼 안내한다
 
 import Foundation
 
@@ -18,7 +23,9 @@ enum RemovedItem: Hashable {
 
 /// 벽 편집의 결과. 편집은 거절하지 않으므로 바뀐 도면과, 자동으로 지운 것을 함께 돌려준다
 struct WallEditOutcome {
+    /// 편집을 반영한 도면. 편집할 것이 없었으면 원래 도면 그대로다
     var plan: PlanData
+    /// 편집하면서 자동으로 지운 창문·문·콘센트
     var removed: [RemovedItem] = []
 
     /// 지워진 것이 있으면 손을 뗀 뒤 띄울 안내 글자
@@ -44,9 +51,10 @@ extension DoorWindowKind {
     }
 }
 
-// 달린 것 맞추기
+// 1) 달린 것 맞추기
 extension PlanData {
-    /// 벽에 달린 창문·문·콘센트의 도면 위 자리. 벽을 고치기 전에 잡아 두고, 고친 뒤 fitOpenings에 넘긴다
+    /// 벽에 달린 창문·문·콘센트가 도면 위 어디에 있는지 (id → 도면 좌표). 벽을 고치기 전에 잡아 두고, 고친 뒤 fitOpenings에 넘긴다.
+    /// 벽 길이가 바뀌어도 달린 것이 원래 있던 자리에 남게 하려는 것이다
     func attachedPlaces(onWalls wallIds: Set<String>) -> [String: SIMD2<Double>] {
         var places: [String: SIMD2<Double>] = [:]
         for opening in doorWindows where wallIds.contains(opening.wallId) {
@@ -60,9 +68,12 @@ extension PlanData {
         return places
     }
 
-    /// 벽 길이·방향이 바뀐 뒤 그 벽의 창문·문·콘센트를 맞춘다.
-    /// ① 도면 위 제자리(placesBefore)를 지킨다 → ② 벽 끝에 걸리면 벽 안으로 민다 → ③ 그래도 안 들어가면 폭을 줄인다(0.2m까지) → ④ 그래도 안 되면 지우고 removed에 적는다.
-    /// 콘센트는 벽 안으로 미는 것뿐이다 (벽 길이가 0이 아니면 항상 들어간다). placesBefore에 없는 것은 지금 자리를 쓴다
+    /// 벽 길이·방향이 바뀐 뒤 그 벽의 창문·문·콘센트를 맞춘다. 순서는 다음과 같다.
+    /// ① 원래 있던 도면 위 자리(placesBefore)에 그대로 둔다
+    /// ② 벽 끝에 걸리면 벽 안쪽으로 민다 (벽 끝·서로 사이에 openingMargin 여백을 둔다)
+    /// ③ 그래도 안 들어가면 폭을 같은 비율로 줄인다 (가장 좁은 폭은 minimumWindowSize)
+    /// ④ 줄여도 안 되면 가장 좁은 것부터 지우고 removed에 적는다
+    /// 콘센트는 폭이 없어 ②만 한다 (벽 길이가 0이 아니면 항상 들어간다). placesBefore에 없는 것은 지금 자리를 쓴다
     mutating func fitOpenings(onWalls wallIds: Set<String>, placesBefore: [String: SIMD2<Double>], removed: inout [RemovedItem]) {
         let eps = WallMoveRules.eps
         let margin = WallMoveRules.openingMargin
@@ -82,7 +93,8 @@ extension PlanData {
                 .sorted { $0.along < $1.along }
             var widths = items.map { doorWindows[$0.index].width }
             var goneIds: [String] = []
-            // 모두 들어갈 만큼 벽이 길지 않으면 폭을 같은 비율로 줄이고, 줄여도 안 되면 가장 좁은 것부터 지운다
+            // 벽 길이 ≥ 모든 폭의 합 + 여백들(양 끝과 사이사이)이어야 다 들어간다. 모자라면 폭을 같은 비율로 줄이고,
+            // 줄여도 가장 좁은 폭(minimumWindowSize)보다 좁아지면 가장 좁은 것 하나를 지우고 다시 따져 본다
             while !items.isEmpty {
                 let slots = Double(items.count + 1)
                 if widths.reduce(0, +) + margin * slots <= line.length + eps { break }
@@ -96,16 +108,19 @@ extension PlanData {
                 items.remove(at: narrowest)
                 widths.remove(at: narrowest)
             }
+            // starts[k]는 k번째 창문·문의 시작 위치 (벽 시작점에서 잰 거리). 원래 자리에서 시작해 두 번 훑어 서로·벽 끝에서 여백만큼 떨어지게 민다
             var starts = items.indices.map { items[$0].along - widths[$0] / 2 }
-            var floor = margin
+            // 앞에서 뒤로: 앞 벽 끝이나 앞 창문과 겹치면 뒤로 민다
+            var earliestStart = margin
             for k in starts.indices {
-                starts[k] = max(starts[k], floor)
-                floor = starts[k] + widths[k] + margin
+                starts[k] = max(starts[k], earliestStart)
+                earliestStart = starts[k] + widths[k] + margin
             }
-            var ceiling = line.length - margin
+            // 뒤에서 앞으로: 뒤 벽 끝을 넘으면 앞으로 민다
+            var latestEnd = line.length - margin
             for k in starts.indices.reversed() {
-                starts[k] = min(starts[k], ceiling - widths[k])
-                ceiling = starts[k] - margin
+                starts[k] = min(starts[k], latestEnd - widths[k])
+                latestEnd = starts[k] - margin
             }
             for k in items.indices {
                 doorWindows[items[k].index].width = widths[k]
@@ -131,9 +146,10 @@ extension PlanData {
     }
 }
 
-// 가로지르면 나누기
+// 2) 가로지르면 나누기
 extension PlanData {
-    /// 벽을 at(벽 시작에서 거리, m)에서 나눌 때 그 자리에 걸린 문을 옆으로 민다. 앞쪽·뒤쪽 가까운 쪽부터 보고, 어느 쪽에도 안 들어가면 지우고 removed에 적는다
+    /// 벽을 at(벽 시작점에서 거리, m)에서 나눌 때 그 자리에 걸린 문을 나눈 자리 옆으로 민다. 더 가까운 쪽부터 보고, 어느 쪽에도 안 들어가면 지우고 removed에 적는다.
+    /// (창문은 나눈 자리에서 두 조각으로 나뉘지만, 문은 둘로 나눌 수 없어서 밀어낸다)
     mutating func pushDoors(offSplitAt at: Double, onWall wallId: String, length: Double, removed: inout [RemovedItem]) {
         let eps = WallMoveRules.eps
         let margin = WallMoveRules.openingMargin
@@ -212,10 +228,10 @@ extension PlanData {
     }
 }
 
-// 겹친 벽 합치기
+// 3) 겹친 벽 합치기
 extension PlanData {
-    /// 같은 두 꼭짓점을 잇는 벽이 둘 이상이면 하나만 남긴다. 편집하지 않은 벽(touched 밖)을 남기고, 지우는 벽에 달린 것은 남는 벽으로 옮긴다.
-    /// 달린 것을 받은 벽 id들을 돌려준다 (이어서 fitOpenings로 맞춘다)
+    /// 같은 두 꼭짓점을 잇는 벽이 둘 이상이면 하나만 남긴다. 이번에 편집한 벽(touched)이 아닌 원래 벽을 남기고, 지우는 벽에 달린 것은 남는 벽으로 옮긴다.
+    /// 달린 것을 받은 벽의 id들을 돌려준다 (이어서 fitOpenings로 맞춘다)
     mutating func mergeOverlappingWalls(favoring touched: Set<String>) -> Set<String> {
         var receivers = Set<String>()
         var keptByPair: [Set<String>: String] = [:]

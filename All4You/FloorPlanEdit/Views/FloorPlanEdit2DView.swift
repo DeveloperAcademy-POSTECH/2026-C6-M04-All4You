@@ -82,8 +82,8 @@ struct FloorPlanEdit2DView: View {
     @State private var wallSelection: WallSelection?
     /// 벽을 끌기 시작할 때의 도면. 끄는 내내 이 도면에 이동량을 더해 계산한다
     @State private var wallDragBase: PlanData?
-    /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
-    @State private var wallBlockedReason: String?
+    /// 도면 위쪽 캡슐에 띄우는 안내 문구 (자동으로 지운 것 알림, 도구 사용법 안내 등). nil이면 캡슐이 없다. showNotice가 잠깐 띄우고 스스로 내린다
+    @State private var noticeText: String?
     /// 꼭짓점·벽을 끄는 동안의 미리 보기에서 자동으로 지워진 것의 안내. 손을 떼면 띄운다
     @State private var editRemovedNotice: String?
     /// 지금 끌고 있는 꼭짓점과 손가락 화면 점. 끄는 동안 벽이 나뉘거나 꼭짓점이 합쳐져도 손잡이가 사라져 끌기가 끊기지 않게 한다
@@ -224,7 +224,7 @@ extension FloorPlanEdit2DView {
                     if case .wall? = selection {} else { wallSelection = nil }
                 }
                 .overlay(alignment: .top) {
-                    wallBlockedNotice
+                    noticeCapsule
                 }
                 .overlay {
                     penStrokeLine
@@ -384,7 +384,8 @@ extension FloorPlanEdit2DView {
     /// 이미 놓인 스탬프를 누르면 도구와 상관없이 그것을 고른다.
     /// 빈 곳은 스탬프 도구를 골랐으면 맞는 자리(발화지점·피해자는 바닥, 전기는 벽이나 바닥)에 놓고, 도구가 없으면 그 아래 가구를 고르거나 고른 것을 푼다.
     /// 그래서 도구를 고른 채 가구 위를 누르면 가구를 고르지 않고 그 자리에 스탬프를 놓는다 (침대 위 발화지점 등).
-    /// 공간라벨 도구로 어디든 누르면 그 자리에 새 공간 이름을 달고 바로 고친다. 고른 이름은 ✕로 지운다. 가구라벨 도구로 가구를 누르면 고르고, 고른 가구를 한 번 더 누르면 이름을 고친다. 가구가 없는 바닥을 누르면 새 가구를 놓고 바로 이름을 고친다.
+    /// 공간라벨 도구로 어디든 누르면 그 자리에 새 공간 이름을 달고 바로 고친다. 고른 이름은 ✕로 지운다.
+    /// 가구라벨 도구로 가구를 누르면 고르고, 고른 가구를 한 번 더 누르면 이름을 고친다. 가구가 없는 바닥을 누르면 새 가구를 놓고 바로 이름을 고친다.
     /// 도구는 한 번 놓으면 꺼지고, 방금 놓은 스탬프를 고른 상태로 둔다 (3D 수정 화면과 같다).
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
@@ -664,15 +665,11 @@ extension FloorPlanEdit2DView {
                 dragPreview = preview
             }
             .onEnded { _ in
-                // 끄는 동안 띄운 막힘 이유는 손을 떼도 잠깐 남겨 읽을 수 있게 한다. 벽 그리기 실패 안내는 그 뒤에 띄워 바로 지워지지 않게 한다
-                let blockedWhileDragging = wallBlockedReason
-                wallBlockedReason = nil
                 commitPreview()
                 finishPenStroke()
                 isErasing = false
                 stampDragStart = nil
                 finishWallDrag()
-                if let blockedWhileDragging, wallBlockedReason == nil { showNotice(blockedWhileDragging) }
             }
     }
 
@@ -863,10 +860,10 @@ extension FloorPlanEdit2DView {
 
     /// 안내를 위쪽에 잠깐 보여 주는 캡슐
     @ViewBuilder
-    private var wallBlockedNotice: some View {
-        if let wallBlockedReason {
+    private var noticeCapsule: some View {
+        if let noticeText {
             // 안내가 길어도 화면 가로로 늘어지지 않게 폭을 제한하고 두 줄까지 줄바꿈한다
-            Text(wallBlockedReason)
+            Text(noticeText)
                 .font(AppTypography.subheadline)
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
@@ -946,20 +943,19 @@ extension FloorPlanEdit2DView {
         dragPreview = next
     }
 
-    /// 위쪽 캡슐로 안내를 잠깐 띄운다. 끄는 동안 계속 보여야 하는 막힘 안내와 달리 시간이 지나면 스스로 내려간다
+    /// 위쪽 캡슐로 안내를 잠깐 띄운다. 시간이 지나면 스스로 내려간다
     private func showNotice(_ text: String) {
-        wallBlockedReason = text
+        noticeText = text
         noticeDismissTask?.cancel()
         noticeDismissTask = Task {
             try? await Task.sleep(for: Layout.noticeDuration)
-            if !Task.isCancelled, wallBlockedReason == text { wallBlockedReason = nil }
+            if !Task.isCancelled, noticeText == text { noticeText = nil }
         }
     }
 
-    /// 돌리기·크기 바꾸기에서 손을 떼면 미리 보기를 반영하고 막힘 안내를 내린다
+    /// 돌리기·크기 바꾸기에서 손을 떼면 미리 보기를 반영한다
     private func endHandleDrag() {
         commitPreview()
-        wallBlockedReason = nil
     }
 
     /// 복제·삭제를 도면에 반영한다. 복제하면 새 것을, 지우면 아무것도 고르지 않은 상태로 둔다
@@ -1060,7 +1056,7 @@ extension FloorPlanEdit2DView {
         vertexHandles(screen: screen).contains { hypot($0.point.x - location.x, $0.point.y - location.y) <= VertexHandles2DView.handleSize / 2 }
     }
 
-    /// 끄는 동안은 미리 보기 도면에서만 꼭짓점을 손가락 자리로 옮긴다 (축 자석·떠 있는 끝 붙이기 포함). 거절하지 않는다.
+    /// 끄는 동안은 미리 보기 도면에서만 꼭짓점을 손가락 자리로 옮긴다 (가로·세로로 딱 붙이기와 떠 있는 끝 붙이기 포함). 거절하지 않는다.
     /// 계산은 늘 처음 도면에서 해서, 끄는 동안 맞춤이 쌓이지 않는다
     private func previewVertex(_ vertexId: String, at location: CGPoint) {
         guard let screen else { return }
@@ -1206,16 +1202,14 @@ extension FloorPlanEdit2DView {
         static let compassSnapRadians = Double.pi / 45
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
+        // TEMP: minimumPenStroke·magnetDistance는 실기기에서 써 보고 정한다
         /// 펜으로 이만큼(pt)보다 덜 움직인 획은 탭으로 보고 벽을 만들지 않는다
-        // TEMP: 탭과 구분되는 길이는 실기기에서 그려 보고 정함
         static let minimumPenStroke: CGFloat = 8
         /// 꼭짓점을 끌 때 붙은 벽이 가로·세로가 되는 자리에서 딱 붙는 화면 거리 (pt)
-        // TEMP: 축 자석 거리는 실기기에서 써 보고 정함
         static let magnetDistance: CGFloat = 16
         /// 긋는 중인 펜 점선
         static let penLineWidth: CGFloat = 2
         static let penDash: [CGFloat] = [6, 4]
-        /// 긋는 중에 벽 끝이 붙을 자리에 찍는 점 지름 (pt)
     }
 }
 
@@ -1226,7 +1220,6 @@ extension FloorPlanEdit2DView {
         static let otherKind = IgnitionCause.other.title
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
-        // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
     }
 }
 

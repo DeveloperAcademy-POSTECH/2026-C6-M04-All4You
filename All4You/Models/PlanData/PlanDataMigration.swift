@@ -1,8 +1,13 @@
-// 저장된 도면 JSON을 읽을 때 옛 형식(version 1)을 지금 형식(version 2)으로 바꾼다
+// 저장된 도면 JSON을 읽을 때, 옛 형식(version 1)을 지금 형식(version 2)으로 바꿔 주는 코드
 //
-// 달라진 점: 방(공간 라벨)이 벽 id로 닫힌 고리(boundary)를 저장하지 않고 이름과 자리(점)만 갖는다. 가상 경계선(isVirtual)은 없어지고,
-// 스캔한 바닥은 벽과 별개인 floors로 저장한다.
-// 읽기만 하고 저장하지 않은 도면은 version 1 그대로 남으므로, 바꾼 도면을 처음 덮어쓰기 전에 원본을 파일로 남긴다 (FloorPlan.storePlanData)
+// 도면은 JSON으로 저장되고 JSON에는 형식 버전(version)이 적혀 있다. 이 PR에서 형식이 바뀌어서, 이 PR 전에 저장한 도면은 version 1이다.
+// version 1 → 2에서 달라진 점
+// - 공간 라벨(Room): 방을 둘러싼 벽 목록(boundary)을 더는 저장하지 않고, 이름과 자리(점)만 저장한다
+// - 가상 경계선(Wall.isVirtual): 없어졌다. 방을 닫으려고 넣었던 보이지 않는 벽이다
+// - 스캔한 바닥: 벽과 따로 PlanData.floors에 저장한다
+//
+// 읽기만 하고 고치지 않은 도면은 저장돼 있는 JSON이 version 1 그대로다.
+// 그래서 바꾼 도면을 처음 저장(덮어쓰기)하기 전에, 옛 JSON 원본을 파일로 한 번 남긴다 (FloorPlan.storePlanData)
 
 import Foundation
 
@@ -29,7 +34,7 @@ extension PlanData {
 
 // 옛 형식 (읽기 전용)
 
-/// version 1 도면. 칸 이름은 옛 형식 그대로다
+/// version 1 도면의 모양. 옛 JSON을 읽기만 하는 용도라 지금 PlanData와 달리 boundary·isVirtual이 남아 있다
 private struct PlanDataV1: Decodable {
     var version: Int
     var vertices: [Vertex]
@@ -84,9 +89,10 @@ private struct RoomEdgeV1: Decodable {
 // 바꾸기
 
 extension PlanDataV1 {
-    /// 지금 형식으로 바꾼 도면.
-    /// - 가상 경계선은 벽에서 빼고(달린 창문·문·콘센트와, 어느 벽도 쓰지 않는 꼭짓점도), 가상 경계선이 낀 방은 그 다각형을 바닥(floors)으로 옮겨 영역을 살린다
-    /// - 방은 id·이름·자리만 남긴다. 자리가 유한하지 않으면 옛 경계 다각형의 무게중심으로 둔다
+    /// 지금 형식(version 2)으로 바꾼 도면. 바꾸는 규칙은 다음과 같다.
+    /// - 가상 경계선은 벽에서 뺀다. 거기 달린 창문·문·콘센트와, 어느 벽도 쓰지 않게 된 꼭짓점도 함께 뺀다
+    /// - 가상 경계선이 낀 방은 그 방의 모양(경계를 도는 꼭짓점들)을 바닥(floors)으로 옮긴다. 안 그러면 벽 없는 스캔 도면의 방 모양이 사라진다
+    /// - 방(공간 라벨)은 id·이름·자리만 남긴다. id는 사진·메모가 가리키므로 그대로 둔다. 자리 숫자가 이상하면 옛 경계 모양의 무게중심으로 대신한다
     var migrated: PlanData {
         let virtualIds = Set(walls.filter(\.isVirtual).map(\.id))
         let points = Dictionary(vertices.map { ($0.id, SIMD2($0.x, $0.y)) }, uniquingKeysWith: { first, _ in first })

@@ -19,7 +19,7 @@ struct WallMiter {
 }
 
 extension PlanData {
-    /// 벽 하나의 양 끝 모양. 다른 벽과 이웃으로 본다
+    /// 벽 하나의 양 끝 모양. 같은 꼭짓점을 쓰는 다른 벽들과 모서리에서 빈틈 없이 만나도록 끝을 비스듬히 자른 길이를 구한다
     func wallMiter(of wall: Wall) -> WallMiter {
         guard let line = line(of: wall), line.length > WallMiterRule.eps else { return .square(length: 0) }
         let points = vertexPoints
