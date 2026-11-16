@@ -40,7 +40,7 @@ struct DimensionPicker: View {
         }
         .pickerStyle(.segmented)
         .controlSize(.large)
-        .frame(width: Layout.width)
+        .frame(width: Layout.width, height: BarLayout.controlSize)
     }
 
     /// 고른 값을 바꿀 때 애니메이션 범위 안에서 바꾼다

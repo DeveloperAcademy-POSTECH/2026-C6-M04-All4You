@@ -1,5 +1,5 @@
 // 사건 화면 가운데의 도면·앨범·메모 탭 막대와 왼쪽 사이드바(CaseSidebar). 각 탭의 내용은 화면이 넘겨준다.
-// 상단 바(CaseTitleToolbar, CaseActionToolbar)와 따로 쓸 수 있다
+// 왼쪽 위 줄(CaseTitleHeader)·오른쪽 위 버튼 묶음(CaseActionBar)과 따로 쓸 수 있다
 
 import SwiftUI
 
@@ -25,7 +25,7 @@ enum CaseTabSelection: Hashable {
 /// 도면·앨범·메모 탭 막대와 사이드바. 탭 막대 맨 왼쪽 버튼으로 사이드바를 열고 닫는다.
 /// 사이드바는 탭 옆에 나란히 놓이고, 탭 막대에는 고른 줄이 속한 구역이 켜진다.
 /// 탭마다 상단 바(NavigationStack)를 따로 두어야 iPad에서 탭 막대가 상단 바와 같은 줄에 놓인다.
-/// 그래서 이 뷰는 화면 더미 안에 넣지 말고, 상단 바 버튼(toolbar)은 각 탭 내용에 붙인다
+/// 그래서 이 뷰는 화면 더미 안에 넣지 말고, 탭 막대와 같은 줄에 놓을 것은 leadingHeader·trailingHeader로 넘긴다
 struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     @Binding var selection: CaseTabSelection
     let albumRows: [CaseSidebarRow]
@@ -36,6 +36,8 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
     let onClearRow: (CaseTabSelection) -> Void
     /// 탭 왼쪽 위에 겹쳐 그릴 줄 (뒤로가기·사건명 등). 사이드바를 펴도 그대로 보인다
     var leadingHeader: AnyView? = nil
+    /// 탭 오른쪽 위에 겹쳐 그릴 줄 (메모·사진·수정·내보내기 버튼 묶음). nil이면 그리지 않는다
+    var trailingHeader: AnyView? = nil
     @ViewBuilder let floorPlan: FloorPlan
     @ViewBuilder let album: Album
     @ViewBuilder let memo: Memo
@@ -50,16 +52,24 @@ struct CaseTabView<FloorPlan: View, Album: View, Memo: View>: View {
                 sidebar
             }
             tabs
+                // 시스템 탭 막대도 같이 내려, 다른 화면의 윗줄과 같은 높이에 놓는다.
+                // TEMP: 시뮬레이터(iPad Pro 13인치)에서 48을 그대로 주면 탭 막대가 10pt 더 내려가서 10을 뺐다. 실기기에서 같은 높이인지 확인할 것
+                .padding(.top, BarLayout.topInset - 10)
                 .overlay(alignment: .topLeading) {
                     if let leadingHeader {
                         // 사이드바를 접었을 때는 가운데 탭 막대를 덮지 않게 탭 막대 왼쪽 끝까지만 쓴다
                         GeometryReader { proxy in
                             leadingHeader
                                 .frame(maxWidth: headerMaxWidth(in: proxy.size.width), alignment: .leading)
-                                .padding(.leading, CaseTabLayout.headerLeading)
-                                .padding(.top, CaseTabLayout.headerTop)
+                                .padding(.leading, BarLayout.edgeInset)
+                                .padding(.top, BarLayout.topInset)
                         }
                     }
+                }
+                .overlay(alignment: .topTrailing) {
+                    trailingHeader
+                        .padding(.trailing, BarLayout.edgeInset)
+                        .padding(.top, BarLayout.topInset)
                 }
         }
     }
@@ -130,9 +140,9 @@ extension CaseTabView {
     /// 열었을 때는 탭 막대가 숨어 있으니 오른쪽 버튼 묶음 앞까지
     private func headerMaxWidth(in width: CGFloat) -> CGFloat {
         if isSidebarShown {
-            return max(0, width - CaseTabLayout.actionBarWidth - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
+            return max(0, width - CaseActionBar.width - BarLayout.edgeInset * 2 - CaseTabLayout.headerGap)
         }
-        return max(0, (width - CaseTabLayout.tabBarWidth) / 2 - CaseTabLayout.headerLeading - CaseTabLayout.headerGap)
+        return max(0, (width - CaseTabLayout.tabBarWidth) / 2 - BarLayout.edgeInset - CaseTabLayout.headerGap)
     }
 
     /// 탭 막대에서 켜지는 탭은 고른 줄이 속한 구역이다.
@@ -184,15 +194,11 @@ private enum CaseTabBarItem {
 }
 
 // 문구. 사이드바(CaseSidebar)와 함께 쓴다. 제네릭 타입 안에는 static 값을 둘 수 없어 파일 안에 따로 둔다
-/// 탭 위에 겹치는 줄의 자리 (pt). 시스템 상단 바 버튼과 같은 줄에 오게 맞춘다
+/// 탭 위에 겹치는 줄의 자리 (pt). 줄은 안전 영역에서 BarLayout.topInset 아래에 두어 시스템 탭 막대와 같은 높이에 오고, 가장자리 여백은 BarLayout을 따른다
 private enum CaseTabLayout {
-    static let headerLeading: CGFloat = 16
-    static let headerTop: CGFloat = 4
     /// 가운데 탭 막대(사이드바·도면·앨범·메모)의 대략 너비
     static let tabBarWidth: CGFloat = 250
-    // TEMP: 실측 전 대략 값. 오른쪽 버튼 묶음(메모·사진 캡슐, 수정, 내보내기)이 차지하는 너비
-    static let actionBarWidth: CGFloat = 280
-    /// 왼쪽 위 줄과 탭 막대 사이 여백
+    /// 왼쪽 위 줄과 탭 막대(또는 오른쪽 버튼 묶음) 사이 여백
     static let headerGap: CGFloat = 16
 }
 

@@ -103,7 +103,8 @@ extension View {
         }
     }
 
-    /// 시스템 툴바의 자동 배치 없이 안전 영역 바로 아래에 공용 바를 배치
+    /// 시스템 툴바의 자동 배치 없이 안전 영역에서 BarLayout.topInset 아래에 공용 바를 배치.
+    /// 줄의 높이·여백은 BarLayout을 따른다. 다른 화면의 위·아래 컴포넌트도 같은 값을 써서 이 줄에 맞춘다
     private func customTopBar(
         title: String,
         subtitle: String = "",
@@ -120,12 +121,12 @@ extension View {
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: BarLayout.rowSpacing) {
                     if let onBack {
                         Button(action: onBack) {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(width: 44, height: 44)
+                                .font(.system(size: BarLayout.iconSize, weight: .semibold))
+                                .frame(width: BarLayout.controlSize, height: BarLayout.controlSize)
                                 // plain 버튼은 그려진 선만 눌려서, 원 전체를 누르는 자리로 잡는다 (iPadOS 26에서 안 눌리던 문제)
                                 .contentShape(.circle)
                         }
@@ -159,9 +160,9 @@ extension View {
                     if let onDone {
                         Button(action: onDone) {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: BarLayout.iconSize, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
+                                .frame(width: BarLayout.controlSize, height: BarLayout.controlSize)
                                 .contentShape(.circle)
                         }
                         .buttonStyle(.plain)
@@ -171,12 +172,14 @@ extension View {
                     }
                 }
                 // 바 가운데에 놓는 것(예: 2D·3D 전환 막대). 뒤로가기·제목·오른쪽 버튼과 같은 줄 가운데에 겹친다
+                // 제목이나 끼운 버튼이 커도 줄 높이는 버튼 높이로 고정해, 어느 화면에서나 같은 높이에 놓이게 한다
+                .frame(height: BarLayout.controlSize)
                 .overlay {
                     centerAccessory
                 }
-                .padding(.top, 16)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 16)
+                .padding(.horizontal, BarLayout.edgeInset)
+                .padding(.top, BarLayout.topInset)
+                .padding(.bottom, BarLayout.rowBottomInset)
             }
     }
 }

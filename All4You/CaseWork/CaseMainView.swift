@@ -102,9 +102,11 @@ struct CaseMainView: View {
             memoRows: memoRows,
             albumBadge: photoStore.unassignedPhotos.count,
             onClearRow: clearRow,
-            leadingHeader: AnyView(titleHeader)
+            leadingHeader: AnyView(titleHeader),
+            trailingHeader: actionBar
         ) {
-            withCaseToolbars(floorPlanTab)
+            floorPlanTab
+                .navigationBarTitleDisplayMode(.inline)
         } album: {
             albumTab
         } memo: {
@@ -384,32 +386,37 @@ extension CaseMainView {
         return sections
     }
     
-    // 도면 탭에만 메모·사진 추가, 수정, 공유 버튼을 붙임
-    private func withCaseToolbars(_ content: some View) -> some View {
-        content
-            .navigationBarTitleDisplayMode(.inline)
-            .caseActionToolbar(
-                onAddMemo: {
-                    beginAddingMemo()
-                },
-                onTakePhoto: takePhoto,
-                onImportPhoto: importPhoto,
-                onEdit: onEdit,
-                onEditPhotoPositions: {
-                    // 사진위치 수정은 2D 북마크 마커에서만 가능
-                    selection = .floorPlan2D
-                    isPlacingPhotos = false
-                    photoFilter.scope = .bookmarked
-                    photoFilter.isPhotoVisible = true
-                    isPhotoPositionEditMode.toggle()
-                },
-                isPhotoPositionEditMode: isPhotoPositionEditMode,
-                onExport: {
-                    isExportSheetPresented = true
-                }
+    /// 오른쪽 위의 메모·사진 추가, 수정, 내보내기 버튼 묶음. 도면 탭에서만 보인다
+    private var actionBar: AnyView? {
+        switch selection {
+        case .floorPlan2D, .floorPlan3D:
+            AnyView(
+                CaseActionBar(
+                    onAddMemo: {
+                        beginAddingMemo()
+                    },
+                    onTakePhoto: takePhoto,
+                    onImportPhoto: importPhoto,
+                    onEdit: onEdit,
+                    onEditPhotoPositions: {
+                        // 사진위치 수정은 2D 북마크 마커에서만 가능
+                        selection = .floorPlan2D
+                        isPlacingPhotos = false
+                        photoFilter.scope = .bookmarked
+                        photoFilter.isPhotoVisible = true
+                        isPhotoPositionEditMode.toggle()
+                    },
+                    isPhotoPositionEditMode: isPhotoPositionEditMode,
+                    onExport: {
+                        isExportSheetPresented = true
+                    }
+                )
             )
+        case .albumOverview, .album, .memo:
+            nil
+        }
     }
-    
+
     /// 사이드바를 접었을 때 왼쪽 위의 뒤로가기·사건명·조사 차수. 시스템 상단 바 왼쪽 칸이 사라지는 일이 있어 탭 위에 직접 겹친다
     private var titleHeader: some View {
         CaseTitleHeader(

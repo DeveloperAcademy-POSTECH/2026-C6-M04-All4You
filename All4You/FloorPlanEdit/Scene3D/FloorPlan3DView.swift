@@ -26,8 +26,8 @@ struct FloorPlan3DView: View {
     var showsResetButton = false
     /// 오른쪽 위에 방위표를 띄울지. 카메라를 돌리는 대로 실시간으로 함께 돈다
     var showsCompass = false
-    /// 방위표를 오른쪽 위 기본 자리에서 더 내릴 높이 (pt). 오른쪽 위에 다른 버튼이 있는 화면이 쓴다
-    var compassTopInset: CGFloat = 0
+    /// 방위표의 위 여백 (pt). 오른쪽 위에 다른 버튼이 있는 화면은 그 아래로 내려오게 더 큰 값을 넘긴다
+    var compassTopInset = BarLayout.contentTopInset
     /// 위 스탬프 도구가 켜져 있는지. 켜져 있으면 이름 캡슐은 누르지 않는다
     var isStampToolActive = false
     /// 누른 직선이 가구를 지나쳐 그 뒤 바닥·벽에 닿게 할지. 가구 밑에 있을 수 있는 전기·창문·문 도구가 켜져 있을 때 쓴다
@@ -143,7 +143,7 @@ struct FloorPlan3DView: View {
             if showsCompass {
                 // 2D에서 정한 북쪽(northAngle, 없으면 도면 위쪽)에서 시작한다. 카메라가 도면 둘레를 yaw만큼 돌면 북쪽은 화면 위에서 같은 각만큼 더 시계 방향으로 돈다
                 CompassView(northAngle: .radians(Double(orbit.yaw) + (planData.northAngle ?? 0)))
-                    .padding()
+                    .padding(.trailing, BarLayout.edgeInset)
                     .padding(.top, compassTopInset)
             }
         }
@@ -224,7 +224,7 @@ struct FloorPlan3DView: View {
                     ResetViewButton(action: resetView)
                 }
             }
-            .padding()
+            .padding([.trailing, .bottom], BarLayout.edgeInset)
         }
         .coordinateSpace(.named(Layout.sceneSpace))
         .onChange(of: planData, initial: true) {
