@@ -643,7 +643,15 @@ extension FloorPlanTabView {
         let memoPins = memos.map { memo in
             Plan3DPin(id: Pin3DID.memo + memo.id.uuidString, point: memo.anchor.point, height: Layout.memoPinHeight)
         }
-        return photoPins.sorted { $0.id < $1.id } + memoPins
+        // 번호 배지는 구 가운데보다 조금 위에 띄운다. 구 높이는 구를 그리는 쪽과 같은 식(sphereHeight)을 쓴다
+        let bookmarkPins = photoMarkers3D(in: planData).map { marker in
+            Plan3DPin(
+                id: Pin3DID.bookmark + marker.id.uuidString,
+                point: marker.placement.position,
+                height: Double(marker.sphereHeight) + Layout.bookmarkBadgeAbove
+            )
+        }
+        return photoPins.sorted { $0.id < $1.id } + bookmarkPins + memoPins
     }
     /// 북마크 사진의 촬영 자리 표시. 2D 번호 핀과 같은 조건으로 띄운다
     private func photoMarkers3D(in planData: PlanData) -> [Plan3DPhotoMarker] {
@@ -667,6 +675,21 @@ extension FloorPlanTabView {
                 selectRoom(room)
             })
         }
+        if id.hasPrefix(Pin3DID.bookmark) {
+            let photoID = String(id.dropFirst(Pin3DID.bookmark.count))
+            guard let marker = bookmarkMarkers(in: planData).first(where: { $0.id.uuidString == photoID }) else { return AnyView(EmptyView()) }
+            // 사진위치 수정 모드에서 3D로 눌러도 편집은 시작되지 않는다 (beginBookmarkEditing이 2D만 받음). 지금 동작 그대로 둔다
+            return AnyView(
+                Button {
+                    selectBookmark(marker.id)
+                } label: {
+                    BookmarkNumberBadge(number: marker.number, size: Layout.bookmarkBadgeSize, font: AppTypography.subheadlineEmphasized)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("북마크 사진 \(marker.number)번")
+                .accessibilityAddTraits(marker.id == selectedBookmarkID ? .isSelected : [])
+            )
+        }
         let memoID = String(id.dropFirst(Pin3DID.memo.count))
         guard let index = memos.firstIndex(where: { $0.id.uuidString == memoID }) else { return AnyView(EmptyView()) }
         return AnyView(MemoPin3DView(
@@ -678,6 +701,7 @@ extension FloorPlanTabView {
     private enum Pin3DID {
         static let photo = "photo:"
         static let memo = "memo:"
+        static let bookmark = "bookmark:"
     }
 }
 // 사진 핀·놓기
@@ -839,6 +863,12 @@ extension FloorPlanTabView {
         static let photoPinHeight = 1.5
         /// 3D에서 메모 핀을 띄울 높이 (m). 가구 위에 남긴 메모도 보이게 가구 높이보다 조금 위
         static let memoPinHeight = 1.0
+        /// 3D 번호 배지를 구 가운데에서 위로 띄우는 거리 (m). 구 반지름(0.12)보다 커야 구를 가리지 않는다
+        // TEMP: 실기기에서 보고 조절
+        static let bookmarkBadgeAbove = 0.3
+        /// 3D 번호 배지 지름 (pt). 2D 핀(40)보다 작게 둔다
+        // TEMP: 실기기에서 보고 조절
+        static let bookmarkBadgeSize: CGFloat = 32
     }
 }
 // 문구
