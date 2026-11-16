@@ -38,13 +38,13 @@ enum AppStore {
 
         // 열면 파일이 생기므로 열기 전에 상태를 구하고, 필요하면 백업한다
         let fileSummary = storeFileSummary()
-        let backupSummary = backUpIfSchemaChanged()
+        let backup = backUpIfSchemaChanged()
         let result = Result { try ModelContainer(for: schema, configurations: [configuration]) }
-        let prefix = "build=\(buildSummary()) schema=\(schemaFingerprint) store=\(fileSummary) \(backupSummary)"
+        let prefix = "build=\(buildSummary()) schema=\(schemaFingerprint) store=\(fileSummary) \(backup.summary)"
         switch result {
         case .success(let container):
-            // 열기에 실패하면 지문을 쓰지 않아 다음 실행에서 다시 백업을 판단한다
-            saveSchemaFingerprint()
+            // 열기에 실패하거나 백업에 실패하면 지문을 쓰지 않아 다음 실행에서 다시 백업을 판단한다
+            if !backup.failed { saveSchemaFingerprint() }
             record("\(prefix) 결과=열림 \(rowCountSummary(in: container))")
         case .failure(let error):
             record("\(prefix) 결과=실패 \(String(describing: error))")

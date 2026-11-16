@@ -55,15 +55,20 @@ extension AppStore {
         return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// 저장소를 마지막으로 연 빌드와 지문이 다르면 열기 전에 백업한다. 기록에 넣을 요약 글을 돌려준다
+    /// 저장소를 마지막으로 연 빌드와 지문이 다르면 열기 전에 백업한다. 기록에 넣을 요약 글과 실패 여부를 돌려준다
     /// 반드시 ModelContainer를 만들기 전에 불러야 한다. 열린 연결이 없어야 -wal까지 그대로 복사해도 온전하다
-    static func backUpIfSchemaChanged() -> String {
+    /// 같은 전환(이전 지문 → 지금 지문)은 이미 백업했고 그 뒤 저장소를 연 적이 없으면 다시 하지 않는다.
+    /// 열기에 실패한 실행이 반복돼도 같은 내용의 백업이 쌓여 오래된 백업이 밀리지 않게 하려는 것이다
+    static func backUpIfSchemaChanged() -> BackupOutcome {
         let manager = FileManager.default
-        guard manager.fileExists(atPath: storeURL.path) else { return "백업=없음(새 저장소)" }
+        guard manager.fileExists(atPath: storeURL.path) else { return BackupOutcome(summary: "백업=없음(새 저장소)") }
 
         let savedFingerprint = (try? String(contentsOf: schemaFileURL, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard savedFingerprint != schemaFingerprint else { return "백업=없음" }
+        guard savedFingerprint != schemaFingerprint else { return BackupOutcome(summary: "백업=없음") }
+
+        let transition = "\(savedFingerprint ?? "unknown")>\(schemaFingerprint)"
+        if readBackupMarker() == transition { return BackupOutcome(summary: "백업=이미 있음") }
 
         let folder = backupsDirectory.appendingPathComponent(
             "\(backupTimestamp())-\(savedFingerprint ?? "unknown")"
@@ -72,18 +77,36 @@ extension AppStore {
         do {
             try copyStoreFiles(to: folder)
         } catch {
-            // 백업에 실패해도 저장소는 그대로 연다 (사용자 결정 2026-11-16)
+            // 백업에 실패해도 저장소는 그대로 연다 (사용자 결정 2026-11-16). 다음 실행에서 다시 시도한다
             try? manager.removeItem(at: folder)
-            return "백업=실패 \(error)"
+            return BackupOutcome(summary: "백업=실패 \(error)", failed: true)
         }
         pruneBackups()
-        return "백업=\(folder.lastPathComponent) (\(seconds(since: start)))"
+        try? transition.write(to: backupMarkerURL, atomically: true, encoding: .utf8)
+        return BackupOutcome(summary: "백업=\(folder.lastPathComponent) (\(seconds(since: start)))")
     }
 
-    /// 지금 빌드의 지문을 적어 둔다. 열기에 성공했을 때만 부른다
+    /// 지금 빌드의 지문을 적고 백업 표시를 지운다. 열기에 성공했고 백업이 실패하지 않았을 때만 부른다
+    /// (백업이 실패했는데 지문을 적으면 그 변화는 다시 백업되지 않는다)
     static func saveSchemaFingerprint() {
         try? schemaFingerprint.write(to: schemaFileURL, atomically: true, encoding: .utf8)
+        try? FileManager.default.removeItem(at: backupMarkerURL)
     }
+
+    /// 마지막으로 한 백업의 전환 표시 ("이전 지문>지금 지문"). 백업 뒤 열기에 성공하면 지운다
+    private static var backupMarkerURL: URL {
+        supportDirectory.appendingPathComponent("store-backup-marker.txt")
+    }
+
+    private static func readBackupMarker() -> String? {
+        (try? String(contentsOf: backupMarkerURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// 열기 전 백업의 결과. summary는 기록에 넣을 글, failed는 백업을 하려다 실패했는지
+struct BackupOutcome {
+    let summary: String
+    var failed = false
 }
 
 // 파일 복사와 정리
@@ -173,7 +196,7 @@ extension AppStore {
         }
 
         // 3. 되돌린 직후 같은 내용을 또 백업하지 않도록 지금 빌드의 지문을 적는다
-        try? schemaFingerprint.write(to: schemaFileURL, atomically: true, encoding: .utf8)
+        saveSchemaFingerprint()
         pruneReplacedFolders()
         record("되돌림 \(backup.url.lastPathComponent)")
     }
