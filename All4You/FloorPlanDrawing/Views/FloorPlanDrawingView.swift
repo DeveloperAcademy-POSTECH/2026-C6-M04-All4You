@@ -131,12 +131,14 @@ struct FloorPlanDrawingView: View {
         .overlay(alignment: .topLeading) {
             // 2D 수정과 같은 자리·여백. 공간라벨·가구라벨·창문·문은 벽이 있어야 놓을 수 있어 스케치에서는 숨긴다
             EditToolBar(selectedTool: $selectedEditTool, hiddenTools: [.roomName, .furniture, .window, .door], stampOption: $stampOption)
-                .padding()
+                .padding(.leading, BarLayout.edgeInset)
+                .padding(.top, BarLayout.contentTopInset)
         }
         .overlay(alignment: .topTrailing) {
             // 위쪽이 북쪽이라 방위표가 늘 위를 가리킨다 (2D 수정과 같다)
             CompassView()
-                .padding()
+                .padding(.trailing, BarLayout.edgeInset)
+                .padding(.top, BarLayout.contentTopInset)
         }
         .overlay {
             // 펜·지우개·획 선택 막대 (공용 DrawingToolBar)

@@ -586,7 +586,7 @@ extension FloorPlan3DBuilder {
         let entity: Entity
         switch marker.kind {
         case .person: entity = personModel(lying: marker.lying ?? false, material: material)
-        case .ignitionPoint: entity = flameModel(material: material)
+        case .ignitionPoint: entity = flameModel()
         case .outlet: entity = floorOutletModel(material: material)
         }
         entity.position = space.world(marker.position, height: marker.height)
@@ -595,6 +595,10 @@ extension FloorPlan3DBuilder {
         makeSelectable(entity, as: tag)
         // 테두리 상자는 충돌 모양을 만든 뒤에 붙여, 눌러 고르는 판정에 끼지 않게 한다
         if tag == selection { addSelectionFrame(to: entity) }
+        // 발화지점의 바닥 표시는 상자와 판정이 다 만들어진 뒤에 붙인다 (넓은 판이 상자를 키우거나 눌림에 끼지 않게)
+        if marker.kind == .ignitionPoint, let floorMark = flameFloorMark(markerID: marker.id) {
+            entity.addChild(floorMark)
+        }
         return entity
     }
 
@@ -633,15 +637,6 @@ extension FloorPlan3DBuilder {
         plate.position = [0, 0.04, 0]
         let wrapper = Entity()
         wrapper.addChild(plate)
-        return wrapper
-    }
-
-    /// 불꽃 대신 원뿔
-    private static func flameModel(material: SimpleMaterial) -> Entity {
-        let cone = ModelEntity(mesh: .generateCone(height: 0.5, radius: 0.18), materials: [material])
-        cone.position = [0, 0.25, 0]
-        let wrapper = Entity()
-        wrapper.addChild(cone)
         return wrapper
     }
 }

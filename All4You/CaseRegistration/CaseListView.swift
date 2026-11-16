@@ -30,6 +30,8 @@ struct CaseListView: View {
     @State private var pendingFloorPlan: FireCase?
     /// 지금 열어 전체 화면으로 보여 주는 사건
     @State private var openedCase: OpenedCase?
+    /// 앱을 켠 뒤 열어 두었던 사건을 되살리는 일을 이미 했는지 (목록이 다시 보여도 두 번 하지 않게)
+    @State private var didRestoreOpenedCase = false
     
     /// 사이드바를 펼쳤는지(.all) 접었는지(.detailOnly)
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -132,7 +134,7 @@ struct CaseListView: View {
         // 열 때 이미 저장돼 있던 평면도가 쓸 수 없는 것(벽이 없음)이면, 다른 도면으로 바뀌기 전까지 없는 것으로 본다
         .fullScreenCover(item: $openedCase) { opened in
             if let floorPlan = opened.fireCase.floorPlan, floorPlan.planData != opened.unusablePlanData {
-                CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, startTab: opened.startTab, onClose: { openedCase = nil })
+                CaseFlowView(fireCase: opened.fireCase, startsAtMain: opened.startsAtMain, startTab: opened.startTab, onClose: close)
             } else {
                 NavigationStack {
                     FloorPlanMethodSelectionView(
@@ -141,11 +143,34 @@ struct CaseListView: View {
                 }
             }
         }
+        // 앱을 껐다 켰을 때 보던 사건으로 돌아간다
+        .task {
+            restoreOpenedCase()
+        }
         
     }
     
     private func presentRegistration() {
         isPresentingRegistration = true
+    }
+    
+    /// 사건 화면을 닫고 목록으로 돌아온다. 이제 열어 둔 사건이 없다
+    private func close() {
+        openedCase?.fireCase.isCaseOpen = false
+        openedCase = nil
+    }
+    
+    /// 앱을 껐을 때 열려 있던 사건이 있으면 목록 대신 그 사건을 바로 연다 (여럿이면 가장 최근에 연 것).
+    /// 사건이 지워졌거나 도면을 읽을 수 없으면 목록에 머문다
+    private func restoreOpenedCase() {
+        guard !didRestoreOpenedCase else { return }
+        didRestoreOpenedCase = true
+        let openCases = allCases.filter(\.isCaseOpen)
+        // 오래 남은 표시는 모두 푼다. 되살릴 사건 하나만 열면서 다시 켠다
+        openCases.forEach { $0.isCaseOpen = false }
+        guard let latest = openCases.max(by: { $0.lastViewedAt < $1.lastViewedAt }),
+              latest.floorPlan?.loadPlanData()?.isUsable == true else { return }
+        open(latest)
     }
     
     /// 사건을 연 시각을 남기고 사건 화면을 띄운다

@@ -160,7 +160,7 @@ struct FloorPlanMemoView: View {
         .overlay(alignment: .bottom) {
             if !isDetailExpanded && focusedMarkerID == nil && !sections.isEmpty {
                 locationPicker
-                    .padding(.bottom, 32)
+                    .padding(.bottom, BarLayout.edgeInset)
             }
         }
         .toolbar(isDetailExpanded ? .hidden : .visible, for: .navigationBar)

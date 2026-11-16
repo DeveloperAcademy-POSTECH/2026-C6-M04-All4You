@@ -31,14 +31,21 @@ struct PlanScreen: Equatable {
         let sine = abs(sin(angle))
         let boundsWidth = planSize.x * cosine + planSize.y * sine
         let boundsHeight = planSize.x * sine + planSize.y * cosine
-        fitScale = min(size.width / boundsWidth, size.height / boundsHeight) * fill
+        // 화면이 막 생길 때는 가로·세로가 0(드물게 음수)인 크기가 먼저 올 수 있다. 그대로 쓰면 배율이 0이 되어
+        // 콘센트 크기(outletSize)가 무한대가 되므로, 1pt 이상으로 맞춰 배율이 늘 0보다 크고 유한하게 한다
+        let fitWidth = max(size.width, Self.minimumFitSide)
+        let fitHeight = max(size.height, Self.minimumFitSide)
+        fitScale = min(fitWidth / boundsWidth, fitHeight / boundsHeight) * fill
         scale = fitScale
         rotation = angle
         // 도면 가운데가 화면 가운데에 오도록, 왼쪽 위 점을 가운데에서 돌린 만큼 되짚어 정한다
         let halfExtent = CGPoint(x: planSize.x * fitScale / 2, y: planSize.y * fitScale / 2)
         let turnedHalf = Self.turned(halfExtent, by: angle)
-        origin = CGPoint(x: size.width / 2 - turnedHalf.x, y: size.height / 2 - turnedHalf.y)
+        origin = CGPoint(x: fitWidth / 2 - turnedHalf.x, y: fitHeight / 2 - turnedHalf.y)
     }
+
+    /// 도면을 맞출 화면의 가장 작은 가로·세로 (pt)
+    private static let minimumFitSide: CGFloat = 1
 
     /// 도면이 그려지는 화면 사각형. 돌렸으면 돌린 도면을 감싸는 사각형이다
     var rect: CGRect {

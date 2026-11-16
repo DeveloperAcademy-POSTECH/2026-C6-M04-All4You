@@ -80,6 +80,10 @@ struct CaseFlowView: View {
                 photoStore.assignUnplacedPhotos(in: new)
             }
         }
+        // 앱을 껐다 켜면 이 사건으로 바로 들어오도록 열어 둔 사건으로 표시한다. 목록으로 나갈 때 목록 쪽에서 푼다
+        .onAppear {
+            fireCase.isCaseOpen = true
+        }
         // 이전에 위치 미확인으로 남은 사진도 사건을 열 때 한 번 맞춰 본다
         .task {
             photoStore.assignUnplacedPhotos(in: planData)

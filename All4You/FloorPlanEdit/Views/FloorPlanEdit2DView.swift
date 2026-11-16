@@ -135,14 +135,15 @@ struct FloorPlanEdit2DView: View {
                 onRotate: { compassPreview = $0.radians },
                 onRotateEnd: finishCompassRotation
             )
-            .padding()
+            .padding(.trailing, BarLayout.edgeInset)
+            .padding(.top, BarLayout.contentTopInset)
         }
         .overlay(alignment: .bottomTrailing) {
             VStack(alignment: .trailing, spacing: Layout.cornerButtonSpacing) {
                 DimensionControl(display: $dimensions)
                 ResetViewButton(action: resetView)
             }
-            .padding()
+            .padding([.trailing, .bottom], BarLayout.edgeInset)
         }
         .onChange(of: resetToken) { clearEditingState() }
         .task {
@@ -266,7 +267,8 @@ extension FloorPlanEdit2DView {
     private var toolBar: some View {
         // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 펜·지우개·손 어느 것이어도 쓸 수 있고, 켜 두면 아래 동작보다 먼저 처리된다
         EditToolBar(selectedTool: $selectedTool, stampOption: $stampOption)
-            .padding()
+            .padding(.leading, BarLayout.edgeInset)
+            .padding(.top, BarLayout.contentTopInset)
             .onChange(of: selectedTool) {
                 // 도구를 켜면 고른 벽은 풀어 둔다 (도구가 켜진 동안은 벽을 고르거나 옮기지 않는다)
                 if selectedTool != nil, case .wall? = selection { selection = nil }

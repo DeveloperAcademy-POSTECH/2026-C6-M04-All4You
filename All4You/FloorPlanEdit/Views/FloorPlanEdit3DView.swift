@@ -106,7 +106,8 @@ extension FloorPlanEdit3DView {
 extension FloorPlanEdit3DView {
     private var toolBar: some View {
         EditToolBar(selectedTool: $selectedTool, hiddenTools: Self.hiddenTools, stampOption: $stampOption)
-            .padding()
+            .padding(.leading, BarLayout.edgeInset)
+            .padding(.top, BarLayout.contentTopInset)
     }
 }
 

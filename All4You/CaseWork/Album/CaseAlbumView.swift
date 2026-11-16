@@ -190,8 +190,10 @@ extension CaseAlbumView {
         static let badgeOffset: CGFloat = 12
         static let tileSpacing: CGFloat = 16
         static let rowTileSize: CGFloat = 227
-        static let pickerBottomPadding: CGFloat = 16
-        static let pickerClearance: CGFloat = 80
+        /// 아래 장소 막대를 화면 아래에서 띄우는 거리. 다른 화면의 아래 컴포넌트와 같다
+        static let pickerBottomPadding = BarLayout.edgeInset
+        /// 목록 끝이 장소 막대에 가리지 않게 비우는 높이 (막대 아래 여백 32 + 막대 52 + 위 여백 12)
+        static let pickerClearance: CGFloat = 96
         static let pickerPadding: CGFloat = 4
         static let pickerItemPadding: CGFloat = 20
         static let pickerItemMinWidth: CGFloat = 88
@@ -329,7 +331,8 @@ extension RoomAlbumView {
         static let monthPadding: CGFloat = 24
         static let monthVerticalPadding: CGFloat = 6
         static let dimmedOpacity: CGFloat = 0.3
-        static let pickerClearance: CGFloat = 80
+        /// 목록 끝이 장소 막대에 가리지 않게 비우는 높이. CaseAlbumView의 pickerClearance와 같은 값
+        static let pickerClearance: CGFloat = 96
     }
 }
 
