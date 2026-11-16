@@ -330,8 +330,9 @@ extension FloorPlanTabView {
                             .opacity(focusedMemoID == nil ? 1 : Layout.focusDimmedOpacity)
                         }
                         // 방위표를 메모 미리보기보다 먼저 그려 두 요소가 겹쳐도 미리보기가 앞에 보이도록 함
-                        CompassView(northAngle: .radians((planData.northAngle ?? 0) + (screen.rotation)))
-                            .padding(.trailing, 16)
+                        CompassView(northAngle: .radians((planData.northAngle ?? 0) + screen.rotation))
+                            .padding(.trailing, BarLayout.edgeInset)
+                            .padding(.top, Layout.compassTopInset)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                             .allowsHitTesting(false)
                         // 저장된 메모 핀도 도면과 같은 screen으로 그려, 확대·이동하거나 사진 모음이 열려 도면이 좁아져도 따라간다
@@ -382,12 +383,6 @@ extension FloorPlanTabView {
                 .onTapGesture(perform: clearRoomSelection)
                 .gesture(zoomGesture.simultaneously(with: rotateGesture))
                 .gesture(TwoFingerPanGesture(onChanged: panPlan))
-                .overlay(alignment: .topTrailing) {
-                    // 2D 수정에서 정한 북쪽. 도면을 돌려 놓은 만큼 함께 돈다. 메인에서는 보기만 하고 방위표는 돌리지 않는다
-                    CompassView(northAngle: .radians((planData.northAngle ?? 0) + (screen?.rotation ?? 0)))
-                        .padding(.trailing, BarLayout.edgeInset)
-                        .padding(.top, Layout.compassTopInset)
-                }
                 .modifier(DimensionLayer(isShown: dimension == .twoD))
                 if isThreeDReady {
                     // 고른 것이 없고 누르기·편집 알림을 버리므로 카메라 조작과 핀만 남는다

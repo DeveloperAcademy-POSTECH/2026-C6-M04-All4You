@@ -34,7 +34,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
     
     func updateUIView(_ view: UITextView, context: Context) {
         context.coordinator.parent = self
-        // SwiftUI 뷰 갱신 중 UIKit 델리게이트가 바인딩을 다시 변경하지 않도록 구분
+        guard view.markedTextRange == nil else { return }
         context.coordinator.isUpdatingUIView = true
         defer { context.coordinator.isUpdatingUIView = false }
         if view.text != text {
@@ -48,7 +48,7 @@ struct FloorPlanMemoInputField: UIViewRepresentable {
                 .foregroundColor: textColor
             ]
             view.textStorage.beginEditing()
-            view.textStorage.setAttributes(baseAttributes, range: fullRange)
+            view.textStorage.removeAttribute(.underlineStyle, range: fullRange)
             for token in taggedTokens {
                 let pattern = NSRegularExpression.escapedPattern(for: token) + "(?![0-9a-z])"
                 let matches = (try? NSRegularExpression(pattern: pattern))?
