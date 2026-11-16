@@ -25,16 +25,27 @@ enum AppStore {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     }
 
-    /// 저장소를 연다. 실패해도 저장소 파일은 건드리지 않고 오류만 돌려준다
+    /// 저장소를 연다. 실패해도 저장소 파일은 건드리지 않고 오류만 돌려준다. 미리보기가 아니면 결과를 기록에 남긴다
     static func openResult() -> Result<ModelContainer, any Error> {
-        Result {
-            if isRunningForPreviews {
-                return try ModelContainer(
+        if isRunningForPreviews {
+            return Result {
+                try ModelContainer(
                     for: schema,
                     configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)]
                 )
             }
-            return try ModelContainer(for: schema, configurations: [configuration])
         }
+
+        // 열면 파일이 생기므로 열기 전에 상태를 구해 둔다
+        let fileSummary = storeFileSummary()
+        let result = Result { try ModelContainer(for: schema, configurations: [configuration]) }
+        let prefix = "build=\(buildSummary()) store=\(fileSummary)"
+        switch result {
+        case .success(let container):
+            record("\(prefix) 결과=열림 \(rowCountSummary(in: container))")
+        case .failure(let error):
+            record("\(prefix) 결과=실패 \(String(describing: error))")
+        }
+        return result
     }
 }
