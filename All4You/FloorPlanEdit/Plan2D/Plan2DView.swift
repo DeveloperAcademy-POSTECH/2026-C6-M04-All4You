@@ -389,7 +389,9 @@ extension Plan2DView {
     
     /// 아이콘을 스탬프 크기의 정사각형 안 가운데에 둔다. 테두리가 아이콘 모양과 상관없이 같은 크기가 되게
     private func stampIcon(_ systemName: String, size meters: Double? = nil) -> some View {
-        let size = screen.length(meters ?? screen.outletSize)
+        // 화면 크기가 아직 정해지지 않은 순간에 크기가 음수나 무한대가 되면 SwiftUI가 경고하므로 0 이상의 유한한 값으로 맞춘다
+        let length = screen.length(meters ?? screen.outletSize)
+        let size = length.isFinite ? max(length, 0) : 0
         return Image(systemName: systemName)
             .font(.system(size: size))
             .foregroundStyle(.brand500)
