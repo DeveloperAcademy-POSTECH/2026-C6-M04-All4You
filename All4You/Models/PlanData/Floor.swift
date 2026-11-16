@@ -33,4 +33,51 @@ extension Floor {
         }
         return best
     }
+
+    /// 귀 자르기로 나눈 삼각형의 꼭짓점 번호들 (세 개씩 한 삼각형, corners의 번호). 오목한 다각형도 나눈다.
+    /// 3개 미만이거나 넓이가 없으면 빈 배열이고, 어긋난 모양(스스로 겹침)이라 귀를 못 찾으면 남은 꼭짓점을 부채꼴로 잇는다
+    var triangleIndices: [UInt32] {
+        let points = self.points
+        guard points.count >= 3, abs(PlanData.signedArea(points)) > WallMoveRules.eps else { return [] }
+        // 돌아가는 방향을 맞춘다 (넓이가 +이면 그대로, −이면 뒤집는다)
+        var remaining = Array(points.indices)
+        if PlanData.signedArea(points) < 0 { remaining.reverse() }
+        func cross(_ o: SIMD2<Double>, _ a: SIMD2<Double>, _ b: SIMD2<Double>) -> Double {
+            (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+        }
+        func isInside(_ p: SIMD2<Double>, _ a: SIMD2<Double>, _ b: SIMD2<Double>, _ c: SIMD2<Double>) -> Bool {
+            let eps = WallMoveRules.eps
+            // 삼각형 변 위에 놓인 꼭짓점도 막는 것으로 본다 (오목한 꼭짓점이 대각선 위에 있으면 그 귀를 자르면 안 된다)
+            return cross(a, b, p) >= -eps && cross(b, c, p) >= -eps && cross(c, a, p) >= -eps
+        }
+        var triangles: [UInt32] = []
+        var attempts = 0
+        while remaining.count > 3, attempts < points.count * points.count {
+            attempts += 1
+            var isClipped = false
+            for position in remaining.indices {
+                let previous = remaining[(position + remaining.count - 1) % remaining.count]
+                let current = remaining[position]
+                let next = remaining[(position + 1) % remaining.count]
+                // 볼록한 꼭짓점이고 그 삼각형 안에 다른 꼭짓점이 없으면 귀다
+                guard cross(points[previous], points[current], points[next]) > WallMoveRules.eps else { continue }
+                let hasOtherInside = remaining.contains { other in
+                    other != previous && other != current && other != next
+                        && isInside(points[other], points[previous], points[current], points[next])
+                }
+                guard !hasOtherInside else { continue }
+                triangles += [UInt32(previous), UInt32(current), UInt32(next)]
+                remaining.remove(at: position)
+                isClipped = true
+                break
+            }
+            if !isClipped { break }
+        }
+        if remaining.count >= 3 {
+            for position in 1..<(remaining.count - 1) {
+                triangles += [UInt32(remaining[0]), UInt32(remaining[position]), UInt32(remaining[position + 1])]
+            }
+        }
+        return triangles
+    }
 }
