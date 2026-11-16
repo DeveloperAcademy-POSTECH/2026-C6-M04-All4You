@@ -84,6 +84,10 @@ struct FloorPlanEdit2DView: View {
     @State private var wallDragBase: (plan: PlanData, limits: MoveLimits)?
     /// 벽이 범위 끝에 막혔을 때 보여 줄 이유
     @State private var wallBlockedReason: String?
+    /// 꼭짓점을 끄는 동안의 미리 보기에서 자동으로 지워진 것의 안내. 손을 떼면 띄운다
+    @State private var vertexRemovedNotice: String?
+    /// 지금 끌고 있는 꼭짓점과 손가락 화면 점. 끄는 동안 벽이 나뉘거나 꼭짓점이 합쳐져도 손잡이가 사라져 끌기가 끊기지 않게 한다
+    @State private var draggingVertex: (id: String, location: CGPoint)?
     /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
     @State private var noticeDismissTask: Task<Void, Never>?
 
@@ -758,22 +762,19 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 그은 선을 벽으로 넣는다. 양 끝은 가까우면 붙고 멀면 그은 자리에서 끝난다. 넣을 수 없는 자리면 아무것도 바꾸지 않는다
+    /// 그은 선을 벽으로 넣는다. 양 끝은 가까우면 붙고 멀면 그은 자리에서 끝난다. 거절하지 않고, 자동으로 지운 것이 있으면 안내한다
     private func finishPenStroke() {
         guard let penStroke, let screen else { return }
         self.penStroke = nil
-        let result = planData.drawingWall(
+        // 탭과 구분되지 않는 짧은 획은 벽으로 만들지 않고 안내도 하지 않는다. 벽 길이는 제한하지 않는다
+        guard hypot(penStroke.end.x - penStroke.start.x, penStroke.end.y - penStroke.start.y) >= Layout.minimumPenStroke else { return }
+        let outcome = planData.drawingWall(
             from: screen.plan(penStroke.start),
             to: screen.plan(penStroke.end),
             snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
         )
-        switch result {
-        case .success(let drawn):
-            planData = drawn
-        case .failure(let failure):
-            // 손가락을 짧게 스치기만 한 것까지 매번 안내하지 않게, 짧은 선은 안내하지 않는다
-            if failure != .strokeTooShort { showNotice(failure.message) }
-        }
+        planData = outcome.plan
+        if let notice = outcome.removedNotice { showNotice(notice) }
     }
 
     /// 화면 점이 고른 스탬프·벽·가구 위인지. 가구는 다른 가구와 겹쳐 아래에 있어도 고른 가구 안이면 맞다
@@ -788,39 +789,17 @@ extension FloorPlanEdit2DView {
         }
     }
 
-    /// 펜으로 긋는 중인 선. 손을 떼면 벽이 될 자리(양 끝이 붙을 곳)를 보여 준다: 붙는 끝은 주황 점, 떠 있는 끝은 속이 빈 점.
-    /// 붙을 자리를 정하지 못하면(너무 짧음 등) 손가락이 그은 그대로 보여 준다
+    /// 펜으로 긋는 중인 선. 손가락이 그은 그대로 보여 준다. 꼭짓점·벽에 붙이는 보정은 손을 뗀 뒤에 들어간다
     @ViewBuilder
     private var penStrokeLine: some View {
-        if let penStroke, let screen {
-            let ends = planData.wallEndPreviews(
-                from: screen.plan(penStroke.start),
-                to: screen.plan(penStroke.end),
-                snapRadius: Double(Layout.snapDistance) / Double(screen.length(1))
-            )
-            let start = ends.map { screen.point($0.start.point) } ?? penStroke.start
-            let end = ends.map { screen.point($0.end.point) } ?? penStroke.end
-            ZStack {
-                Path { path in
-                    path.move(to: start)
-                    path.addLine(to: end)
-                }
-                .stroke(Color.brand500, style: StrokeStyle(lineWidth: Layout.penLineWidth, lineCap: .round, dash: Layout.penDash))
-                if let ends {
-                    penEndMark(at: start, isAttached: ends.start.isAttached)
-                    penEndMark(at: end, isAttached: ends.end.isAttached)
-                }
+        if let penStroke {
+            Path { path in
+                path.move(to: penStroke.start)
+                path.addLine(to: penStroke.end)
             }
+            .stroke(Color.brand500, style: StrokeStyle(lineWidth: Layout.penLineWidth, lineCap: .round, dash: Layout.penDash))
             .allowsHitTesting(false)
         }
-    }
-
-    private func penEndMark(at point: CGPoint, isAttached: Bool) -> some View {
-        Circle()
-            .fill(isAttached ? Color.brand500 : Color.white)
-            .overlay { Circle().stroke(Color.brand500, lineWidth: Layout.penLineWidth) }
-            .frame(width: Layout.penEndMarkSize, height: Layout.penEndMarkSize)
-            .position(point)
     }
 }
 
@@ -1069,7 +1048,12 @@ extension FloorPlanEdit2DView {
     /// 손잡이를 놓을 꼭짓점과 화면 점
     private func vertexHandles(screen: PlanScreen) -> [(vertexId: String, point: CGPoint)] {
         let plan = dragPreview ?? planData
-        guard isHandTool, !isStampActive, case .wall(let id)? = selection, let wall = plan.wall(id: id) else { return [] }
+        guard isHandTool, !isStampActive, case .wall(let id)? = selection else { return [] }
+        // 끄는 동안은 끄는 꼭짓점 하나만 둔다. 꼭짓점이 합쳐져 없어지면 손가락 자리에 둔다
+        if let draggingVertex {
+            return [(draggingVertex.id, plan.vertexPoints[draggingVertex.id].map(screen.point) ?? draggingVertex.location)]
+        }
+        guard let wall = plan.wall(id: id) else { return [] }
         let points = plan.vertexPoints
         return [wall.startVertex, wall.endVertex].compactMap { vertexId in
             points[vertexId].map { (vertexId, screen.point($0)) }
@@ -1081,31 +1065,39 @@ extension FloorPlanEdit2DView {
         vertexHandles(screen: screen).contains { hypot($0.point.x - location.x, $0.point.y - location.y) <= VertexHandles2DView.handleSize / 2 }
     }
 
-    /// 끄는 동안은 미리 보기 도면에서만 꼭짓점을 손가락 자리로 옮긴다 (축 자석·떠 있는 끝 붙이기 포함).
-    /// 옮길 수 없는 자리면 마지막으로 맞는 미리 보기를 두고 이유를 띄운다. 계산은 늘 처음 도면에서 해서, 끄는 동안 맞춤이 쌓이지 않는다
+    /// 끄는 동안은 미리 보기 도면에서만 꼭짓점을 손가락 자리로 옮긴다 (축 자석·떠 있는 끝 붙이기 포함). 거절하지 않는다.
+    /// 계산은 늘 처음 도면에서 해서, 끄는 동안 맞춤이 쌓이지 않는다
     private func previewVertex(_ vertexId: String, at location: CGPoint) {
         guard let screen else { return }
         menuTarget = nil
-        switch planData.movingVertex(
+        draggingVertex = (vertexId, location)
+        let outcome = planData.movingVertex(
             vertexId,
             to: screen.plan(location),
             snapRadius: Double(Layout.magnetDistance) / Double(screen.length(1))
-        ) {
-        case .success(let moved):
-            dragPreview = moved
-            wallBlockedReason = nil
-        case .failure(let failure):
-            wallBlockedReason = failure.message
-        }
+        )
+        dragPreview = outcome.plan
+        vertexRemovedNotice = outcome.removedNotice
     }
 
-    /// 손을 떼면 미리 보기를 한 번 반영한다. 막혔으면 이유를 잠깐 남긴다
+    /// 손을 떼면 미리 보기를 한 번 반영한다. 자동으로 지운 것이 있으면 그때 안내한다
     private func endVertexDrag() {
-        let blocked = wallBlockedReason
-        wallBlockedReason = nil
+        let notice = vertexRemovedNotice
+        let draggedId = draggingVertex?.id
+        vertexRemovedNotice = nil
+        draggingVertex = nil
         commitPreview()
+        // 끈 꼭짓점이 다른 벽을 가로질러 벽이 나뉘면 고른 벽은 앞 조각만 남으므로, 끈 꼭짓점이 있는 조각을 다시 고른다
+        if case .wall(let id)? = selection {
+            let keepsVertex = draggedId.flatMap { vertexId in planData.wall(id: id).map { [$0.startVertex, $0.endVertex].contains(vertexId) } } ?? false
+            if !keepsVertex, let draggedId, let piece = planData.walls.first(where: { $0.startVertex == draggedId || $0.endVertex == draggedId }) {
+                selection = .wall(piece.id)
+            } else if planData.wall(id: id) == nil {
+                selection = nil
+            }
+        }
         if case .wall(let id)? = selection { wallSelection = planData.wallLine(containing: id) }
-        if let blocked { showNotice(blocked) }
+        if let notice { showNotice(notice) }
     }
 
     /// 끄는 동안은 미리 보기 도면에서만 그 끝을 손가락이 있는 벽 위 자리로 옮긴다. 높이는 그대로 둔다
@@ -1125,7 +1117,8 @@ extension FloorPlanEdit2DView {
     private var zoomGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
-                guard let screen else { return }
+                // 벽·스탬프를 끌거나 펜으로 긋는 동안 다른 손가락이 닿아도 도면을 확대하지 않는다
+                guard let screen, !isEditingByDrag else { return }
                 let factor = value.magnification / lastMagnification
                 lastMagnification = value.magnification
                 self.screen = screen.zoomed(by: factor, around: value.startLocation)
@@ -1139,7 +1132,8 @@ extension FloorPlanEdit2DView {
     private var rotateGesture: some Gesture {
         RotateGesture()
             .onChanged { value in
-                guard let screen else { return }
+                // 끄는 동안 닿은 다른 손가락으로 도면이 돌아가 회전각이 되돌리기 한 칸으로 남지 않게 한다
+                guard let screen, !isEditingByDrag else { return }
                 // 두 손가락이 정확히 세로·가로가 되는 순간 시스템이 NaN을 줄 때가 있다. 그 값을 넣으면 도면이 사라지므로 건너뛴다
                 let radians = value.rotation.radians
                 guard radians.isFinite else { return }
@@ -1160,6 +1154,11 @@ extension FloorPlanEdit2DView {
             self.screen = screen.settled(around: canvasCenter)
         }
         planData.planRotation = screen.savedRotation
+    }
+
+    /// 손가락 하나로 벽·꼭짓점·스탬프를 끌거나 펜으로 긋는 중인지
+    private var isEditingByDrag: Bool {
+        dragPreview != nil || penStroke != nil
     }
 
     /// 도면 영역의 가운데. 돌린 각을 맞출 때 이 점이 제자리에 있게 한다
@@ -1212,6 +1211,9 @@ extension FloorPlanEdit2DView {
         static let compassSnapRadians = Double.pi / 45
         /// 펜 끝을 꼭짓점·벽에 붙이는 거리 (pt)
         static let snapDistance: CGFloat = 16
+        /// 펜으로 이만큼(pt)보다 덜 움직인 획은 탭으로 보고 벽을 만들지 않는다
+        // TEMP: 탭과 구분되는 길이는 실기기에서 그려 보고 정함
+        static let minimumPenStroke: CGFloat = 8
         /// 꼭짓점을 끌 때 붙은 벽이 가로·세로가 되는 자리에서 딱 붙는 화면 거리 (pt)
         // TEMP: 축 자석 거리는 실기기에서 써 보고 정함
         static let magnetDistance: CGFloat = 16
@@ -1219,7 +1221,6 @@ extension FloorPlanEdit2DView {
         static let penLineWidth: CGFloat = 2
         static let penDash: [CGFloat] = [6, 4]
         /// 긋는 중에 벽 끝이 붙을 자리에 찍는 점 지름 (pt)
-        static let penEndMarkSize: CGFloat = 12
     }
 }
 

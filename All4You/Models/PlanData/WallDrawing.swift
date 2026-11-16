@@ -1,9 +1,9 @@
 // 펜으로 새 벽을 그리고 지우개로 벽을 지우는 계산
 //
 // 그리기: 그은 직선 한 줄. 양 끝을 각각 가까우면 붙고 멀면 그은 자리에서 끝난다 (꼭짓점 → 벽 → 조금 늘여 닿는 벽 → 떠 있는 끝).
-// 벽에 붙을 때는 그 벽을 둘로 나눠 붙인다. 거의 가로·세로면 가로·세로로 맞춘다. 새 벽이 방을 닫으면 방을 나눈다.
-// 지우기: 두 방 사이 벽은 빼고 두 방을 합친다. 방과 건물 바깥 사이 벽은 가상 경계선으로 바꾼다 (벽 삭제와 같다).
-// 방 경계가 아닌 벽은 그냥 뺀다. 지운 뒤에는 쓸모없어진 가상 경계선을 정리한다 (VirtualWallCleanup.swift)
+// 벽에 붙을 때는 그 벽을 둘로 나눠 붙인다. 거의 가로·세로면 가로·세로로 맞춘다.
+// 그리기는 거절하지 않는다. 다른 벽을 가로지르면 만나는 자리에서 나누고, 이미 벽이 있는 자리는 기존 벽을 남기고 겹치지 않는 부분만 벽으로 넣는다 (WallEditOutcome.swift)
+// 지우기: 벽과 거기 달린 창문·문·콘센트를 뺀다
 
 import Foundation
 
@@ -15,6 +15,12 @@ enum WallDrawingRules {
     /// 끝점에서 그은 방향으로 이만큼(m) 안쪽만 늘이면 벽에 닿을 때 늘여서 붙인다
     // TEMP: 늘여 붙는 거리는 실기기에서 그려 보고 정함
     static let extendDistance = 0.5
+    /// 도면에 벽이 하나도 없을 때 그리는 벽의 두께 (m). 스캔 변환이 주는 두께와 같다
+    // TEMP: 벽 두께는 팀 논의 후 정함
+    static let defaultThickness = 0.15
+    /// 도면에 벽이 하나도 없을 때 그리는 벽의 높이 (m)
+    // TEMP: 벽 높이는 팀 논의 후 정함
+    static let defaultHeight = 2.4
 }
 
 extension PlanData {
@@ -32,108 +38,111 @@ enum WallEnd {
     case free(SIMD2<Double>)
 }
 
-/// 긋는 중인 선의 한쪽 끝이 붙을 자리
-struct WallEndPreview: Equatable {
-    /// 도면 점 (m)
-    let point: SIMD2<Double>
-    /// 꼭짓점·벽에 붙는지. false면 그은 자리에서 끝나는 떠 있는 끝
-    let isAttached: Bool
-}
-
-/// 벽을 그리지 못한 이유. message는 화면에 띄워, 어떻게 다시 그으면 되는지 알려 주는 문장이다
-enum WallDrawingFailure: Error {
-    case strokeTooShort
-    case wallTooShort
-    case doorInTheWay
-    case wallAlreadyThere
-    case crossesWall
-    case roomsCannotBeRebuilt
-    case stampInTheWay
-
-    var message: String {
-        switch self {
-        case .strokeTooShort: "선이 너무 짧아요. 조금 더 길게 그어 주세요"
-        case .wallTooShort: "벽이 너무 짧아요(0.3m 미만). 조금 더 길게 그어 주세요"
-        case .doorInTheWay: "문이 있는 자리에는 벽을 붙일 수 없어요. 문에서 떨어진 벽 자리에서 시작하거나 끝나게 그어 주세요"
-        case .wallAlreadyThere: "그 자리에는 이미 벽이 있어요. 벽이 없는 다른 자리에 그어 주세요"
-        case .crossesWall: "다른 벽을 가로질러요. 다른 벽을 지나지 않게 그어 주세요"
-        case .roomsCannotBeRebuilt: "벽으로 방을 나눌 수 없어요. 벽이 끊기지 않고 이어진 방 안에서 그어 주세요"
-        case .stampInTheWay: "스탬프가 걸려요. 발화지점·피해자에서 떨어진 자리에 그어 주세요"
-        }
-    }
-}
-
 // 그리기
 extension PlanData {
-    /// start → end 직선 한 줄을 넣은 새 도면. 양 끝은 각각 snapRadius(m) 안의 꼭짓점·벽에 붙고, 없으면 조금 늘여서 닿는 벽에 붙고,
-    /// 그것도 없으면 그은 자리에서 끝난다(떠 있는 끝). 벽에 붙은 자리에 창문이 걸려 있으면 창문을 벽을 나눈 두 조각으로 나눈다.
-    /// 너무 짧거나, 문이 걸리거나, 다른 벽을 가로지르거나, 스탬프에 걸리거나, 방을 다시 만들 수 없으면 그 이유(failure)
-    func drawingWall(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> Result<PlanData, WallDrawingFailure> {
+    /// start → end 직선 한 줄을 넣은 새 도면과 자동으로 지운 것. 양 끝은 각각 snapRadius(m) 안의 꼭짓점·벽에 붙고, 없으면 조금 늘여서 닿는 벽에 붙고,
+    /// 그것도 없으면 그은 자리에서 끝난다(떠 있는 끝). 벽에 붙은 자리에 창문이 걸려 있으면 창문을 벽을 나눈 두 조각으로 나누고, 문이 걸려 있으면 문을 옆으로 민다.
+    /// 거절하지 않는다. 넣을 벽이 없으면(이미 벽이 있는 자리 등) 도면을 바꾸지 않고 돌려준다
+    func drawingWall(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> WallEditOutcome {
+        let unchanged = WallEditOutcome(plan: self)
         let stroke = end - start
         let strokeLength = Self.length(stroke)
-        guard strokeLength > WallMoveRules.eps else { return .failure(.strokeTooShort) }
+        guard strokeLength > WallMoveRules.eps else { return unchanged }
         let direction = Self.straightened(stroke / strokeLength)
         let length = (stroke * direction).sum()
-        guard let model = walls.first(where: { !$0.isVirtual }) else { return .failure(.wallAlreadyThere) }
+        // 두께·높이는 있는 벽을 베끼고, 벽이 하나도 없으면 기본값을 쓴다
+        let model = walls.first { !$0.isVirtual }
+        let thickness = model?.thickness ?? WallDrawingRules.defaultThickness
+        let height = model?.height ?? WallDrawingRules.defaultHeight
+
+        // 두 끝이 모두 꼭짓점 가까이면 그 두 꼭짓점을 곧바로 잇는다. 가로·세로 맞춤이나 모서리 보정으로 벽이 어긋나지 않게 한다
+        if let ends = connectedVertices(from: start, to: end, snapRadius: snapRadius) {
+            var connected = self
+            var removedByConnecting: [RemovedItem] = []
+            guard connected.addWalls(from: ends.start, to: ends.end, thickness: thickness, height: height, removed: &removedByConnecting) else { return unchanged }
+            connected.removeUnusedVertices(keeping: Set(vertices.map(\.id)))
+            return WallEditOutcome(plan: connected, removed: removedByConnecting)
+        }
 
         // 끝점은 하나씩 정해 바로 도면에 반영한다. 먼저 붙인 끝이 벽을 나눈 뒤의 도면에서 다음 끝을 찾아야 같은 벽 위의 두 끝도 맞는다.
         // 시작 끝이 정해지면 그 점을 지나는 직선 위에서 같은 길이만큼 가서 끝 끝을 찾아, 가로·세로로 맞춘 선이 꼭짓점에 붙어도 가로·세로를 유지한다
         var result = self
-        let startEnd = result.resolveEnd(near: start, anchor: start, direction: direction, excluding: nil, snapRadius: snapRadius)
-        guard !result.isDoorInTheWay(startEnd), let startVertex = result.vertexId(for: startEnd) else { return .failure(.doorInTheWay) }
+        var removed: [RemovedItem] = []
+        let startEnd = result.resolveEnd(near: start, anchor: start, direction: direction, excluding: nil, snapRadius: snapRadius, removed: &removed)
+        guard let startVertex = result.vertexId(for: startEnd, removed: &removed) else { return unchanged }
         let anchor = result.point(of: startEnd)
-        let endEnd = result.resolveEnd(near: anchor + direction * length, anchor: anchor, direction: direction, excluding: startVertex, snapRadius: snapRadius)
-        guard Self.length(result.point(of: endEnd) - anchor) >= WallMoveRules.minWallLength else { return .failure(.wallTooShort) }
-        guard !result.isDoorInTheWay(endEnd), let endVertex = result.vertexId(for: endEnd) else { return .failure(.doorInTheWay) }
-        guard startVertex != endVertex else { return .failure(.wallAlreadyThere) }
+        let endEnd = result.resolveEnd(near: anchor + direction * length, anchor: anchor, direction: direction, excluding: startVertex, snapRadius: snapRadius, removed: &removed)
+        guard let endVertex = result.vertexId(for: endEnd, removed: &removed), startVertex != endVertex else { return unchanged }
 
-        // 가상 경계선을 가로지르면 만나는 자리에 꼭짓점을 만들어 가상 경계선과 새 벽을 모두 나눈다
-        guard let chain = result.verticesAlong(from: startVertex, to: endVertex) else { return .failure(.roomsCannotBeRebuilt) }
-        var drawnWallIds = Set<String>()
-        for (a, b) in zip(chain, chain.dropFirst()) {
-            if let existing = result.walls.firstIndex(where: { Set([$0.startVertex, $0.endVertex]) == Set([a, b]) }) {
-                // 이미 있는 가상 경계선이면 진짜 벽으로 바꾼다. 진짜 벽이면 그대로 둔다
-                guard result.walls[existing].isVirtual else { continue }
-                result.walls[existing].isVirtual = false
-                result.walls[existing].thickness = model.thickness
-                result.walls[existing].height = model.height
-                drawnWallIds.insert(result.walls[existing].id)
-                continue
-            }
-            let wall = Wall(id: UUID().uuidString, startVertex: a, endVertex: b, thickness: model.thickness, height: model.height, isVirtual: false)
-            guard !result.crossesWalls(wall) else { return .failure(.crossesWall) }
-            result.walls.append(wall)
-            drawnWallIds.insert(wall.id)
-        }
-        guard !drawnWallIds.isEmpty else { return .failure(.wallAlreadyThere) }
-        // 방 안에 잘 있던 사람·발화지점을 벽이 지나가면 그리지 않는다
-        guard markers.filter(fits).allSatisfy(result.fits) else { return .failure(.stampInTheWay) }
-        return .success(result)
+        guard result.addWalls(from: startVertex, to: endVertex, thickness: thickness, height: height, removed: &removed) else { return unchanged }
+        result.removeUnusedVertices(keeping: Set(vertices.map(\.id)))
+        return WallEditOutcome(plan: result, removed: removed)
     }
 
-    /// 꼭짓점 from → to 직선이 가로지르는 가상 경계선을 그 자리에서 나눠, from에서 to까지 차례로 지나는 꼭짓점 id들을 돌려준다
-    /// (from, 가로지른 자리들, to). 가로지른 가상 경계선이 없으면 [from, to]. 경계선을 나눌 수 없으면 nil
-    private mutating func verticesAlong(from: String, to: String) -> [String]? {
+    /// 그은 선의 두 끝이 서로 다른 꼭짓점의 snapRadius 안이면 그 두 꼭짓점 id. 떨어진 두 모서리를 짧은 선으로 이을 때다
+    private func connectedVertices(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> (start: String, end: String)? {
         let pos = vertexPoints
-        guard let a = pos[from], let b = pos[to] else { return nil }
+        let used = Set(walls.flatMap { [$0.startVertex, $0.endVertex] })
+        func nearestVertex(to point: SIMD2<Double>) -> String? {
+            used.compactMap { id in pos[id].map { (id: id, distance: Self.length($0 - point)) } }
+                .filter { $0.distance <= snapRadius }
+                .min { $0.distance < $1.distance }?.id
+        }
+        guard let first = nearestVertex(to: start), let second = nearestVertex(to: end), first != second else { return nil }
+        return (first, second)
+    }
+
+    /// 꼭짓점 from → to 직선을 벽으로 넣는다. 가로지르는 벽은 그 자리에서 나누고, 직선 위에 놓인 꼭짓점은 지나가며 이어진다.
+    /// 이미 벽이 있는 구간은 기존 벽을 남기고(보이지 않는 가상 경계선은 진짜 벽으로 바꾼다) 겹치지 않는 구간만 새 벽으로 넣는다. 넣거나 바꾼 것이 없으면 false
+    private mutating func addWalls(from: String, to: String, thickness: Double, height: Double, removed: inout [RemovedItem]) -> Bool {
+        let eps = WallMoveRules.eps
+        let pos = vertexPoints
+        guard let a = pos[from], let b = pos[to] else { return false }
         let line = WallLine(start: a, end: b)
-        var cuts: [(t: Double, wallId: String, point: SIMD2<Double>)] = []
-        for wall in walls where wall.isVirtual {
-            guard ![wall.startVertex, wall.endVertex].contains(from), ![wall.startVertex, wall.endVertex].contains(to),
-                  let other = self.line(of: wall), let crossing = Self.crossingPoint(line, other) else { continue }
-            cuts.append((((crossing - a) * line.direction).sum(), wall.id, crossing))
+        guard line.length > eps else { return false }
+
+        // 새 선이 지나는 꼭짓점들 (거리순). 가로지르는 벽은 그 자리에서 나눠 꼭짓점을 만든다
+        var cuts: [(t: Double, id: String)] = [(0, from), (line.length, to)]
+        for wall in walls {
+            guard let other = self.line(of: wall), let crossing = Self.crossingPoint(line, other),
+                  let vertexId = splitWall(wall.id, at: crossing, removed: &removed) else { continue }
+            cuts.append((((crossing - a) * line.direction).sum(), vertexId))
         }
-        var chain = [from]
-        for cut in cuts.sorted(by: { $0.t < $1.t }) {
-            guard let vertex = splitWall(cut.wallId, at: cut.point) else { return nil }
-            chain.append(vertex)
+        let used = Set(walls.flatMap { [$0.startVertex, $0.endVertex] })
+        for (id, point) in vertexPoints where used.contains(id) && id != from && id != to && !cuts.contains(where: { $0.id == id }) {
+            let along = ((point - a) * line.direction).sum()
+            if line.distance(to: point) < eps, along > eps, along < line.length - eps { cuts.append((along, id)) }
         }
-        chain.append(to)
-        return chain
+        cuts.sort { $0.t < $1.t }
+
+        var didChange = false
+        let points = vertexPoints
+        for (first, second) in zip(cuts, cuts.dropFirst()) {
+            if let existing = walls.firstIndex(where: { Set([$0.startVertex, $0.endVertex]) == Set([first.id, second.id]) }) {
+                // 보이지 않는 가상 경계선이면 진짜 벽으로 바꾼다. 진짜 벽이면 그대로 둔다
+                guard walls[existing].isVirtual else { continue }
+                walls[existing].isVirtual = false
+                walls[existing].thickness = thickness
+                walls[existing].height = height
+                didChange = true
+                continue
+            }
+            // 그 구간을 이미 진짜 벽이 지나면 기존 벽을 남긴다
+            guard let p = points[first.id], let q = points[second.id] else { continue }
+            let middle = (p + q) / 2
+            let isCovered = walls.contains { wall in
+                guard !wall.isVirtual, let other = self.line(of: wall) else { return false }
+                return other.distance(to: middle) < eps
+            }
+            guard !isCovered else { continue }
+            walls.append(Wall(id: UUID().uuidString, startVertex: first.id, endVertex: second.id, thickness: thickness, height: height, isVirtual: false))
+            didChange = true
+        }
+        return didChange
     }
 
     /// 두 선분이 서로의 안쪽에서 가로지르는 점. 끝이 닿거나 나란하면 nil
-    private static func crossingPoint(_ p: WallLine, _ q: WallLine) -> SIMD2<Double>? {
+    static func crossingPoint(_ p: WallLine, _ q: WallLine) -> SIMD2<Double>? {
         func cross(_ o: SIMD2<Double>, _ a: SIMD2<Double>, _ b: SIMD2<Double>) -> Double {
             (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
         }
@@ -146,37 +155,11 @@ extension PlanData {
         return p.start + (p.end - p.start) * (d1 / (d1 - d2))
     }
 
-    /// 긋는 동안 보여 줄 양 끝이 붙을 자리. 손을 떼면 drawingWall이 정할 자리와 같은 규칙이다 (복사본에서 같은 순서로 정한다)
-    func wallEndPreviews(from start: SIMD2<Double>, to end: SIMD2<Double>, snapRadius: Double) -> (start: WallEndPreview, end: WallEndPreview)? {
-        let stroke = end - start
-        let strokeLength = Self.length(stroke)
-        guard strokeLength > WallMoveRules.eps else { return nil }
-        let direction = Self.straightened(stroke / strokeLength)
-        let length = (stroke * direction).sum()
-        func preview(_ end: WallEnd, in plan: PlanData) -> WallEndPreview {
-            if case .free = end { return WallEndPreview(point: plan.point(of: end), isAttached: false) }
-            return WallEndPreview(point: plan.point(of: end), isAttached: true)
-        }
-        var copy = self
-        let startEnd = copy.resolveEnd(near: start, anchor: start, direction: direction, excluding: nil, snapRadius: snapRadius)
-        let startVertex = copy.vertexId(for: startEnd)
-        let anchor = copy.point(of: startEnd)
-        let endEnd = copy.resolveEnd(near: anchor + direction * length, anchor: anchor, direction: direction, excluding: startVertex, snapRadius: snapRadius)
-        return (preview(startEnd, in: copy), preview(endEnd, in: copy))
-    }
-
-    /// 벽 끝이 붙을 자리에 문이 걸려 있는지. 창문·개구부는 나눌 수 있어서 걸리지 않는다
-    func isDoorInTheWay(_ end: WallEnd) -> Bool {
-        guard case .wall(let wallId, let point) = end, let wall = wall(id: wallId), let line = line(of: wall) else { return false }
-        let at = ((point - line.start) * line.direction).sum()
-        return doorWindows.contains { $0.wallId == wallId && $0.kind == .door && abs($0.centerAlongWall - at) < $0.width / 2 }
-    }
-
     /// 그은 직선(anchor를 지나 direction 방향)의 한쪽 끝 point가 붙을 자리. 직선이 비뚤어지지 않게 붙는다:
     /// 가까운 꼭짓점이 떠 있는 벽의 끝이면 그 벽을 늘이거나 줄여 직선과 만나는 점에 모서리를 만들고(꼭짓점을 옮긴다),
     /// 여러 벽이 만나는 꼭짓점이면 직선이 그 벽과 만나는 점에 붙는다. 그 밖에는 wallEnd 규칙을 따른다.
     /// excluding은 붙지 않을 꼭짓점 (끝 끝이 시작 꼭짓점으로 되돌아오지 않게)
-    private mutating func resolveEnd(near point: SIMD2<Double>, anchor: SIMD2<Double>, direction: SIMD2<Double>, excluding: String?, snapRadius: Double) -> WallEnd {
+    private mutating func resolveEnd(near point: SIMD2<Double>, anchor: SIMD2<Double>, direction: SIMD2<Double>, excluding: String?, snapRadius: Double, removed: inout [RemovedItem]) -> WallEnd {
         let pos = vertexPoints
         let used = Set(walls.flatMap { [$0.startVertex, $0.endVertex] }).subtracting(excluding.map { [$0] } ?? [])
         func nearest(within radius: Double, where isCandidate: (String) -> Bool) -> [String] {
@@ -186,13 +169,13 @@ extension PlanData {
                 .map(\.id)
         }
         if let vertex = nearest(within: snapRadius, where: { _ in true }).first {
-            if let corner = cornerWithFreeEnd(vertex, anchor: anchor, direction: direction) { return corner }
+            if let corner = cornerWithFreeEnd(vertex, anchor: anchor, direction: direction, maxMove: snapRadius, removed: &removed) { return corner }
             if let onWall = wallPointOnLine(adjacentTo: vertex, anchor: anchor, direction: direction) { return onWall }
             return .vertex(vertex)
         }
         // 떠 있는 벽 끝이 조금 떨어져 있어도(늘여 붙는 거리 안) 두 벽을 늘이거나 줄여 모서리로 만든다
         for vertex in nearest(within: WallDrawingRules.extendDistance, where: { isFreeEnd($0) }) {
-            if let corner = cornerWithFreeEnd(vertex, anchor: anchor, direction: direction) { return corner }
+            if let corner = cornerWithFreeEnd(vertex, anchor: anchor, direction: direction, maxMove: WallDrawingRules.extendDistance, removed: &removed) { return corner }
         }
         let base = wallEnd(near: point, outward: direction * (point == anchor ? -1 : 1), snapRadius: snapRadius)
         // 벽 위에 붙을 때도 직선이 벽과 만나는 점으로 붙어 직선이 꺾이지 않는다
@@ -210,9 +193,9 @@ extension PlanData {
     }
 
     /// 떠 있는 벽 끝 꼭짓점 vertexId를 그은 직선(anchor, direction)과 그 벽이 만나는 점으로 옮겨(벽을 늘이거나 줄여) 모서리를 만든다.
-    /// 만나는 점까지가 늘여 붙는 거리 안이고, 줄어든 벽이 최소 길이 이상이고, 벽의 창문·문·콘센트가 벽 밖으로 나가지 않을 때만 옮긴다.
+    /// 만나는 점까지가 maxMove(m) 안일 때만 옮긴다. 꼭짓점에 붙을 때는 붙는 거리, 떨어진 끝을 늘여 붙일 때는 늘여 붙는 거리다. 벽에 달린 창문·문·콘센트는 맞춘다(fitOpenings).
     /// 옮겼으면 그 꼭짓점, 못 옮기면 nil
-    private mutating func cornerWithFreeEnd(_ vertexId: String, anchor: SIMD2<Double>, direction: SIMD2<Double>) -> WallEnd? {
+    private mutating func cornerWithFreeEnd(_ vertexId: String, anchor: SIMD2<Double>, direction: SIMD2<Double>, maxMove: Double, removed: inout [RemovedItem]) -> WallEnd? {
         func cross(_ a: SIMD2<Double>, _ b: SIMD2<Double>) -> Double { a.x * b.y - a.y * b.x }
         guard isFreeEnd(vertexId),
               let wallIndex = walls.firstIndex(where: { $0.startVertex == vertexId || $0.endVertex == vertexId }),
@@ -229,24 +212,11 @@ extension PlanData {
         let offset = fixed - anchor
         let newLength = cross(offset, direction) / denominator
         let corner = fixed + along * newLength
-        guard newLength >= WallMoveRules.minWallLength, Self.length(corner - current) <= WallDrawingRules.extendDistance else { return nil }
-        // 시작 쪽을 옮기면 벽을 따라 잰 거리의 기준이 바뀌므로 달린 것들의 자리를 그만큼 민다
-        let shift = movesEnd ? 0 : line.length - newLength
-        let openings = doorWindows.indices.filter { doorWindows[$0].wallId == wall.id }
-        let fixtures = wallFixtures.indices.filter { wallFixtures[$0].wallId == wall.id }
-        let eps = WallMoveRules.eps
-        for index in openings {
-            let start = doorWindows[index].centerAlongWall - shift - doorWindows[index].width / 2
-            guard start >= -eps, start + doorWindows[index].width <= newLength + eps else { return nil }
-        }
-        for index in fixtures {
-            let position = wallFixtures[index].positionAlongWall - shift
-            guard position >= -eps, position <= newLength + eps else { return nil }
-        }
-        for index in openings { doorWindows[index].centerAlongWall -= shift }
-        for index in fixtures { wallFixtures[index].positionAlongWall -= shift }
+        guard newLength > WallMoveRules.eps, Self.length(corner - current) <= maxMove else { return nil }
+        let placesBefore = attachedPlaces(onWalls: [wall.id])
         vertices[vertexIndex].x = corner.x
         vertices[vertexIndex].y = corner.y
+        fitOpenings(onWalls: [wall.id], placesBefore: placesBefore, removed: &removed)
         return .vertex(vertexId)
     }
 
@@ -362,13 +332,13 @@ extension PlanData {
         return direction
     }
 
-    /// 벽 끝이 쓸 꼭짓점 id. 벽 위면 그 벽을 나눈다. 벽을 나눌 수 없으면 nil
-    mutating func vertexId(for end: WallEnd) -> String? {
+    /// 벽 끝이 쓸 꼭짓점 id. 벽 위면 그 벽을 나눈다. 벽을 찾지 못하면 nil
+    mutating func vertexId(for end: WallEnd, removed: inout [RemovedItem]) -> String? {
         switch end {
         case .vertex(let id):
             return id
         case .wall(let wallId, let point):
-            return splitWall(wallId, at: point)
+            return splitWall(wallId, at: point, removed: &removed)
         case .free(let point):
             let vertex = Vertex(id: UUID().uuidString, x: point.x, y: point.y)
             vertices.append(vertex)
@@ -376,24 +346,29 @@ extension PlanData {
         }
     }
 
-    /// 벽을 point에서 둘로 나누고 나눈 꼭짓점 id를 돌려준다.
+    /// 벽을 point에서 둘로 나누고 나눈 꼭짓점 id를 돌려준다. reusing이 있으면 새 꼭짓점을 만들지 않고 그 꼭짓점에서 나눈다.
     /// 뒤쪽 조각에 달린 창문·문·콘센트는 새 벽으로 옮긴다. 나누는 자리에 걸친 창문은 두 조각으로 나눠 양쪽 벽에 하나씩 둔다
-    /// (너무 좁아지는 조각은 뺀다). 나누는 자리에 문이 걸려 있으면 nil
-    mutating func splitWall(_ wallId: String, at point: SIMD2<Double>) -> String? {
+    /// (너무 좁아지는 조각은 뺀다). 나누는 자리에 문이 걸려 있으면 문을 옆으로 밀고, 자리가 없으면 지우고 removed에 적는다. 벽을 찾지 못하면 nil
+    mutating func splitWall(_ wallId: String, at point: SIMD2<Double>, reusing existing: String? = nil, removed: inout [RemovedItem]) -> String? {
         guard let index = walls.firstIndex(where: { $0.id == wallId }), let line = line(of: walls[index]) else { return nil }
         let at = ((point - line.start) * line.direction).sum()
         let eps = WallMoveRules.eps
         guard at > eps, at < line.length - eps else {
             return at <= eps ? walls[index].startVertex : walls[index].endVertex
         }
-        guard !doorWindows.contains(where: { $0.wallId == wallId && $0.kind == .door && abs($0.centerAlongWall - at) < $0.width / 2 }) else { return nil }
+        pushDoors(offSplitAt: at, onWall: wallId, length: line.length, removed: &removed)
 
-        let vertex = Vertex(id: UUID().uuidString, x: point.x, y: point.y)
+        let vertex: Vertex
+        if let existing, let found = self.vertex(id: existing) {
+            vertex = found
+        } else {
+            vertex = Vertex(id: UUID().uuidString, x: point.x, y: point.y)
+            vertices.append(vertex)
+        }
         let front = walls[index]
         let back = Wall(id: UUID().uuidString, startVertex: vertex.id, endVertex: front.endVertex,
                         thickness: front.thickness, height: front.height, isVirtual: front.isVirtual)
         walls[index].endVertex = vertex.id
-        vertices.append(vertex)
         walls.append(back)
         var addedPieces: [DoorWindow] = []
         var removedIds = Set<String>()
