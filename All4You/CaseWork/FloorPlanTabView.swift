@@ -484,7 +484,7 @@ extension FloorPlanTabView {
         } else {
             guard selectedBookmarkID != id else { return }
         }
-
+        
         onClearMemoHighlight()
         focusedIgnitionMarkerID = nil
         focusedMemoID = nil
@@ -956,15 +956,21 @@ private struct RoomPhotoPanel: View {
             ScrollView {
                 VStack(spacing: Layout.sectionSpacing) {
                     if let selectedPhoto {
-                        Color.clear
-                            .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
-                            .overlay {
-                                Image(uiImage: selectedPhoto.image)
-                                    .resizable()
-                                    .scaledToFill()
-                            }
-                            .clipShape(.rect(cornerRadius: Layout.cornerRadius))
-                            .modifier(BookmarkPhotoDragModifier(photo: selectedPhoto, onDragStart: onDragStart))
+                        VStack(alignment: .leading, spacing: 0) {
+                            Color.clear
+                                .aspectRatio(Layout.previewAspectRatio, contentMode: .fit)
+                                .overlay {
+                                    Image(uiImage: selectedPhoto.image)
+                                        .resizable()
+                                        .scaledToFill()
+                                }
+                                .clipShape(.rect(cornerRadius: Layout.cornerRadius))
+                                .modifier(BookmarkPhotoDragModifier(photo: selectedPhoto, onDragStart: onDragStart))
+                            
+                            PhotoTakenAtLabel(date: selectedPhoto.takenAt)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 12)
+                        }
                     }
                     LazyVGrid(columns: Layout.columns, spacing: Layout.gridSpacing) {
                         ForEach(photos) { photo in

@@ -11,9 +11,16 @@ import SwiftUI
 struct PhotoTakenAtLabel: View {
     let date: Date
 
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy.MM.dd."
+        formatter.locale = Locale(identifier: "ko_KR")
+        return formatter
+    }()
+
     var body: some View {
         HStack(spacing: 16) {
-            Text(date, format: .dateTime.year().month().day())
+            Text(Self.dateFormatter.string(from: date))
             Text(date, format: .dateTime.hour().minute())
         }
         .font(AppTypography.subheadline)
