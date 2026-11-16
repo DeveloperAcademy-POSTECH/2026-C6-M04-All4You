@@ -525,17 +525,18 @@ extension FloorPlan3DView {
         if stampKinds != stampLabelPoints {
             stampLabelPoints = stampKinds
         }
-        let visible = LabelDeclutter.visibleKeys(labelSlots(rooms: rooms, furniture: furniture, stamps: stampKinds))
+        // 핀이 보이는 자리를 먼저 잡는다. 앨범 라벨(핀)이 보이면 겹치는 이름 라벨은 숨긴다
+        let pinScreenPoints = screenPoints(ofAnchorsIn: Self.pinAnchorsName, content: content)
+        if pinScreenPoints != pinPoints {
+            pinPoints = pinScreenPoints
+        }
+        let visible = LabelDeclutter.visibleKeys(labelSlots(rooms: rooms, furniture: furniture, stamps: stampKinds, pins: pinScreenPoints))
         if visible != visibleLabels {
             visibleLabels = visible
         }
         let dimensionScreenPoints = screenPoints(ofAnchorsIn: Self.dimensionAnchorsName, content: content)
         if dimensionScreenPoints != dimensionPoints {
             dimensionPoints = dimensionScreenPoints
-        }
-        let pinScreenPoints = screenPoints(ofAnchorsIn: Self.pinAnchorsName, content: content)
-        if pinScreenPoints != pinPoints {
-            pinPoints = pinScreenPoints
         }
     }
     
@@ -588,8 +589,12 @@ extension FloorPlan3DView {
     }
     
     /// 화면에 자리가 잡힌 이름 라벨들의 가운데와 크기. 서로 겹치는지 볼 때 쓴다
-    private func labelSlots(rooms: [String: CGPoint], furniture: [String: CGPoint], stamps: [String: CGPoint]) -> [LabelDeclutter.Slot] {
+    private func labelSlots(rooms: [String: CGPoint], furniture: [String: CGPoint], stamps: [String: CGPoint], pins pinPoints: [String: CGPoint]) -> [LabelDeclutter.Slot] {
         var slots: [LabelDeclutter.Slot] = []
+        for pin in pins {
+            guard let size = pin.labelSize, let point = pinPoints[pin.id] else { continue }
+            slots.append(.init(key: .init(kind: .pin, id: pin.id), center: point, size: size))
+        }
         for room in planData.rooms {
             guard let point = rooms[room.id] else { continue }
             let size = LabelDeclutter.estimatedSize(of: room.name, fontSize: Layout.roomFontSize, horizontalPadding: 16, verticalPadding: 8, scale: labelScale)
@@ -1328,6 +1333,8 @@ struct Plan3DPin: Identifiable, Equatable {
     let point: SIMD2<Double>
     /// 바닥에서 높이 (m)
     let height: Double
+    /// 화면에서 차지하는 크기 (pt). 값이 있는 핀(앨범 라벨)은 화면에서 겹치는 이름 라벨을 숨긴다. nil이면 라벨을 숨기지 않는다
+    var labelSize: CGSize? = nil
 }
 
 /// 3D 도면에 그릴 사진 표시 하나 (북마크 사진을 찍은 자리)

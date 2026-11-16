@@ -4,8 +4,9 @@
 import SwiftUI
 
 enum LabelDeclutter {
-    /// 라벨 종류. 앞에 있을수록 먼저 남긴다 (공간 → 스탬프 종류 → 가구)
+    /// 라벨 종류. 앞에 있을수록 먼저 남긴다 (앨범 라벨(사진 핀) → 공간 → 스탬프 종류 → 가구)
     enum Kind: CaseIterable {
+        case pin
         case room
         case stamp
         case furniture
