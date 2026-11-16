@@ -876,9 +876,9 @@ extension FloorPlanTabView {
         static let photoPinHeight = 1.5
         /// 3D에서 메모 핀을 띄울 높이 (m). 가구 위에 남긴 메모도 보이게 가구 높이보다 조금 위
         static let memoPinHeight = 1.0
-        /// 3D 번호 배지를 구 가운데에서 위로 띄우는 거리 (m). 구 반지름(0.12)보다 커야 구를 가리지 않는다
-        // TEMP: 실기기에서 보고 조절
-        static let bookmarkBadgeAbove = 0.3
+        /// 3D 번호 배지를 구 가운데에서 위로 띄우는 거리 (m). 구 반지름(0.05)보다 커야 구를 가리지 않는다
+        // TEMP: 실기기에서 보고 조절. 구를 작게 바꾸면서 0.3에서 줄임
+        static let bookmarkBadgeAbove = 0.15
         /// 3D 번호 배지 지름 (pt). 2D 핀(40)보다 작게 둔다
         // TEMP: 실기기에서 보고 조절
         static let bookmarkBadgeSize: CGFloat = 32

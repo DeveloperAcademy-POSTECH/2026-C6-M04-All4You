@@ -123,7 +123,7 @@ struct BookmarkPhotoMarkerLayer: View {
     private func editingControls(number: Int, position: SIMD2<Double>) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.brand500, lineWidth: 2)
+                .stroke(Color.orange400, lineWidth: 2)
                 .frame(width: 80, height: 80)
                 .allowsHitTesting(false)
             
@@ -131,7 +131,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 .font(AppTypography.headlineEmphasized)
                 .foregroundStyle(.white)
                 .frame(width: Layout.markerSize, height: Layout.markerSize)
-                .background(.brand500, in: .circle)
+                .background(.orange400, in: .circle)
                 .contentShape(.circle)
                 .highPriorityGesture(
                     DragGesture(minimumDistance: 2, coordinateSpace: .named("bookmarkPhotoMap"))
@@ -148,7 +148,7 @@ struct BookmarkPhotoMarkerLayer: View {
             
             Image(systemName: "arrow.clockwise")
                 .font(AppTypography.title3)
-                .foregroundStyle(.brand500)
+                .foregroundStyle(.orange400)
                 .frame(width: 44, height: 44)
                 .glassEffect(.regular, in: .circle)
                 .contentShape(.circle)
@@ -171,7 +171,7 @@ struct BookmarkPhotoMarkerLayer: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(AppTypography.title3)
-                .foregroundStyle(.brand500)
+                .foregroundStyle(.orange400)
                 .frame(width: 44, height: 44)
                 .contentShape(.circle)
         }
@@ -231,7 +231,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 var coneContext = context
                 coneContext.opacity = isDimmed(marker) ? Layout.dimmedOpacity : 1
                 coneContext.fill(cone, with: .linearGradient(
-                    Gradient(colors: [Color.brand500.opacity(Layout.coneOpacity), Color.brand500.opacity(0)]),
+                    Gradient(colors: [Color.orange400.opacity(Layout.coneOpacity), Color.orange400.opacity(0)]),
                     startPoint: screen.point(center),
                     endPoint: screen.point(center + SIMD2(sin(yaw * .pi / 180), -cos(yaw * .pi / 180)) * Layout.coneLength)
                 ))
@@ -275,7 +275,7 @@ struct BookmarkNumberBadge: View {
             .monospacedDigit()
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(.brand500, in: .circle)
+            .background(.orange400, in: .circle)
             .shadow(color: .black.opacity(Layout.shadowOpacity), radius: Layout.shadowRadius, y: 1)
             .contentShape(.circle)
     }
