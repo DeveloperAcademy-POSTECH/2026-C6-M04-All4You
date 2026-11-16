@@ -26,8 +26,8 @@ struct FloorPlanMemoTagPicker: View {
     let onSelectMarker: (PlanMarker, Int) -> Void
     var height: CGFloat = 352
     
-    // 키보드 때문에 목록 높이가 줄어들어도 선택 탭과 타일이 함께 보이도록 크기 조절
-    private var tileSize: CGFloat { min(116, max(72, height - 68)) }
+    // 키보드가 올라와도 사진과 발화지점 타일의 비율 유지
+    private let tileSize: CGFloat = 116
     // 선택 탭 위, 선택 탭과 타일 사이, 타일 아래의 여백을 같은 크기로 맞춤
     private var verticalGap: CGFloat { max(0, (height - 32 - tileSize) / 3) }
     

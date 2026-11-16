@@ -344,15 +344,10 @@ private extension FloorPlanMemoPlacementOverlay {
         .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
     }
     
-    /// 수정창과 후보 목록을 같은 가로 위치에 두고 키보드 위에 들어갈 만큼 목록 높이 조절
     func memoEditLayout(for memo: FloorPlanMemo, in size: CGSize, keyboardTop: CGFloat?) -> (card: CGPoint, picker: CGPoint, pickerHeight: CGFloat) {
         let bounds = canvasBounds(in: size)
         let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
-        let availableHeight = max(0, visibleBottom - bounds.minY - Layout.edgePadding * 2)
-        let pickerHeight = min(
-            Layout.tagPickerHeight,
-            max(0, availableHeight - Layout.editingCardHeight - Layout.tagPickerGap)
-        )
+        let pickerHeight = Layout.tagPickerHeight
         let card = cardPosition(
             around: screenPoint(for: memo.anchor, in: size),
             in: size,
@@ -443,12 +438,7 @@ private extension FloorPlanMemoPlacementOverlay {
     func draftEditor(for draft: FloorPlanMemoDraft, in size: CGSize, keyboardTop: CGFloat?) -> some View {
         let anchorPoint = screenPoint(for: draft.anchor, in: size)
         let editorWidth = min(Layout.editorWidth, size.width - Layout.edgePadding * 2)
-        let bounds = canvasBounds(in: size)
-        let visibleBottom = min(bounds.maxY, keyboardTop ?? bounds.maxY)
-        let availableHeight = max(0, visibleBottom - bounds.minY - Layout.edgePadding * 2)
-        let pickerHeight = isTagPickerPresented
-        ? min(Layout.tagPickerHeight, max(0, availableHeight - Layout.editorHeight - Layout.tagPickerGap))
-        : 0
+        let pickerHeight = isTagPickerPresented ? Layout.tagPickerHeight : 0
         let editorPosition = editorPosition(
             around: anchorPoint,
             in: size,
