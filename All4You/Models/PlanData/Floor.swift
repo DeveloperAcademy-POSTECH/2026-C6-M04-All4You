@@ -1,5 +1,8 @@
 // 스캔한 바닥 하나. 벽과 별개로 저장해, 벽을 고치거나 없어도 바닥은 그대로 남는다
 
+import Foundation
+import simd
+
 // TEMP: Floor·FloorCorner는 ERD에 없는 값이라 PlanData에 먼저 둠 — ERD 반영 때 이름·자리가 바뀔 수 있음
 
 /// 스캔한 바닥 하나. 꼭짓점을 벽과 함께 쓰지 않아, 벽을 고쳐도 바닥은 그대로다
@@ -82,4 +85,53 @@ extension Floor {
         }
         return triangles
     }
+
+    /// 바닥을 한 번에 키우거나 줄일 때 가로·세로가 이보다(m) 작아지지 않게 한다
+    // TEMP: 가장 작은 크기는 임시로 정함
+    static let minimumSize = 0.5
+
+    /// 모든 꼭짓점을 감싸는 사각형의 왼쪽 위(min)와 오른쪽 아래(max). 크기 조절 손잡이를 이 사각형의 네 모서리에 둔다
+    var bounds: (min: SIMD2<Double>, max: SIMD2<Double>)? {
+        let points = self.points
+        guard let first = points.first else { return nil }
+        return points.reduce((min: first, max: first)) { (min: simd_min($0.min, $1), max: simd_max($0.max, $1)) }
+    }
+
+    /// 감싸는 사각형의 모서리. 0 왼쪽 위, 1 오른쪽 위, 2 오른쪽 아래, 3 왼쪽 아래
+    func boundsCorner(_ index: Int) -> SIMD2<Double>? {
+        guard let bounds else { return nil }
+        switch index {
+        case 0: return bounds.min
+        case 1: return SIMD2(bounds.max.x, bounds.min.y)
+        case 2: return bounds.max
+        case 3: return SIMD2(bounds.min.x, bounds.max.y)
+        default: return nil
+        }
+    }
+
+    /// 다각형을 바깥으로 margin(m)만큼 넓힌 꼭짓점들. 꼭짓점마다 이어진 두 변의 바깥쪽 방향을 합쳐 밀어서, 모든 변이 같은 간격으로 떨어진다.
+    /// 아주 뾰족한 꼭짓점이 너무 멀리 밀리지 않게 미는 거리는 margin의 2배까지만 한다
+    static func expanded(_ polygon: [SIMD2<Double>], by margin: Double) -> [SIMD2<Double>] {
+        let area = PlanData.signedArea(polygon)
+        guard polygon.count >= 3, abs(area) > WallMoveRules.eps else { return polygon }
+        // 변의 바깥쪽 방향. 넓이가 +이면 변 방향의 오른쪽, −이면 왼쪽이다
+        func outward(from a: SIMD2<Double>, to b: SIMD2<Double>) -> SIMD2<Double>? {
+            let delta = b - a
+            let length = (delta * delta).sum().squareRoot()
+            guard length > WallMoveRules.eps else { return nil }
+            let direction = delta / length
+            return area > 0 ? SIMD2(direction.y, -direction.x) : SIMD2(-direction.y, direction.x)
+        }
+        return polygon.indices.map { index in
+            let previous = polygon[(index + polygon.count - 1) % polygon.count]
+            let current = polygon[index]
+            let next = polygon[(index + 1) % polygon.count]
+            guard let incoming = outward(from: previous, to: current), let outgoing = outward(from: current, to: next) else { return current }
+            var push = (incoming + outgoing) / (1 + (incoming * outgoing).sum())
+            let length = (push * push).sum().squareRoot()
+            if length > 2 { push = push / length * 2 }
+            return current + push * margin
+        }
+    }
 }
+

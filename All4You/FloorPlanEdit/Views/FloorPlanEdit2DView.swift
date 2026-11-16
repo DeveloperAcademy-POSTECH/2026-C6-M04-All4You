@@ -86,6 +86,8 @@ struct FloorPlanEdit2DView: View {
     @State private var noticeText: String?
     /// 꼭짓점·벽을 끄는 동안의 미리 보기에서 자동으로 지워진 것의 안내. 손을 떼면 띄운다
     @State private var editRemovedNotice: String?
+    /// 손 도구로 테두리를 눌러 고른 스캔 바닥 (Floor.id). 고르면 네 모서리에 크기 조절 손잡이가 나온다
+    @State private var selectedFloorId: String?
     /// 지금 끌고 있는 꼭짓점과 손가락 화면 점. 끄는 동안 벽이 나뉘거나 꼭짓점이 합쳐져도 손잡이가 사라져 끌기가 끊기지 않게 한다
     @State private var draggingVertex: (id: String, location: CGPoint)?
     /// 안내를 일정 시간 뒤 내리는 작업. 새 안내가 뜨면 이전 것을 취소한다
@@ -189,6 +191,7 @@ extension FloorPlanEdit2DView {
                 editingRoomId: editingRoomId,
                 selectedRoomId: selectedRoomId,
                 selectedWallIds: wallSelection?.wallIds ?? [],
+                selectedFloorId: selectedFloorId,
                 roomLabelActions: roomLabelActions,
                 editingFurnitureId: editingFurnitureId,
                 dimensions: dimensions,
@@ -208,6 +211,9 @@ extension FloorPlanEdit2DView {
                 }
                 .overlay(alignment: .topLeading) {
                     vertexControls(screen: screen)
+                }
+                .overlay(alignment: .topLeading) {
+                    floorControls(screen: screen)
                 }
                 .overlay(alignment: .topLeading) {
                     roomNameField(screen: screen)
@@ -390,6 +396,7 @@ extension FloorPlanEdit2DView {
     /// 캡슐 밖을 누르면 고른 캡슐은 풀린다
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
+        selectedFloorId = nil
         // 펜·지우개이고 위 도구도 꺼져 있으면 스탬프·라벨·창문·문·가구를 고르지 않는다 (지우개로 누르면 tapGesture가 바로 지운다)
         guard canUseStamps else {
             // 펜은 이미 있는 벽을 누르면 손 도구처럼 벽을 고른다. 고른 벽은 보여 주기만 하고, 끌기는 새 벽을 긋는다 (벽 옮기기는 손 도구로)
@@ -649,7 +656,7 @@ extension FloorPlanEdit2DView {
             .onChanged { value in
                 guard let screen else { return }
                 // 꼭짓점 손잡이 위에서 시작한 끌기는 손잡이가 처리한다 (벽 줄 끌기와 다투지 않게)
-                if isOnVertexHandle(value.startLocation, screen: screen) { return }
+                if isOnVertexHandle(value.startLocation, screen: screen) || isOnFloorHandle(value.startLocation, screen: screen) { return }
                 if drawOrErase(value, screen: screen) { return }
                 guard let selection else { return }
                 if dragWall(value, screen: screen) { return }
@@ -751,10 +758,8 @@ extension FloorPlanEdit2DView {
             plan.eraseWall(id: id)
             return true
         case .floor:
-            // 바닥은 테두리 가까이를 눌렀을 때만 지운다. 바닥 안쪽 빈 곳은 지우지 않는다
-            guard let floorId = screen.floorEdge(at: location, in: plan) else { return false }
-            plan.removeFloor(id: floorId)
-            return true
+            // 스캔한 바닥은 지울 수 없다 (크기만 조절한다)
+            return false
         }
     }
 
@@ -819,6 +824,10 @@ extension FloorPlanEdit2DView {
             selection = .wall(id)
         case .floor(let point):
             selection = furnitureSelection(at: point)
+            // 가구도 벽도 아닌 곳에서 스캔한 바닥 테두리 가까이를 눌렀으면 그 바닥을 고른다
+            if selection == nil, let screen {
+                selectedFloorId = screen.floorEdge(atPlanPoint: point, in: planData)
+            }
         }
     }
 
@@ -1051,6 +1060,44 @@ extension FloorPlanEdit2DView {
         }
     }
 
+    /// 고른 스캔 바닥의 크기 조절 손잡이. 바닥을 감싸는 사각형의 네 모서리에 나온다. 손 도구로 바닥 테두리를 눌러 골랐을 때만 나온다
+    @ViewBuilder
+    private func floorControls(screen: PlanScreen) -> some View {
+        let handles = floorHandles(screen: screen)
+        if !handles.isEmpty, menuTarget == nil {
+            VertexHandles2DView(
+                handles: handles,
+                coordinateSpace: Layout.planSpace,
+                onDrag: { cornerIndex, location in previewFloorResize(cornerIndex: cornerIndex, at: location) },
+                onDragEnded: commitPreview,
+                accessibilityText: Copy.resizeFloor
+            )
+        }
+    }
+
+    /// 크기 조절 손잡이를 놓을 사각형 모서리(번호 "0"~"3")와 화면 점
+    private func floorHandles(screen: PlanScreen) -> [(vertexId: String, point: CGPoint)] {
+        guard isHandTool, !isStampActive, let selectedFloorId,
+              let floor = (dragPreview ?? planData).floors?.first(where: { $0.id == selectedFloorId }) else { return [] }
+        return (0..<4).compactMap { index in
+            floor.boundsCorner(index).map { (String(index), screen.point($0)) }
+        }
+    }
+
+    /// 화면 점이 바닥 크기 조절 손잡이 위인지
+    private func isOnFloorHandle(_ location: CGPoint, screen: PlanScreen) -> Bool {
+        floorHandles(screen: screen).contains { hypot($0.point.x - location.x, $0.point.y - location.y) <= VertexHandles2DView.handleSize / 2 }
+    }
+
+    /// 끄는 동안은 미리 보기 도면에서만 바닥 크기를 바꾼다. 계산은 늘 끌기 시작 전 도면(planData)에서 해서, 끄는 동안 오차가 쌓이지 않는다
+    private func previewFloorResize(cornerIndex: String, at location: CGPoint) {
+        guard let screen, let selectedFloorId, let index = Int(cornerIndex) else { return }
+        menuTarget = nil
+        var preview = planData
+        preview.resizeFloor(id: selectedFloorId, draggingCorner: index, to: screen.plan(location))
+        dragPreview = preview
+    }
+
     /// 화면 점이 꼭짓점 손잡이 위인지
     private func isOnVertexHandle(_ location: CGPoint, screen: PlanScreen) -> Bool {
         vertexHandles(screen: screen).contains { hypot($0.point.x - location.x, $0.point.y - location.y) <= VertexHandles2DView.handleSize / 2 }
@@ -1220,6 +1267,7 @@ extension FloorPlanEdit2DView {
         static let otherKind = IgnitionCause.other.title
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
+        static let resizeFloor = "바닥 크기 조절"
     }
 }
 

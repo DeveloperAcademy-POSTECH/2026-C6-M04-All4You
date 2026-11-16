@@ -12,6 +12,8 @@ struct VertexHandles2DView: View {
     let onDrag: (String, CGPoint) -> Void
     /// 손을 떼면 알린다
     let onDragEnded: () -> Void
+    /// 손잡이를 읽어 주는 글 (VoiceOver). 꼭짓점이 아닌 것에 쓸 때 바꾼다
+    var accessibilityText = Copy.move
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -35,7 +37,7 @@ extension VertexHandles2DView {
             // 누르면 커지는 유리 효과(.interactive())는 끄는 동안 손잡이가 커져 보여서 쓰지 않는다
             .glassEffect(.regular, in: .circle)
             .contentShape(.circle)
-            .accessibilityLabel(Copy.move)
+            .accessibilityLabel(accessibilityText)
             .gesture(
                 DragGesture(coordinateSpace: .named(coordinateSpace))
                     .onChanged { onDrag(vertexId, $0.location) }
@@ -56,7 +58,7 @@ extension VertexHandles2DView {
 
 // 문구
 extension VertexHandles2DView {
-    private enum Copy {
+    enum Copy {
         static let move = "모서리 옮기기"
     }
 }

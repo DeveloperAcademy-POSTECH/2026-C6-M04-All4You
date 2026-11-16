@@ -205,12 +205,27 @@ extension PlanData {
 extension PlanData {
 }
 
-// 스캔한 바닥
+// 스캔한 바닥 (지울 수는 없고 크기만 조절한다)
 extension PlanData {
-    /// 스캔한 바닥을 지운다. 벽·가구·공간 라벨은 그대로 둔다
-    mutating func removeFloor(id: String) {
-        floors?.removeAll { $0.id == id }
-        if floors?.isEmpty == true { floors = nil }
+    /// 바닥의 감싸는 사각형 모서리 하나(cornerIndex, Floor.boundsCorner 참고)를 target(도면 좌표, m)으로 끌어 바닥 크기를 바꾼다.
+    /// 반대쪽 모서리는 그대로 두고, 바닥 모양을 가로·세로로 같은 비율로 늘이고 줄인다. 가로·세로는 각각 Floor.minimumSize보다 작아지지 않고, 모서리가 반대쪽을 넘어가 뒤집히지도 않는다
+    mutating func resizeFloor(id: String, draggingCorner cornerIndex: Int, to target: SIMD2<Double>) {
+        guard let index = floors?.firstIndex(where: { $0.id == id }),
+              let dragged = floors?[index].boundsCorner(cornerIndex),
+              let anchor = floors?[index].boundsCorner((cornerIndex + 2) % 4) else { return }
+        let old = dragged - anchor
+        var new = target - anchor
+        var scale = SIMD2<Double>(1, 1)
+        for axis in 0..<2 where abs(old[axis]) > WallMoveRules.eps {
+            // 끌던 모서리가 있던 쪽(부호)을 지키고, 최소 크기보다 작아지지 않게 한다
+            let sign: Double = old[axis] > 0 ? 1 : -1
+            new[axis] = sign * max(new[axis] * sign, Floor.minimumSize)
+            scale[axis] = new[axis] / old[axis]
+        }
+        let resized = floors?[index].corners.map { corner in
+            FloorCorner(x: anchor.x + (corner.x - anchor.x) * scale.x, y: anchor.y + (corner.y - anchor.y) * scale.y)
+        }
+        if let resized { floors?[index].corners = resized }
     }
 }
 

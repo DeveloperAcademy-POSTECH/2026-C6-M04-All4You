@@ -82,9 +82,8 @@ extension PlanScreen {
         }?.id
     }
 
-    /// 테두리를 누른 스캔 바닥 (Floor.id). 벽 지우기와 같은 판정 거리라 바닥 안쪽 빈 곳은 맞지 않는다. 가까운 바닥이 여럿이면 가장 가까운 것
-    func floorEdge(at point: CGPoint, in plan: PlanData) -> String? {
-        let planPoint = self.plan(point)
+    /// 테두리를 누른 스캔 바닥 (Floor.id). 벽을 누르는 것과 같은 판정 거리라 바닥 안쪽 빈 곳은 맞지 않는다. 가까운 바닥이 여럿이면 가장 가까운 것
+    func floorEdge(atPlanPoint planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         let margin = Plan2DHit.fingerMargin / scale
         return (plan.floors ?? [])
             .compactMap { floor in floor.nearestEdgePoint(to: planPoint).map { (id: floor.id, distance: $0.distance) } }

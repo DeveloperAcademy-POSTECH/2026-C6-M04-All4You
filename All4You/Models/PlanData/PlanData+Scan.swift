@@ -98,7 +98,12 @@ extension PlanData {
             let center = rotation.apply(SIMD2(object.center.x, object.center.z))
             return [center + along + across, center + along - across, center - along + across, center - along - across]
         }
-        let floorCorners = floorSurfaces.map { $0.corners.map(rotation.apply) }
+        // 벽 없이 가구만 인식한 스캔은 바닥이 가구 크기와 거의 같게 잡혀 가구가 바닥 끝에 붙어 보이므로, 바닥을 조금 넓힌다
+        let widensFloors = raw.isEmpty && !objects.isEmpty
+        let floorCorners = floorSurfaces.map { surface -> [SIMD2<Double>] in
+            let rotatedCorners = surface.corners.map(rotation.apply)
+            return widensFloors ? Floor.expanded(rotatedCorners, by: ScanRule.floorMarginWithoutWalls) : rotatedCorners
+        }
         let lowest = (lines.flatMap { [$0.a, $0.b] } + furnitureCorners + floorCorners.flatMap { $0 })
             .reduce(SIMD2(Double.infinity, .infinity)) { simd_min($0, $1) }
         let shift = SIMD2(repeating: ScanRule.margin) - lowest
@@ -417,6 +422,9 @@ private enum ScanRule {
     static let minWallLength = 0.1
     static let minWallHeight = 0.5
     static let minOpeningHeight = 0.1
+    /// 벽 없이 가구만 인식한 스캔에서 바닥을 사방으로 넓히는 거리
+    // TEMP: 넓히는 거리는 실기기에서 작은 스캔을 보고 정한다
+    static let floorMarginWithoutWalls = 0.5
     /// 도면 왼쪽 위 여백
     static let margin = 0.5
     /// 가로·세로에서 이 각도 안으로 비뚤어진 벽은 바로잡는다 (4°)

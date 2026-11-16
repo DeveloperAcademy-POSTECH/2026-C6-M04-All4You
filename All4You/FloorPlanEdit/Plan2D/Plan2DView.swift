@@ -15,6 +15,8 @@ struct Plan2DView: View {
     var selectedRoomId: String? = nil
     /// 함께 고른 벽들 (Wall.id). 일직선 줄 전체를 고르면 여러 개다
     var selectedWallIds: Set<String> = []
+    /// 고른 스캔 바닥 (Floor.id). 테두리를 주황으로 그린다
+    var selectedFloorId: String? = nil
     /// 공간 이름 캡슐을 누르거나 끌 때 알릴 곳. nil이면 캡슐은 보기만 한다
     var roomLabelActions: RoomLabelActions? = nil
     /// 이름을 고치는 중이라 캡슐 대신 입력칸을 띄울 가구 (Furniture.id). 이 가구의 이름 캡슐은 그리지 않는다
@@ -121,7 +123,7 @@ struct RoomLabelActions {
 
 // 스캔한 바닥
 extension Plan2DView {
-    /// 바닥을 옅게 칠하고 점선 테두리를 긋는다. 누르지 않는 요소라 선택 표시는 없다
+    /// 바닥을 옅게 칠하고 점선 테두리를 긋는다. 고른 바닥은 테두리를 주황으로 그린다
     // TEMP: 바닥 모양이 Figma에 없어 옅은 회색 칠과 점선 테두리로 임시로 정함
     private func drawFloor(_ floor: Floor, in context: inout GraphicsContext) {
         guard floor.corners.count >= 3 else { return }
@@ -130,7 +132,12 @@ extension Plan2DView {
             shape.closeSubpath()
         }
         context.fill(path, with: .color(.gray100.opacity(Layout.floorFillOpacity)))
-        context.stroke(path, with: .color(.gray500), style: StrokeStyle(lineWidth: Layout.floorLineWidth, dash: Layout.floorDash))
+        let isSelected = selectedFloorId == floor.id
+        context.stroke(
+            path,
+            with: .color(isSelected ? .brand500 : .gray500),
+            style: StrokeStyle(lineWidth: isSelected ? Layout.selectionLineWidth : Layout.floorLineWidth, dash: Layout.floorDash)
+        )
     }
 }
 
