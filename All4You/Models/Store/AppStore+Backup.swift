@@ -9,6 +9,19 @@ import CryptoKit
 import Foundation
 import SwiftData
 
+/// 열기 전에 만들어 둔 저장소 백업 하나. 안내 화면의 되돌리기 목록에 쓴다
+struct StoreBackup: Identifiable {
+    /// 백업 폴더 위치 (이름은 "yyyyMMdd-HHmmss-<그때 지문>")
+    let url: URL
+    let createdAt: Date
+    /// 이 백업을 만들기 직전에 저장소를 연 빌드의 스키마 지문. 모르면 "unknown"
+    let fingerprint: String
+    /// 폴더 안 파일 크기의 합 (바이트)
+    let size: Int64
+
+    var id: URL { url }
+}
+
 extension AppStore {
     /// 남겨 둘 백업 수. 새 빌드 → 옛 브랜치 → 새 빌드로 오가도 온전한 백업이 덮어써지지 않게 2개
     private static let maxBackupCount = 2
@@ -101,15 +114,122 @@ extension AppStore {
     }
 
     private static func backupTimestamp() -> String {
+        backupDateFormatter.string(from: .now)
+    }
+
+    /// 백업 폴더 이름 앞부분의 시각 모양
+    private static var backupDateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter.string(from: .now)
+        return formatter
     }
 
     private static func seconds(since start: ContinuousClock.Instant) -> String {
         let parts = (ContinuousClock.now - start).components
         let value = Double(parts.seconds) + Double(parts.attoseconds) / 1e18
         return String(format: "%.3f초", value)
+    }
+}
+
+// 되돌리기
+
+extension AppStore {
+    /// 되돌리기 전에 옆으로 옮겨 둔 저장소는 최근 1개만 남긴다
+    private static let maxReplacedCount = 1
+
+    /// 만들어 둔 백업 목록 (최신순). -replaced 폴더는 뺀다
+    static var backups: [StoreBackup] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: backupsDirectory.path)) ?? []
+        return names.filter { !$0.hasSuffix("-replaced") }.sorted(by: >).compactMap(backup(named:))
+    }
+
+    /// 지금 저장소를 StoreBackups/<지금 시각>-replaced/ 로 옮기고(지우지 않는다) 백업 내용을 그 자리에 복사한다
+    /// 저장소가 열려 있지 않을 때(안내 화면)만 부른다. 복사에 실패하면 옮긴 것을 제자리로 돌려놓고 오류를 던진다
+    static func restore(_ backup: StoreBackup) throws {
+        // 미리보기 화면에서는 실제 저장소를 건드리지 않는다
+        guard !isRunningForPreviews else { throw CocoaError(.featureUnsupported) }
+
+        let manager = FileManager.default
+        let replacedFolder = backupsDirectory.appendingPathComponent("\(backupTimestamp())-replaced")
+        try manager.createDirectory(at: replacedFolder, withIntermediateDirectories: true)
+
+        // 1. 지금 저장소를 옆으로 옮긴다
+        let movedNames = try storeItemNames(in: supportDirectory)
+        for name in movedNames {
+            try manager.moveItem(at: supportDirectory.appendingPathComponent(name),
+                                 to: replacedFolder.appendingPathComponent(name))
+        }
+
+        // 2. 백업 내용을 복사한다. 실패하면 복사하다 만 것을 옆으로 치우고 옮겨 둔 저장소를 돌려놓는다
+        do {
+            for name in try storeItemNames(in: backup.url) {
+                try manager.copyItem(at: backup.url.appendingPathComponent(name),
+                                     to: supportDirectory.appendingPathComponent(name))
+            }
+        } catch {
+            undoRestore(movedNames: movedNames, replacedFolder: replacedFolder)
+            throw error
+        }
+
+        // 3. 되돌린 직후 같은 내용을 또 백업하지 않도록 지금 빌드의 지문을 적는다
+        try? schemaFingerprint.write(to: schemaFileURL, atomically: true, encoding: .utf8)
+        pruneReplacedFolders()
+        record("되돌림 \(backup.url.lastPathComponent)")
+    }
+}
+
+// 되돌리기 도우미
+
+extension AppStore {
+    /// 폴더 안에서 저장소에 속한 이름들 (default.store*, .default_SUPPORT)
+    private static func storeItemNames(in folder: URL) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            .filter { $0.hasPrefix(storeFilePrefix) || $0 == storeSupportFolderName }
+    }
+
+    /// 복사에 실패했을 때: 복사하다 만 파일은 지우지 않고 partial 폴더로 옮기고, 옮겨 둔 저장소를 제자리로 돌린다
+    private static func undoRestore(movedNames: [String], replacedFolder: URL) {
+        let manager = FileManager.default
+        let partialFolder = replacedFolder.appendingPathComponent("partial-restore")
+        try? manager.createDirectory(at: partialFolder, withIntermediateDirectories: true)
+        for name in movedNames {
+            let target = supportDirectory.appendingPathComponent(name)
+            if manager.fileExists(atPath: target.path) {
+                try? manager.moveItem(at: target, to: partialFolder.appendingPathComponent(name))
+            }
+            try? manager.moveItem(at: replacedFolder.appendingPathComponent(name), to: target)
+        }
+    }
+
+    /// -replaced 폴더 중 오래된 것을 지운다 (옮겨 둔 저장소는 최근 1개만 남긴다)
+    private static func pruneReplacedFolders() {
+        let manager = FileManager.default
+        let names = (try? manager.contentsOfDirectory(atPath: backupsDirectory.path)) ?? []
+        let replaced = names.filter { $0.hasSuffix("-replaced") }.sorted()
+        for name in replaced.dropLast(maxReplacedCount) {
+            try? manager.removeItem(at: backupsDirectory.appendingPathComponent(name))
+        }
+    }
+
+    /// 폴더 이름("yyyyMMdd-HHmmss-<지문>")에서 만든 시각과 지문을 읽어 백업 하나로 만든다. 이름 모양이 다르면 nil
+    private static func backup(named name: String) -> StoreBackup? {
+        let dateLength = "yyyyMMdd-HHmmss".count
+        guard name.count > dateLength + 1,
+              let createdAt = backupDateFormatter.date(from: String(name.prefix(dateLength))) else { return nil }
+        let url = backupsDirectory.appendingPathComponent(name)
+        return StoreBackup(url: url,
+                           createdAt: createdAt,
+                           fingerprint: String(name.dropFirst(dateLength + 1)),
+                           size: folderSize(url))
+    }
+
+    private static func folderSize(_ folder: URL) -> Int64 {
+        let files = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey])
+        var total: Int64 = 0
+        while let url = files?.nextObject() as? URL {
+            total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        return total
     }
 }
