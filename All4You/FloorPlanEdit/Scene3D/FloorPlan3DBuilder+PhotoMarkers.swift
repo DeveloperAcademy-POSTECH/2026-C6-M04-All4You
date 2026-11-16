@@ -7,9 +7,12 @@ import UIKit
 extension FloorPlan3DBuilder {
     /// 사진 표시들을 모아 두는 엔티티 이름. 화면은 이 이름으로 찾아 사진 표시만 다시 만든다
     static let photoMarkersName = "photoMarkers"
+    /// 사진 구의 충돌 그룹. 벽(1)·바닥(2)·가구(3)와 겹치지 않는 비트
+    static let photoMarkerCollisionGroup = CollisionGroup(rawValue: 1 << 4)
 
     /// 사진마다 기둥과 구를 만들어 한 엔티티에 모은다
     static func makePhotoMarkers(_ markers: [Plan3DPhotoMarker], space: PlanSpace) -> Entity {
+        PhotoMarkerComponent.registerComponent()
         let group = Entity()
         group.name = photoMarkersName
         for marker in markers {
@@ -18,12 +21,21 @@ extension FloorPlan3DBuilder {
         return group
     }
 
+    /// 눌린 엔티티가 사진 구면 그 사진 id, 아니면 nil
+    static func photoID(of entity: Entity) -> UUID? {
+        entity.components[PhotoMarkerComponent.self]?.photoID
+    }
+
     /// 사진 하나의 표시. 엔티티 자리는 사진을 찍은 바닥 점이고, 구와 기둥은 그 위로 쌓는다
-    // 충돌 모양은 붙이지 않는다. 붙이면 3D 화면의 누르기와 라벨 가림 판정에 끼어든다
+    // 충돌 모양은 구에만 붙인다. 전용 그룹이라 라벨 가림 판정(벽·바닥 그룹만 봄)에는 끼어들지 않고, 기둥·원뿔에는 붙이지 않는다
     private static func makePhotoMarker(_ marker: Plan3DPhotoMarker, space: PlanSpace) -> Entity {
         let root = Entity()
         root.name = marker.id.uuidString
         root.position = space.world(marker.placement.position)
+        // 다른 사진을 골랐으면 기둥·구·원뿔을 함께 흐리게 한다 (자식에도 적용됨)
+        if marker.isDimmed {
+            root.components.set(OpacityComponent(opacity: PhotoMarkerModel.dimmedOpacity))
+        }
 
         let sphereHeight = marker.sphereHeight
         let sphere = ModelEntity(
@@ -31,6 +43,12 @@ extension FloorPlan3DBuilder {
             materials: [PhotoMarkerModel.sphere]
         )
         sphere.position.y = sphereHeight
+        // 누르기 판정은 보이는 구보다 크게 둬서 손가락으로 쉽게 맞게 한다
+        sphere.components.set(CollisionComponent(
+            shapes: [.generateSphere(radius: PhotoMarkerModel.tapRadius)],
+            filter: CollisionFilter(group: photoMarkerCollisionGroup, mask: .all)
+        ))
+        sphere.components.set(PhotoMarkerComponent(photoID: marker.id))
         root.addChild(sphere)
 
         // 기둥은 바닥에서 구 아래까지. 구가 바닥 가까이 있어 길이가 없으면 그리지 않는다
@@ -97,12 +115,20 @@ extension FloorPlan3DBuilder {
     }
 }
 
+/// 구 엔티티가 어느 사진의 것인지 적어 두는 표시. 구를 눌렀을 때 사진을 찾는 데 쓴다
+struct PhotoMarkerComponent: Component {
+    let photoID: UUID
+}
+
 // 크기·재질 (색은 디자인 시스템 ColorSystem)
 @MainActor
 private enum PhotoMarkerModel {
     /// 구 반지름 (m)
     // TEMP: 실기기에서 보고 조절
     static let sphereRadius: Float = 0.12
+    /// 구를 누를 수 있는 범위 반지름 (m). 보이는 구(0.12)보다 크게
+    // TEMP: 실기기에서 눌러 보고 조절
+    static let tapRadius: Float = 0.15
     /// 바닥까지 내려가는 기둥 반지름 (m)
     // TEMP: 실기기에서 보고 조절
     static let columnRadius: Float = 0.01
@@ -117,6 +143,8 @@ private enum PhotoMarkerModel {
     static let maxSpread = 90.0
     /// 원뿔 밑면을 나누는 점 수. 많을수록 둥글다
     static let coneSegments = 24
+    /// 다른 사진을 골랐을 때 흐린 정도. 2D 번호 핀(dimmedOpacity)과 같다
+    static let dimmedOpacity: Float = 0.3
     /// 원뿔 구 쪽의 진하기. 2D 부채꼴(0.45)보다 진하게 둔다
     // TEMP: 실기기에서 보고 더 진하게 하자고 해서 0.65로 올림. 더 보고 조절
     static let coneStartOpacity: CGFloat = 1

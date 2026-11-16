@@ -20,6 +20,8 @@ struct FloorPlan3DView: View {
     var pinView: ((String) -> AnyView)? = nil
     /// 사진을 찍은 자리 표시 (구·기둥). 핀과 달리 3D 도형이라 벽 뒤에 있으면 벽에 가려진다. 바뀌어도 도면은 다시 만들지 않는다
     var photoMarkers: [Plan3DPhotoMarker] = []
+    /// 사진 구를 누르면 그 사진 id를 알린다. nil이면 구는 누를 수 없고 눌러도 도면을 누른 것으로 본다
+    var onTapPhotoMarker: ((UUID) -> Void)? = nil
     /// 오른쪽 아래에 처음 시야로 되돌리는 버튼을 띄울지
     var showsResetButton = false
     /// 오른쪽 위에 방위표를 띄울지. 카메라를 돌리는 대로 실시간으로 함께 돈다
@@ -565,6 +567,13 @@ extension FloorPlan3DView {
                 // 이름을 고치는 중에 다른 곳을 누르면 고치기만 끝낸다
                 if labelEdit != nil {
                     finishLabelEdit()
+                    return
+                }
+                // 가장 먼저 부딪힌 것이 사진 구면 도면을 누른 것으로 알리지 않고 그 사진을 알린다 (벽 뒤의 구는 벽이 먼저라 안 눌린다)
+                if let onTapPhotoMarker,
+                   let hit = firstHit(at: value.location, excludingFurniture: tapsThroughFurniture),
+                   let photoID = FloorPlan3DBuilder.photoID(of: hit.entity) {
+                    onTapPhotoMarker(photoID)
                     return
                 }
                 onTap(tapResult(at: value.location, excludingFurniture: tapsThroughFurniture))

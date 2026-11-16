@@ -405,6 +405,8 @@ extension FloorPlanTabView {
                         pins: pins3D(in: planData),
                         pinView: { id in pinView3D(id: id, in: planData) },
                         photoMarkers: photoMarkers3D(in: planData),
+                        // 구를 눌러도 번호 배지를 누른 것과 같이 그 사진을 고른다
+                        onTapPhotoMarker: { id in selectBookmark(id) },
                         showsResetButton: true,
                         showsCompass: true,
                         compassTopInset: Layout.compassTopInset
@@ -657,8 +659,17 @@ extension FloorPlanTabView {
     private func photoMarkers3D(in planData: PlanData) -> [Plan3DPhotoMarker] {
         guard showsBookmarkMarkers else { return [] }
         return bookmarkMarkers(in: planData).map { marker in
-            Plan3DPhotoMarker(id: marker.id, placement: marker.placement, showsDirection: photoFilter.showsDirection, isDimmed: false)
+            Plan3DPhotoMarker(
+                id: marker.id,
+                placement: marker.placement,
+                showsDirection: photoFilter.showsDirection,
+                isDimmed: isBookmarkDimmed(marker.id)
+            )
         }
+    }
+    /// 다른 북마크 사진을 골랐을 때 이 사진의 구·원뿔·배지를 흐리게 그릴지 (2D 번호 핀과 같은 규칙)
+    private func isBookmarkDimmed(_ id: UUID) -> Bool {
+        selectedBookmark != nil && id != selectedBookmark?.photo.id
     }
     /// 핀 id로 그릴 핀을 고른다
     private func pinView3D(id: String, in planData: PlanData) -> AnyView {
@@ -683,7 +694,9 @@ extension FloorPlanTabView {
                 Button {
                     selectBookmark(marker.id)
                 } label: {
+                    // 흐림은 장소 사진 핀(PhotoPinView)처럼 버튼 안쪽(label)에 둔다
                     BookmarkNumberBadge(number: marker.number, size: Layout.bookmarkBadgeSize, font: AppTypography.subheadlineEmphasized)
+                        .opacity(isBookmarkDimmed(marker.id) ? Layout.bookmarkDimmedOpacity : 1)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("북마크 사진 \(marker.number)번")
@@ -869,6 +882,8 @@ extension FloorPlanTabView {
         /// 3D 번호 배지 지름 (pt). 2D 핀(40)보다 작게 둔다
         // TEMP: 실기기에서 보고 조절
         static let bookmarkBadgeSize: CGFloat = 32
+        /// 다른 북마크 사진을 골랐을 때 3D 배지가 흐려지는 정도. 2D 번호 핀·3D 구와 같은 0.3
+        static let bookmarkDimmedOpacity = 0.3
     }
 }
 // 문구
