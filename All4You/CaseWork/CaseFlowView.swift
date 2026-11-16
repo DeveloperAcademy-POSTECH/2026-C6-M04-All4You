@@ -43,7 +43,7 @@ struct CaseFlowView: View {
         self.onClose = onClose
         // 저장된 도면을 열면 메인부터, 막 변환한 도면이면 2D 수정부터 보여 준다
         _isCaseMainShown = State(initialValue: startsAtMain)
-        // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 저장된 JSON을 못 읽으면 빈 도면
+        // 평면도가 있는 사건만 열린다(없으면 목록이 도면 방식 선택을 띄움). 읽지 못하는 도면은 목록이 먼저 막아서 여기까지 오지 않는다
         _planData = State(initialValue: fireCase.floorPlan?.loadPlanData() ?? .empty)
         _photoStore = State(initialValue: PhotoStore(fireCase: fireCase))
         // 직접 그리기 변환에서 옮기지 못한 스탬프가 있으면 한 번 알리고 비운다
