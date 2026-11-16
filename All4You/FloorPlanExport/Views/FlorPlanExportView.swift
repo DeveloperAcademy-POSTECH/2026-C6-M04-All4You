@@ -42,9 +42,9 @@ struct FloorPlanExportView: View {
                     showsStamps: $showsStamps
                 )
                 .frame(width: 370)
+                .offset(y: -80)
             }
             .padding(24)
-            .offset(y: -80)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -191,6 +191,8 @@ private struct FloorPlanSavePreview: View {
                     onEdit: { _ in },
                     pins: pins3D,
                     pinView: pinView3D,
+                    showsCompass: true,
+                    compassTopInset: 16,
                     showsFurnitureLabels: content.showsFurnitureLabels
                 )
             }

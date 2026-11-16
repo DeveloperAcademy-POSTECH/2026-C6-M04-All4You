@@ -43,16 +43,28 @@ struct FloorPlanExportContent {
     }
 }
 
-/// 흰 바탕에 도면을 가운데 맞춰 그린 2D 그림. 미리보기와 저장 이미지가 같은 그림이다
+/// 흰 바탕에 도면과 방위표를 그린 2D 그림. 미리보기와 저장 이미지가 같은 그림이다
 struct FloorPlanExport2DCanvas: View {
     let content: FloorPlanExportContent
     
     var body: some View {
         GeometryReader { proxy in
             let screen = PlanScreen(plan: content.planData, in: proxy.size, fill: Layout.planFill)
+            let compassScale = min(proxy.size.width / Layout.compassReferenceWidth,
+                                   proxy.size.height / Layout.compassReferenceHeight)
             Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds, showsStampKinds: false, showsFurnitureLabels: content.showsFurnitureLabels)
                 .overlay(alignment: .topLeading) {
                     PhotoPinLayer(planData: content.planData, screen: screen, pins: content.pins, selectedRoomID: nil, onTapRoom: { _ in })
+                        .allowsHitTesting(false)
+                }
+                .overlay(alignment: .topTrailing) {
+                    // 도면 회전까지 더해 실제 화면에서 보이는 북쪽 방향으로 저장
+                    CompassView(northAngle: .radians((content.planData.northAngle ?? 0) + screen.rotation))
+                        .scaleEffect(compassScale)
+                        .frame(width: Layout.compassSize * compassScale,
+                               height: Layout.compassSize * compassScale)
+                        .padding(.top, proxy.size.height * Layout.compassInsetRatio)
+                        .padding(.trailing, proxy.size.width * Layout.compassInsetRatio)
                         .allowsHitTesting(false)
                 }
         }
@@ -60,8 +72,12 @@ struct FloorPlanExport2DCanvas: View {
     }
     
     private enum Layout {
-        /// 그림에서 도면이 차지하는 몫
-        static let planFill = 0.85
+        /// 오른쪽 위 방위표와 도면이 겹치지 않도록 남겨 둘 여백을 제외한 도면 크기
+        static let planFill = 0.68
+        static let compassSize: CGFloat = 104
+        static let compassReferenceWidth: CGFloat = 1000
+        static let compassReferenceHeight: CGFloat = 750
+        static let compassInsetRatio: CGFloat = 0.025
     }
 }
 
