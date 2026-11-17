@@ -74,10 +74,10 @@ struct Plan2DView: View {
     static let kindLabelBoxPadding: CGFloat = 4
     
     var body: some View {
-        Canvas { context, _ in
+        Canvas { context, size in
             // 스캔한 바닥을 가장 아래에 그린다. 벽이 없어도 바닥·가구가 보인다
             for floor in planData.floors ?? [] {
-                drawFloor(floor, in: &context)
+                drawFloor(floor, visible: CGRect(origin: .zero, size: size), in: &context)
             }
             // 가구를 먼저 그려 벽에 붙은 가구 가장자리가 벽 아래로 들어가게 한다
             for furniture in planData.furniture ?? [] {
@@ -127,19 +127,79 @@ struct RoomLabelActions {
 extension Plan2DView {
     /// 바닥을 옅게 칠하고 점선 테두리를 긋는다. 고른 바닥은 테두리를 주황으로 그린다
     // TEMP: 바닥 모양이 Figma에 없어 옅은 회색 칠과 점선 테두리로 임시로 정함
-    private func drawFloor(_ floor: Floor, in context: inout GraphicsContext) {
+    private func drawFloor(_ floor: Floor, visible: CGRect, in context: inout GraphicsContext) {
         guard floor.corners.count >= 3 else { return }
+        let corners = floor.points.map(screen.point)
         let path = Path { shape in
-            shape.addLines(floor.points.map(screen.point))
+            shape.addLines(corners)
             shape.closeSubpath()
         }
         context.fill(path, with: .color(.gray100.opacity(Layout.floorFillOpacity)))
         let isSelected = selectedFloorId == floor.id
-        context.stroke(
-            path,
+        strokeDashedEdges(
+            of: corners,
+            visible: visible,
             with: .color(isSelected ? .brand500 : .gray500),
-            style: StrokeStyle(lineWidth: isSelected ? Layout.selectionLineWidth : Layout.floorLineWidth, dash: Layout.floorDash)
+            lineWidth: isSelected ? Layout.selectionLineWidth : Layout.floorLineWidth,
+            dash: Layout.floorDash,
+            in: &context
         )
+    }
+    
+    /// 닫힌 도형의 점선 테두리를 화면에 보이는 부분만 긋는다.
+    /// 많이 확대하면 변이 화면 밖으로 수천 pt 뻗는데, 그 긴 선 전체에 점선을 계산하면 점선이 지직거려서
+    /// 변마다 화면 영역으로 잘라 긋는다. 점선 시작은 변의 시작점에 맞춰서 잘린 자리가 바뀌어도 점선이 같은 자리에 있다
+    private func strokeDashedEdges(
+        of corners: [CGPoint],
+        visible: CGRect,
+        with shading: GraphicsContext.Shading,
+        lineWidth: CGFloat,
+        dash: [CGFloat],
+        in context: inout GraphicsContext
+    ) {
+        let patternLength = dash.reduce(0, +)
+        guard patternLength > 0 else { return }
+        // 선 굵기가 잘린 끝에서 보이지 않게 영역을 조금 넓힌다
+        let area = visible.insetBy(dx: -Layout.dashClipMargin, dy: -Layout.dashClipMargin)
+        for index in corners.indices {
+            let start = corners[index]
+            let end = corners[(index + 1) % corners.count]
+            guard let range = Self.visibleRange(from: start, to: end, in: area) else { continue }
+            let length = hypot(end.x - start.x, end.y - start.y)
+            var edge = Path()
+            edge.move(to: CGPoint(x: start.x + (end.x - start.x) * range.lowerBound, y: start.y + (end.y - start.y) * range.lowerBound))
+            edge.addLine(to: CGPoint(x: start.x + (end.x - start.x) * range.upperBound, y: start.y + (end.y - start.y) * range.upperBound))
+            let phase = (length * range.lowerBound).truncatingRemainder(dividingBy: patternLength)
+            context.stroke(edge, with: shading, style: StrokeStyle(lineWidth: lineWidth, dash: dash, dashPhase: phase))
+        }
+    }
+    
+    /// 선분 start→end에서 area 안에 드는 구간을 start에서 end까지를 0~1로 나타낸 값 (Liang–Barsky). 영역과 만나지 않으면 nil
+    private static func visibleRange(from start: CGPoint, to end: CGPoint, in area: CGRect) -> ClosedRange<CGFloat>? {
+        var lower: CGFloat = 0
+        var upper: CGFloat = 1
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        // (선분 방향 성분, 그 경계까지 남은 거리): 왼쪽·오른쪽·위·아래 경계
+        let bounds: [(CGFloat, CGFloat)] = [
+            (-dx, start.x - area.minX), (dx, area.maxX - start.x),
+            (-dy, start.y - area.minY), (dy, area.maxY - start.y)
+        ]
+        for (direction, distance) in bounds {
+            if direction == 0 {
+                if distance < 0 { return nil }
+                continue
+            }
+            let ratio = distance / direction
+            if direction < 0 {
+                if ratio > upper { return nil }
+                lower = max(lower, ratio)
+            } else {
+                if ratio < lower { return nil }
+                upper = min(upper, ratio)
+            }
+        }
+        return lower <= upper ? lower...upper : nil
     }
 }
 
@@ -498,6 +558,8 @@ extension Plan2DView {
         static let floorFillOpacity = 0.6
         static let floorLineWidth: CGFloat = 1
         static let floorDash: [CGFloat] = [6, 4]
+        /// 점선을 화면 영역으로 자를 때 영역을 넓히는 거리 (pt)
+        static let dashClipMargin: CGFloat = 8
         /// 벽이 아주 얇아도 이만큼(pt)은 보이게
         static let minimumWallWidth = 1.0
         static let openingLineWidth: CGFloat = 1
