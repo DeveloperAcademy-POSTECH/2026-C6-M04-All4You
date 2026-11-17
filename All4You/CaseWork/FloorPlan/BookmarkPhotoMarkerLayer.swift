@@ -231,7 +231,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 var coneContext = context
                 coneContext.opacity = isDimmed(marker) ? Layout.dimmedOpacity : 1
                 coneContext.fill(cone, with: .linearGradient(
-                    Gradient(colors: [Color.orange400.opacity(Layout.coneOpacity), Color.orange400.opacity(0)]),
+                    Gradient(colors: [Color.orange400.opacity(Layout.coneStartOpacity), Color.orange400.opacity(Layout.coneEndOpacity)]),
                     startPoint: screen.point(center),
                     endPoint: screen.point(center + SIMD2(sin(yaw * .pi / 180), -cos(yaw * .pi / 180)) * Layout.coneLength)
                 ))
@@ -249,7 +249,10 @@ struct BookmarkPhotoMarkerLayer: View {
         static let coneLength = 0.5
         /// 광각 사진도 부채꼴이 너무 벌어지지 않게
         static let maxConeAngle = 90.0
-        static let coneOpacity = 0.45
+        /// 부채꼴 색의 불투명도. 핀 쪽은 진하고, 끝도 완전히 투명하지 않게 남겨 흰 바탕에서도 보이게 한다
+        // TEMP: 화면에서 보고 맞춘다
+        static let coneStartOpacity = 1.0
+        static let coneEndOpacity = 0.45
         static let arcSteps = 12
         /// 다른 핀을 골랐을 때 흐린 정도
         static let dimmedOpacity = 0.3
