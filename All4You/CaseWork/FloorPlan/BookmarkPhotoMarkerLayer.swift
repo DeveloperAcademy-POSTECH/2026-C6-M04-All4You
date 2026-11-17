@@ -71,6 +71,10 @@ struct BookmarkPhotoMarkerLayer: View {
     var style: Style = .regular
     /// 핀을 누르면 그 사진 id를 알린다
     var onTap: (UUID) -> Void = { _ in }
+    /// 도면을 확대·축소하면 번호 핀도 이름 캡슐처럼 함께 키우고 줄일지 (한계는 LabelScale). false면 늘 같은 크기다
+    var scalesMarkers = false
+    /// 핀 배율에 더 곱하는 값. 도면이 그려지는 화면이 도면 수정 화면보다 작을 때(내보내기 미리보기) 도면에 맞게 줄이는 데 쓴다
+    var markerScaleFactor: CGFloat = 1
     
     enum Style {
         case regular, compact
@@ -189,6 +193,7 @@ struct BookmarkPhotoMarkerLayer: View {
                 size: markerSize,
                 font: style == .compact ? AppTypography.subheadlineEmphasized : AppTypography.headlineEmphasized
             )
+            .scaleEffect(markerScale)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -207,11 +212,34 @@ struct BookmarkPhotoMarkerLayer: View {
         style == .compact ? Layout.compactMarkerSize : Layout.markerSize
     }
     
+    /// 지금 번호 핀 배율. 이름 캡슐과 같은 배율(LabelScale)이다. 부채꼴 길이는 도면 m라 도면과 함께 커지고 줄어서 따로 곱하지 않는다
+    private var markerScale: CGFloat {
+        (scalesMarkers ? screen.labelScale : 1) * markerScaleFactor
+    }
+    
     private func isDimmed(_ marker: BookmarkPhotoMarker) -> Bool {
         selectedID != nil && marker.id != selectedID
     }
     
-    /// 핀마다 바라본 쪽으로 화각만큼 벌어진 부채꼴. 도면 좌표로 점을 찍고 screen으로 옮겨 확대해도 길이가 도면과 맞는다
+    /// 부채꼴 끝 점. 번호 핀을 키우고 줄일 때(scalesMarkers)는 핀 크기에 비례한 길이(pt)로,
+    /// 아니면 도면 길이(m)로 그려 확대하면 도면과 함께 커진다. 방향은 도면 회전을 반영한다.
+    /// yaw 방향: 도면 위쪽 0°, 시계 방향. 도면은 +y가 아래
+    private func coneTip(from center: SIMD2<Double>, angle: Double) -> CGPoint {
+        let direction = SIMD2(sin(angle), -cos(angle))
+        guard scalesMarkers else {
+            return screen.point(center + direction * Layout.coneLength)
+        }
+        let origin = screen.point(center)
+        let unit = screen.point(center + direction)
+        let dx = unit.x - origin.x
+        let dy = unit.y - origin.y
+        let length = hypot(dx, dy)
+        guard length > 0 else { return origin }
+        let reach = markerSize * markerScale * Layout.coneLengthRatio
+        return CGPoint(x: origin.x + dx / length * reach, y: origin.y + dy / length * reach)
+    }
+    
+    /// 핀마다 바라본 쪽으로 화각만큼 벌어진 부채꼴. 길이는 coneTip을 따른다
     private var directionCones: some View {
         Canvas { context, _ in
             for marker in displayMarkers {
@@ -222,18 +250,16 @@ struct BookmarkPhotoMarkerLayer: View {
                 cone.move(to: screen.point(center))
                 for step in 0...Layout.arcSteps {
                     let angle = (yaw - half + 2 * half * Double(step) / Double(Layout.arcSteps)) * .pi / 180
-                    // yaw: 도면 위쪽 0°, 시계 방향. 도면은 +y가 아래
-                    let direction = SIMD2(sin(angle), -cos(angle))
-                    cone.addLine(to: screen.point(center + direction * Layout.coneLength))
+                    cone.addLine(to: coneTip(from: center, angle: angle))
                 }
                 cone.closeSubpath()
                 // 핀마다 흐림 정도가 달라 복사본에 투명도를 준다
                 var coneContext = context
                 coneContext.opacity = isDimmed(marker) ? Layout.dimmedOpacity : 1
                 coneContext.fill(cone, with: .linearGradient(
-                    Gradient(colors: [Color.orange400.opacity(Layout.coneOpacity), Color.orange400.opacity(0)]),
+                    Gradient(colors: [Color.orange400.opacity(Layout.coneStartOpacity), Color.orange400.opacity(Layout.coneEndOpacity)]),
                     startPoint: screen.point(center),
-                    endPoint: screen.point(center + SIMD2(sin(yaw * .pi / 180), -cos(yaw * .pi / 180)) * Layout.coneLength)
+                    endPoint: coneTip(from: center, angle: yaw * .pi / 180)
                 ))
             }
         }
@@ -245,11 +271,15 @@ struct BookmarkPhotoMarkerLayer: View {
         static let markerSize: CGFloat = 40
         /// 사건 목록 미리보기의 작은 핀 지름
         static let compactMarkerSize: CGFloat = 32
-        /// 부채꼴 길이 (도면 m)
+        /// 부채꼴 길이 (도면 m). 번호 핀을 키우고 줄이지 않는 화면(사건 목록 미리보기)에서 쓴다
         static let coneLength = 0.5
+        /// 번호 핀을 키우고 줄이는 화면의 부채꼴 길이: 핀 지름의 몇 배 (핀에 가려지는 반지름 0.5배 포함)
+        static let coneLengthRatio = 1.5
         /// 광각 사진도 부채꼴이 너무 벌어지지 않게
         static let maxConeAngle = 90.0
-        static let coneOpacity = 0.45
+        /// 부채꼴 색의 불투명도. 핀 쪽은 진하고, 끝도 완전히 투명하지 않게 남겨 흰 바탕에서도 보이게 한다
+        static let coneStartOpacity = 1.0
+        static let coneEndOpacity = 0.45
         static let arcSteps = 12
         /// 다른 핀을 골랐을 때 흐린 정도
         static let dimmedOpacity = 0.3

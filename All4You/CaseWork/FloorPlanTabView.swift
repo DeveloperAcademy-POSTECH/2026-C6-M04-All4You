@@ -325,7 +325,8 @@ extension FloorPlanTabView {
                                 onRotateEditing: { bookmarkEdit?.yaw = $0 },
                                 onCancelEditing: cancelBookmarkEditing,
                                 onSaveEditing: saveBookmarkEditing,
-                                onTap: selectBookmark
+                                onTap: selectBookmark,
+                                scalesMarkers: true
                             )
                             .opacity(focusedMemoID == nil ? 1 : Layout.focusDimmedOpacity)
                         }
