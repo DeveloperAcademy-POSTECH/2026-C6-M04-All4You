@@ -283,9 +283,10 @@ import RoomPlan
     
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
+        let shouldTurnOn = !isTorchOn
         do {
-            try torch.setEnabled(!torch.isEnabled)
-            isTorchOn = torch.isEnabled
+            try torch.setEnabled(shouldTurnOn)
+            isTorchOn = shouldTurnOn
             torchMessage = nil
         } catch {
             isTorchOn = torch.isEnabled
