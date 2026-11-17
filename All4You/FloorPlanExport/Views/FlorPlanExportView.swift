@@ -25,6 +25,8 @@ struct FloorPlanExportView: View {
     /// 2D 미리보기의 확대·회전·이동한 시야. nil이면 처음 시야. 저장하는 2D 그림도 이 시야 그대로다
     @State private var planScreen: PlanScreen?
     
+    private static let imageAspect = 4.0 / 3.0
+    
     /// 저장할 도면
     let planData: PlanData
     /// 도면에 사진 핀으로 보일 사진 (메인에서 고른 조사 차수의 사진)
@@ -40,6 +42,8 @@ struct FloorPlanExportView: View {
         NavigationStack {
             HStack(spacing: 24) {
                 FloorPlanSavePreview(planType: planType, content: content, planScreen: $planScreen)
+                    // 미리보기를 아이패드 화면과 같은 4:3으로 두어, 저장하는 그림(미리보기와 같은 크기)도 4:3이 되게 한다
+                    .aspectRatio(Self.imageAspect, contentMode: .fit)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { previewFrame = $0 }
                     // 미리보기 크기가 바뀌면 맞춰 둔 시야가 어긋나므로 처음 시야로 돌린다
                     .onChange(of: previewFrame.size) { planScreen = nil }
