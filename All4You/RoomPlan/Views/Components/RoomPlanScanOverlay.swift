@@ -27,7 +27,7 @@ struct RoomPlanScanOverlay: View {
     var onCapturePhoto: () -> Void = {}
     /// 쇼케이스: 스캔 중 완료 버튼에 파동과 안내 문구를 보일지
     var showsFinishHint = false
-    
+
     var body: some View {
         ZStack {
             if phase == .ready {
@@ -52,9 +52,13 @@ struct RoomPlanScanOverlay: View {
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let torchMessage {
-                    Label(torchMessage, systemImage: "flashlight.on.fill")
-                        .font(.subheadline.bold())
+                    Text(torchMessage)
+                        .font(.caption.bold())
                         .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.black.opacity(0.75), in: Capsule())
                 }
                 if let photoMessage {
                     Label(photoMessage, systemImage: "location.slash")
@@ -80,7 +84,7 @@ struct RoomPlanScanOverlay: View {
                         .frame(width: 58, height: 58)
                         .frame(width: 72, height: 72)
                         .overlay(Circle().strokeBorder(.white, lineWidth: 3))
-                    // 쇼케이스: 이 버튼은 준비 단계에만 있으므로 항상 파동을 준다
+                        // 쇼케이스: 이 버튼은 준비 단계에만 있으므로 항상 파동을 준다
                         .guidePulse(isActive: true, in: Circle(), color: .white)
                         .contentShape(Circle())
                 }
@@ -99,7 +103,7 @@ struct RoomPlanScanOverlay: View {
                             .background(.black.opacity(0.65), in: Capsule())
                             .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
-                    
+
                     Button(action: onStop) {
                         RoundedRectangle(cornerRadius: 7)
                             .fill(.red)
@@ -205,24 +209,8 @@ struct RoomPlanScanOverlay: View {
                 }
                 .accessibilityLabel(latestPhotoThumbnail == nil ? "촬영한 사진 없음" : "최근 촬영 사진")
                 .padding(.trailing, 29)
-                .offset(y: 278)
+                .offset(y: 288)
                 .allowsHitTesting(false)
-            }
-        }
-        
-        // 촬영 시작 이후 손전등 버튼 보여줌
-        .overlay(alignment: .top) {
-            if phase == .scanning || phase == .paused {
-                Button(action: onTorch) {
-                    Image(systemName: isTorchOn ? "bolt.fill" : "bolt.slash.fill")
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isTorchOn ? "손전등 끄기" : "손전등 켜기")
-                .padding(.top, 16)
             }
         }
     }

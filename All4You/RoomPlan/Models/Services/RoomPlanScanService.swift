@@ -284,11 +284,13 @@ import RoomPlan
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
         do {
-            try torch.setEnabled(!isTorchOn)
-            isTorchOn.toggle()
+            try torch.setEnabled(!torch.isEnabled)
+            isTorchOn = torch.isEnabled
             torchMessage = nil
         } catch {
+            isTorchOn = torch.isEnabled
             torchMessage = error.localizedDescription
+            logger.error("손전등 전환 실패: \(error.localizedDescription, privacy: .public)")
         }
     }
     
