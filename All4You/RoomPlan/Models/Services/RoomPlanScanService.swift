@@ -53,6 +53,8 @@ import RoomPlan
     @Published private(set) var segmentID = UUID()
     /// 스캔 중 찍은 사진 수와 촬영 안내
     @Published private(set) var scanPhotoCount = 0
+    /// 최근 사진을 촬영할 때마다 스캔 UI에 반영하는 썸네일
+    @Published private(set) var latestPhotoThumbnail: Data?
     @Published private(set) var isCapturingPhoto = false
     @Published private(set) var photoMessage: String?
     var arSession: ARSession { tracking.arSession }
@@ -269,7 +271,8 @@ import RoomPlan
             guard let self else { return }
             defer { self.isCapturingPhoto = false }
             do {
-                try await self.photoService.capture(from: session, orientation: orientation)
+                let photo = try await self.photoService.capture(from: session, orientation: orientation)
+                self.latestPhotoThumbnail = photo.thumbnailData
                 self.scanPhotoCount = self.photoService.photos.count
             } catch {
                 self.logger.error("스캔 중 사진 촬영 실패: \(error.localizedDescription, privacy: .public)")

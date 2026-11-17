@@ -207,6 +207,7 @@ private struct RoomPlanScanSessionView: View {
                         photoCount: scanService.scanPhotoCount,
                         canCapturePhoto: scanService.canCapturePhoto,
                         photoMessage: scanService.photoMessage,
+                        latestPhotoThumbnail: scanService.latestPhotoThumbnail,
                         onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) },
                         showsFinishHint: isFinishHintDue
                     )
@@ -335,7 +336,7 @@ private struct RoomPlanScanSessionView: View {
     
     // TEMP: Figma에 없는 화면이라 임시 문구
     private static let emptyPlanMessage = "스캔된 것이 없어요. 바닥이나 벽을 비추며 다시 스캔해 주세요"
-
+    
     // 쇼케이스: 스캔을 시작하고 이만큼 지나면 완료 버튼을 안내한다.
     // 박람회 전 실제로 스캔해 보며 바꿀 수 있음 (1~2분 사이에서 조정)
     private static let finishHintDelay: Duration = .seconds(90)
@@ -352,9 +353,9 @@ private struct RoomPlanScanSessionView: View {
         let converted = PlanData.converted(structure: scanService.mergedPreview, rooms: scanService.finishedRooms)
         previewPlan = converted.plan
         previewReport = converted.report
-        #if DEBUG
+#if DEBUG
         Logger(subsystem: "All4You", category: "ScanConversion").notice("\(converted.report.logText, privacy: .public)")
-        #endif
+#endif
     }
     
     // 시스템 카메라 권한 확인 및 최초 접근 요청
