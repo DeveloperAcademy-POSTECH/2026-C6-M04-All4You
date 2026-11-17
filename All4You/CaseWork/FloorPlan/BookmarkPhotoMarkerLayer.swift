@@ -235,7 +235,6 @@ struct BookmarkPhotoMarkerLayer: View {
         let dy = unit.y - origin.y
         let length = hypot(dx, dy)
         guard length > 0 else { return origin }
-        // 핀에 가려지고도 길게 남도록 핀 지름의 몇 배로 정한다
         let reach = markerSize * markerScale * Layout.coneLengthRatio
         return CGPoint(x: origin.x + dx / length * reach, y: origin.y + dy / length * reach)
     }

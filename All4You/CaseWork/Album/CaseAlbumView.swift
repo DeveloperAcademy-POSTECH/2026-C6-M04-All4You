@@ -218,7 +218,6 @@ private struct RoomAlbumView: View {
     let title: String
     let photos: [LoadedPhoto]
     let onOpenPhoto: (_ photos: [LoadedPhoto], _ initialID: UUID) -> Void
-    /// 앨범 전체로 돌아간다
     let onBack: () -> Void
     
     @State private var isBookmarkOnly = false

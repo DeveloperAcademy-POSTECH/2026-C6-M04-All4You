@@ -141,7 +141,6 @@ private enum PhotoMarkerModel {
     /// 사각뿔 길이 (m)
     // TEMP: 실기기에서 보고 조절
     static let frustumLength: Float = 1.2
-    /// 사각뿔 구 쪽의 진하기
     // TEMP: 실기기에서 보고 조절
     static let frustumStartOpacity: CGFloat = 1
     /// 사각뿔 끝의 진하기. 0이 아니라 남겨서 끝까지 보이게 한다
