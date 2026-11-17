@@ -207,6 +207,7 @@ private struct RoomPlanScanSessionView: View {
                         photoCount: scanService.scanPhotoCount,
                         canCapturePhoto: scanService.canCapturePhoto,
                         photoMessage: scanService.photoMessage,
+                        latestPhotoThumbnail: scanService.latestPhotoThumbnail,
                         onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) },
                         showsFinishHint: isFinishHintDue
                     )
@@ -257,6 +258,22 @@ private struct RoomPlanScanSessionView: View {
         .backOnlyToolbar(title: "이전") {
             scanService.detach()
             dismiss()
+        }
+        // 내비게이션 바가 터치를 가로채지 않도록 손전등을 실제 툴바에 배치
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if scanService.phase == .scanning || scanService.phase == .paused {
+                    Button(action: scanService.toggleTorch) {
+                        Image(systemName: scanService.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(scanService.isTorchOn ? "손전등 끄기" : "손전등 켜기")
+                }
+            }
         }
         .alert(
             RoomPlanSegmentDialog.title,

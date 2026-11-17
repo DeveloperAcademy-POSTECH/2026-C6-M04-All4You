@@ -4,7 +4,6 @@
 //
 //  Created by 채유성 on 11/3/26.
 //
-
 // 스캔 단계에 맞춰 안내 문구, 손전등 토글, 촬영 시작·종료·일시정지·재개 버튼을 배치하는 뷰 (카메라 위에 올라가는 overlay)
 import SwiftUI
 
@@ -18,12 +17,16 @@ struct RoomPlanScanOverlay: View {
     let onStop: () -> Void
     let onPause: () -> Void
     let onTorch: () -> Void
+    
     /// 스캔 중 사진 촬영 (사진에 카메라 위치·방향이 함께 담김)
     var photoCount = 0
     var canCapturePhoto = false
     var photoMessage: String?
+
+    /// 마지막으로 촬영에 성공한 사진의 작은 JPEG 데이터
+    var latestPhotoThumbnail: Data?
     var onCapturePhoto: () -> Void = {}
-    /// 쇼케이스: 스캔 중 완료 버튼에 파동과 안내 문구를 보일지
+
     var showsFinishHint = false
 
     var body: some View {
@@ -37,7 +40,7 @@ struct RoomPlanScanOverlay: View {
             if phase == .ready {
                 VStack(spacing: 28) {
                     RoomPlanCoachingGraphic()
-                    
+
                     Text(guidance)
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.white)
@@ -50,15 +53,21 @@ struct RoomPlanScanOverlay: View {
         .overlay(alignment: .top) {
             VStack(spacing: 8) {
                 if let torchMessage {
-                    Label(torchMessage, systemImage: "flashlight.on.fill")
-                        .font(.subheadline.bold())
+                    Text(torchMessage)
+                        .font(.caption.bold())
                         .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(.black.opacity(0.75), in: Capsule())
                 }
+
                 if let photoMessage {
                     Label(photoMessage, systemImage: "location.slash")
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)
                 }
+
                 if let pauseStatus {
                     Text(pauseStatus)
                         .font(.subheadline.bold())
@@ -68,7 +77,7 @@ struct RoomPlanScanOverlay: View {
             .padding(.top, 90)
             .padding(.horizontal, 24)
         }
-        
+
         // 준비·촬영·일시정지 단계에 따른 촬영 버튼 모양 전환
         .overlay(alignment: .trailing) {
             if phase == .ready {
@@ -85,6 +94,7 @@ struct RoomPlanScanOverlay: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("스캔 시작")
                 .padding(.trailing, 28)
+
             } else if phase == .scanning || phase == .paused {
                 // 문구는 버튼 왼쪽에 붙으므로 trailing 정렬인 버튼 자리는 그대로
                 HStack(spacing: 12) {
@@ -114,7 +124,7 @@ struct RoomPlanScanOverlay: View {
                 .padding(.trailing, 28)
             }
         }
-        
+
         // 촬영 중 일시정지 & 일시정지 상태에서 다시 스캔
         .overlay(alignment: .trailing) {
             if phase == .scanning {
@@ -130,6 +140,7 @@ struct RoomPlanScanOverlay: View {
                 .accessibilityLabel("스캔 일시정지")
                 .padding(.trailing, 37)
                 .offset(y: 180)
+
             } else if phase == .paused {
                 Button(action: onStart) {
                     Circle()
@@ -146,7 +157,7 @@ struct RoomPlanScanOverlay: View {
                 .offset(y: 180)
             }
         }
-        
+
         // 스캔·일시정지 중 사진 촬영. 찍은 장 수를 배지로 보여 줌
         .overlay(alignment: .trailing) {
             if phase == .scanning || phase == .paused {
@@ -177,24 +188,34 @@ struct RoomPlanScanOverlay: View {
                 .accessibilityLabel("사진 촬영")
                 .accessibilityValue("\(photoCount)장")
                 .padding(.trailing, 37)
-                .offset(y: -100)
+                .offset(y: -180)
             }
         }
-        
-        // 촬영 시작 이후 손전등 버튼 보여줌
+        // 일시정지 버튼(중앙 y +180) 아래 36pt 간격으로 최신 촬영 사진 표시
         .overlay(alignment: .trailing) {
             if phase == .scanning || phase == .paused {
-                Button(action: onTorch) {
-                    Image(systemName: isTorchOn ? "bolt.fill" : "bolt.slash.fill")
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Circle())
+                Group {
+                    if let latestPhotoThumbnail,
+                       let image = UIImage(data: latestPhotoThumbnail) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        // 촬영 전: 흰색 대신 반투명 글래스 배경
+                        Rectangle()
+                            .fill(.ultraThinMaterial)
+                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isTorchOn ? "손전등 끄기" : "손전등 켜기")
-                .padding(.trailing, 52)
-                .offset(y: -180)
+                .frame(width: 70, height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(.white.opacity(0.2), lineWidth: 1)
+                }
+                .accessibilityLabel(latestPhotoThumbnail == nil ? "촬영한 사진 없음" : "최근 촬영 사진")
+                .padding(.trailing, 29)
+                .offset(y: 288)
+                .allowsHitTesting(false)
             }
         }
     }
