@@ -92,7 +92,9 @@ struct FloorPlanExport2DCanvas: View {
             let screen = screen ?? Self.fitScreen(of: content.planData, in: proxy.size)
             let compassScale = min(proxy.size.width / Layout.compassReferenceWidth,
                                    proxy.size.height / Layout.compassReferenceHeight)
-            Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds, showsStampKinds: false, showsFurnitureLabels: content.showsFurnitureLabels)
+            // 도면 수정처럼 확대·축소에 맞춰 라벨 크기를 바꾸고, 작은 화면(미리보기)에서는 도면 크기에 맞게 더 줄인다
+            let labelFactor = min(1, min(proxy.size.width / Layout.labelReferenceWidth, proxy.size.height / Layout.labelReferenceHeight))
+            Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds, scalesLabels: true, labelScaleFactor: labelFactor, showsStampKinds: false, showsFurnitureLabels: content.showsFurnitureLabels)
                 .overlay(alignment: .topLeading) {
                     PhotoPinLayer(planData: content.planData, screen: screen, pins: content.pins, selectedRoomID: nil, onTapRoom: { _ in })
                         .allowsHitTesting(false)
@@ -120,6 +122,10 @@ struct FloorPlanExport2DCanvas: View {
     private enum Layout {
         /// 오른쪽 위 방위표와 도면이 겹치지 않도록 남겨 둘 여백을 제외한 도면 크기
         static let planFill = 0.68
+        /// 라벨이 도면 수정 화면과 같은 비율로 보이는 화면 크기 (pt). 이보다 작은 화면에서는 비례해 줄인다
+        // TEMP: 도면 수정 화면과 나란히 놓고 맞춘다
+        static let labelReferenceWidth: CGFloat = 1200
+        static let labelReferenceHeight: CGFloat = 900
         static let compassSize: CGFloat = 104
         static let compassReferenceWidth: CGFloat = 1000
         static let compassReferenceHeight: CGFloat = 750

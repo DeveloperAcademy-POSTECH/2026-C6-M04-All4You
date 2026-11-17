@@ -27,6 +27,8 @@ struct Plan2DView: View {
     var dimensions = DimensionDisplay()
     /// 도면을 확대·축소하면 이름 캡슐도 함께 키우고 줄일지 (한계는 LabelScale). false면 늘 같은 크기다
     var scalesLabels = false
+    /// 캡슐 배율에 더 곱하는 값. 도면이 그려지는 화면이 도면 수정 화면보다 작을 때(내보내기 미리보기) 도면에 맞게 줄이는 데 쓴다
+    var labelScaleFactor: CGFloat = 1
     /// 발화지점·전기 스탬프 아래에 종류 글자를 보일지. 내보내기 도면은 바닥 스탬프를 비우고 그려서 벽 전기 글자만 남지 않게 끈다
     var showsStampKinds = true
     /// 가구 라벨 숨김 여부
@@ -46,7 +48,7 @@ struct Plan2DView: View {
     
     /// 지금 이름 캡슐 배율
     private var labelScale: CGFloat {
-        scalesLabels ? screen.labelScale : 1
+        (scalesLabels ? screen.labelScale : 1) * labelScaleFactor
     }
     
     /// 사람·발화지점 아이콘 크기 (m). 3D 모델이 바닥에서 차지하는 자리의 긴 쪽 길이라 2D와 3D 크기가 비슷하다.
