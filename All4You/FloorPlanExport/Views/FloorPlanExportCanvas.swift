@@ -79,10 +79,17 @@ private extension String {
 /// 흰 바탕에 도면과 방위표를 그린 2D 그림. 미리보기와 저장 이미지가 같은 그림이다
 struct FloorPlanExport2DCanvas: View {
     let content: FloorPlanExportContent
+    /// 확대·회전·이동한 시야. nil이면 도면을 화면에 맞춘 처음 시야
+    var screen: PlanScreen? = nil
+    
+    /// 도면을 크기에 맞춘 처음 시야
+    static func fitScreen(of plan: PlanData, in size: CGSize) -> PlanScreen {
+        PlanScreen(plan: plan, in: size, fill: Layout.planFill)
+    }
     
     var body: some View {
         GeometryReader { proxy in
-            let screen = PlanScreen(plan: content.planData, in: proxy.size, fill: Layout.planFill)
+            let screen = screen ?? Self.fitScreen(of: content.planData, in: proxy.size)
             let compassScale = min(proxy.size.width / Layout.compassReferenceWidth,
                                    proxy.size.height / Layout.compassReferenceHeight)
             Plan2DView(planData: content.planData, screen: screen, hiddenLabelRoomIds: content.hiddenLabelRoomIds, showsStampKinds: false, showsFurnitureLabels: content.showsFurnitureLabels)
@@ -120,17 +127,93 @@ struct FloorPlanExport2DCanvas: View {
     }
 }
 
+/// 2D 미리보기. 도면 수정처럼 핀치로 확대·축소하고 두 손가락으로 돌리고 옮긴다. 저장하는 그림은 여기서 맞춘 시야 그대로다
+struct FloorPlanExport2DPreview: View {
+    let content: FloorPlanExportContent
+    /// 맞춘 시야. nil이면 처음 시야
+    @Binding var screen: PlanScreen?
+    
+    @State private var lastMagnification = 1.0
+    @State private var lastRotation = 0.0
+    
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            FloorPlanExport2DCanvas(content: content, screen: screen)
+                .contentShape(.rect)
+                .gesture(zoomGesture(in: size).simultaneously(with: rotateGesture(in: size)))
+                .gesture(TwoFingerPanGesture { location, previous in
+                    screen = current(in: size).moved(by: CGSize(width: location.x - previous.x, height: location.y - previous.y))
+                })
+                .overlay(alignment: .bottomTrailing) {
+                    // 저장 그림에는 들어가지 않는다 (저장은 FloorPlanExport2DCanvas만 그린다)
+                    if screen != nil {
+                        ResetViewButton {
+                            withAnimation(.easeInOut(duration: Layout.resetDuration)) {
+                                screen = nil
+                            }
+                        }
+                        .padding(Layout.resetInset)
+                        .transition(.opacity)
+                    }
+                }
+        }
+    }
+    
+    private func current(in size: CGSize) -> PlanScreen {
+        screen ?? FloorPlanExport2DCanvas.fitScreen(of: content.planData, in: size)
+    }
+    
+    /// 두 손가락 사이를 기준으로 확대·축소한다
+    private func zoomGesture(in size: CGSize) -> some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                let factor = value.magnification / lastMagnification
+                lastMagnification = value.magnification
+                screen = current(in: size).zoomed(by: factor, around: value.startLocation)
+            }
+            .onEnded { _ in
+                lastMagnification = 1
+            }
+    }
+    
+    /// 두 손가락이 비틀린 만큼 돌린다. 손을 떼면 가로·세로 방향 가까이면 그 방향에 붙인다
+    private func rotateGesture(in size: CGSize) -> some Gesture {
+        RotateGesture()
+            .onChanged { value in
+                // 두 손가락이 정확히 세로·가로가 되는 순간 시스템이 NaN을 줄 때가 있다. 그 값을 넣으면 도면이 사라지므로 건너뛴다
+                let radians = value.rotation.radians
+                guard radians.isFinite else { return }
+                let delta = radians - lastRotation
+                lastRotation = radians
+                screen = current(in: size).rotated(by: delta, around: value.startLocation)
+            }
+            .onEnded { _ in
+                lastRotation = 0
+                withAnimation(.easeOut(duration: Layout.settleDuration)) {
+                    screen = current(in: size).settled(around: CGPoint(x: size.width / 2, y: size.height / 2))
+                }
+            }
+    }
+    
+    private enum Layout {
+        static let resetInset: CGFloat = 16
+        static let resetDuration = 0.3
+        static let settleDuration = 0.15
+    }
+}
+
 /// 내보내기 이미지 만들기와 사진 보관함 저장
 @MainActor
 enum FloorPlanExporter {
-    /// 저장하는 2D 이미지 크기 (pt). 화면 배율(2배)을 곱한 픽셀로 저장된다
-    private static let imageSize = CGSize(width: 1600, height: 1200)
-    private static let imageScale: CGFloat = 2
+    /// 저장하는 2D 이미지의 긴 변 (px)
+    private static let imageLongEdge: CGFloat = 3200
     
-    /// 2D 그림을 이미지로 그린다
-    static func render2D(_ content: FloorPlanExportContent) -> UIImage? {
-        let renderer = ImageRenderer(content: FloorPlanExport2DCanvas(content: content).frame(width: imageSize.width, height: imageSize.height))
-        renderer.scale = imageScale
+    /// 2D 그림을 이미지로 그린다. 미리보기와 같은 크기·같은 시야(screen)로 그려서 본 그대로 저장하고, 해상도만 높인다
+    static func render2D(_ content: FloorPlanExportContent, screen: PlanScreen?, size: CGSize) -> UIImage? {
+        guard size.width > 0, size.height > 0 else { return nil }
+        let renderer = ImageRenderer(content: FloorPlanExport2DCanvas(content: content, screen: screen).frame(width: size.width, height: size.height))
+        renderer.scale = imageLongEdge / max(size.width, size.height)
         return renderer.uiImage
     }
     
