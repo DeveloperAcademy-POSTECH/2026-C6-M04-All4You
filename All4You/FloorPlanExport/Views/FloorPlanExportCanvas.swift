@@ -101,7 +101,7 @@ struct FloorPlanExport2DCanvas: View {
                 }
                 .overlay(alignment: .topLeading) {
                     if !content.photoMarkers.isEmpty {
-                        BookmarkPhotoMarkerLayer(markers: content.photoMarkers, screen: screen, showsDirection: content.showsCaptureDirection, style: .compact)
+                        BookmarkPhotoMarkerLayer(markers: content.photoMarkers, screen: screen, showsDirection: content.showsCaptureDirection, style: .compact, scalesMarkers: true, markerScaleFactor: labelFactor)
                             .allowsHitTesting(false)
                     }
                 }
