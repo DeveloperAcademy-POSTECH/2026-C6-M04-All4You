@@ -218,25 +218,16 @@ extension CaseMainView {
         }
     }
     
-    /// 앨범 전체 보기에는 오른쪽 작업 버튼을 숨기고, 장소별 보기에는 뒤로가기만 표시
-    @ViewBuilder
+    /// 앨범 탭에는 오른쪽 작업 버튼을 두지 않는다. 장소별 보기에서 앨범 전체로 돌아가는 버튼은 장소 제목 줄(CaseAlbumView)에 있고,
+    /// 시스템 뒤로가기를 붙이면 왼쪽 위 사건 뒤로가기(titleHeader)와 겹친다
     private var albumTab: some View {
-        let album = CaseAlbumView(
+        CaseAlbumView(
             photoStore: photoStore,
             rooms: planData.rooms,
             selection: $selection,
             onPlaceUnassigned: showPhotoPlacement
         )
-        if case .album = selection {
-            album
-                .navigationBarTitleDisplayMode(.inline)
-                .backOnlyToolbar {
-                    selection = .albumOverview
-                }
-        } else {
-            album
-                .navigationBarTitleDisplayMode(.inline)
-        }
+        .navigationBarTitleDisplayMode(.inline)
     }
     
     // 사이드바 앨범 구역의 줄: 위치 미지정, 그다음 도면의 장소 순서. 숫자는 그 장소의 사진 수
