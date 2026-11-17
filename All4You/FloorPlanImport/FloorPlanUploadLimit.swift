@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 enum FloorPlanUploadLimit {
-    private static let dailyLimit = 3
+    private static let dailyLimit = 500
     private static let storageKey = "floorPlanDailyUploads"
 
     static func recordUpload(now: Date = .now, defaults: UserDefaults = .standard) throws {
@@ -18,10 +18,10 @@ enum FloorPlanUploadLimit {
         guard count < dailyLimit else { throw LimitReached() }
         defaults.set(["date": now, "count": count + 1], forKey: storageKey)
     }
-
+ 
     private struct LimitReached: LocalizedError {
         var errorDescription: String? {
-            "오늘 도면 업로드 3회를 모두 사용했어요. 내일 다시 이용해 주세요."
+            "오늘 도면 업로드 500회를 모두 사용했어요. 내일 다시 이용해 주세요."
         }
     }
 }
