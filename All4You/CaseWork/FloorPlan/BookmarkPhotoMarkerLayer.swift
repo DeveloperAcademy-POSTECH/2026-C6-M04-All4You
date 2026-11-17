@@ -275,12 +275,10 @@ struct BookmarkPhotoMarkerLayer: View {
         /// 부채꼴 길이 (도면 m). 번호 핀을 키우고 줄이지 않는 화면(사건 목록 미리보기)에서 쓴다
         static let coneLength = 0.5
         /// 번호 핀을 키우고 줄이는 화면의 부채꼴 길이: 핀 지름의 몇 배 (핀에 가려지는 반지름 0.5배 포함)
-        // TEMP: 화면에서 보고 맞춘다
         static let coneLengthRatio = 1.5
         /// 광각 사진도 부채꼴이 너무 벌어지지 않게
         static let maxConeAngle = 90.0
         /// 부채꼴 색의 불투명도. 핀 쪽은 진하고, 끝도 완전히 투명하지 않게 남겨 흰 바탕에서도 보이게 한다
-        // TEMP: 화면에서 보고 맞춘다
         static let coneStartOpacity = 1.0
         static let coneEndOpacity = 0.45
         static let arcSteps = 12

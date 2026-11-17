@@ -145,10 +145,8 @@ private enum PhotoMarkerModel {
     // TEMP: 실기기에서 보고 조절
     static let frustumStartOpacity: CGFloat = 1
     /// 사각뿔 끝의 진하기. 0이 아니라 남겨서 끝까지 보이게 한다
-    // TEMP: 실기기에서 보고 조절
     static let frustumEndOpacity: CGFloat = 0.3
     /// 구에서 끝으로 옅어지는 정도. 1이면 일직선으로 옅어지고, 작을수록 구 쪽 진한 부분이 길게 이어진다
-    // TEMP: 실기기에서 보고 조절
     static let frustumFadeCurve: CGFloat = 0.6
     /// 그라데이션 이미지의 세로 칸 수
     static let gradientRows = 64

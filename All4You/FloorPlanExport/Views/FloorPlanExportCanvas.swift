@@ -123,7 +123,6 @@ struct FloorPlanExport2DCanvas: View {
         /// 오른쪽 위 방위표와 도면이 겹치지 않도록 남겨 둘 여백을 제외한 도면 크기
         static let planFill = 0.68
         /// 라벨이 도면 수정 화면과 같은 비율로 보이는 화면 크기 (pt). 이보다 작은 화면에서는 비례해 줄인다
-        // TEMP: 도면 수정 화면과 나란히 놓고 맞춘다
         static let labelReferenceWidth: CGFloat = 1200
         static let labelReferenceHeight: CGFloat = 900
         static let compassSize: CGFloat = 104
@@ -241,7 +240,7 @@ enum FloorPlanExporter {
         let photo: LoadedPhoto
         let fileName: String
     }
-
+    
     /// 사진에 촬영 시각 순서로 번호를 붙여 "01_안방.jpg" 같은 파일명을 만든다. 북마크 사진은 도면의 번호 마커와 같은 번호가 된다.
     /// 번호는 100장이 넘으면 세 자리로 늘어난다
     static func numberedPhotos(_ photos: [LoadedPhoto], rooms: [Room]) -> [ExportPhoto] {
@@ -251,13 +250,13 @@ enum FloorPlanExporter {
             .enumerated()
             .map { index, photo in
                 let number = String(index + 1).leftPadded(to: digits)
-                let roomName = rooms.first { $0.id == photo.roomKey }?.name ?? Copy.unassigned
+                let roomName = rooms.first { $0.id == photo.roomKey }?.name ?? CaseAlbumView.unassignedName
                 // 파일 이름에 쓸 수 없는 글자(/)는 바꾼다
                 let safeName = roomName.replacing("/", with: "-")
                 return ExportPhoto(photo: photo, fileName: "\(number)_\(safeName).jpg")
             }
     }
-
+    
     /// 도면 이미지를 사진 보관함에 저장한다. photos가 있으면 albumTitle 앨범을 만들어(이미 있으면 재사용) 도면과 사진을 그 앨범에 넣는다.
     /// 사진은 한 장씩 읽고 저장해 메모리를 아낀다. 사진 접근을 거절했으면 에러.
     /// 도면을 저장하지 못하면 에러, 사진 일부를 저장하지 못하면 못 저장한 장수를 돌려준다
@@ -271,11 +270,11 @@ enum FloorPlanExporter {
             }
             return 0
         }
-
+    
         let albumID = try await albumIdentifier(title: albumTitle)
         guard let planData = image.pngData() else { throw ExportError.imageFailed }
         try await saveAsset(data: planData, fileName: fileName, date: .now, albumID: albumID)
-
+    
         var failedCount = 0
         for item in photos {
             // 사진 한 장씩 읽어서, 많은 사진이 한꺼번에 메모리에 올라가지 않게 한다
@@ -291,7 +290,7 @@ enum FloorPlanExporter {
         }
         return failedCount
     }
-
+    
     /// 같은 이름의 앨범이 있으면 그것, 없으면 새로 만들어 식별자를 돌려준다
     private static func albumIdentifier(title: String) async throws -> String {
         let options = PHFetchOptions()
@@ -306,7 +305,7 @@ enum FloorPlanExporter {
         }
         return identifier.value
     }
-
+    
     /// 이미지 데이터를 파일명·생성 시각과 함께 저장하고 앨범에 넣는다
     private static func saveAsset(data: Data, fileName: String, date: Date, albumID: String) async throws {
         try await PHPhotoLibrary.shared().performChanges {
@@ -321,16 +320,12 @@ enum FloorPlanExporter {
             }
         }
     }
-
+    
     /// performChanges 안에서 만든 식별자를 밖으로 꺼내는 상자
     private final class IdentifierBox: @unchecked Sendable {
         var value = ""
     }
-
-    private enum Copy {
-        static let unassigned = "위치미지정"
-    }
-
+    
     enum ExportError: LocalizedError {
         case photoAccessDenied
         case imageFailed

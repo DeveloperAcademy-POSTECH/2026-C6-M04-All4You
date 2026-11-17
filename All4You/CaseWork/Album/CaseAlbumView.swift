@@ -279,7 +279,6 @@ private struct RoomAlbumView: View {
     private var header: some View {
         HStack(spacing: Layout.backSpacing) {
             // 시스템 뒤로가기를 붙이면 왼쪽 위 사건 뒤로가기와 겹쳐서, 제목 줄에 앨범 전체로 돌아가는 버튼을 둔다
-            // TEMP: Figma에 장소 화면의 복귀 버튼이 없어 제목 왼쪽에 임의로 둠 — 디자인이 나오면 맞춘다
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: BarLayout.iconSize, weight: .semibold))
