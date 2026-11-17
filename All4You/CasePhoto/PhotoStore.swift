@@ -72,11 +72,6 @@ extension LoadedPhoto {
         self.init(id: record.id, thumbnail: thumbnail, takenAt: record.takenAt, isBookmarked: record.isBookmarked, roomKey: record.roomKey, sessionNumber: record.session?.sessionNumber, cameraPose: record.cameraPose, manualPlacement: record.manualPlacement, record: record)
     }
     
-    /// 사진 보관함에 내보낼 JPEG 데이터. 마크업했으면 마크업이 그려진 사진이다. 저장 기록이 없는 미리보기 사진은 메모리 사진을 JPEG로 만든다
-    var exportData: Data? {
-        record?.imageData ?? memoryImage?.jpegData(compressionQuality: 0.9)
-    }
-    
     /// 도면 위 촬영 위치·방향. 사용자가 놓은 위치를 먼저 쓰고, 없으면 카메라 자세로 계산한다.
     /// 둘 다 없으면(일반 카메라·사진 앱 사진을 아직 놓지 않았거나, 도면에 스캔 변환이 없으면) nil
     func placement(in plan: PlanData) -> PhotoPlacement? {

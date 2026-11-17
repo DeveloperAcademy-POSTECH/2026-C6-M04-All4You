@@ -168,7 +168,7 @@ struct CaseMainView: View {
             .presentationSizing(PhotoLibrarySheetSizing(containerSize: screenSize))
         }
         .sheet(isPresented: $isExportSheetPresented) {
-            FloorPlanExportView(planData: planData, photos: photoStore.photos, albumTitle: "\(fireCase.title) · \(sessionNumber)차 조사")
+            FloorPlanExportView(planData: planData, photos: photoStore.photos)
         }
     }
 }
@@ -218,8 +218,7 @@ extension CaseMainView {
         }
     }
     
-    /// 앨범 탭에는 오른쪽 작업 버튼을 두지 않는다. 장소별 보기에서 앨범 전체로 돌아가는 버튼은 장소 제목 줄(CaseAlbumView)에 있고,
-    /// 시스템 뒤로가기를 붙이면 왼쪽 위 사건 뒤로가기(titleHeader)와 겹친다
+    /// 앨범 탭에는 오른쪽 작업 버튼을 두지 않는다. 장소별 보기의 뒤로가기는 장소 제목 줄(CaseAlbumView)에 있다
     private var albumTab: some View {
         CaseAlbumView(
             photoStore: photoStore,
