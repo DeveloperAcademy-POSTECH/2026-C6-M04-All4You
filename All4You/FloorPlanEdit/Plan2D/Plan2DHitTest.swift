@@ -106,7 +106,7 @@ extension PlanScreen {
     private func doorSwing(at planPoint: SIMD2<Double>, in plan: PlanData) -> String? {
         let margin = Plan2DHit.fingerMargin / scale
         return plan.doorWindows.first { opening in
-            guard opening.kind == .door, let wall = plan.wall(id: opening.wallId), let line = plan.line(of: wall) else { return false }
+            guard opening.kind == .door, !opening.isSlidingDoor, let wall = plan.wall(id: opening.wallId), let line = plan.line(of: wall) else { return false }
             let hinge = line.point(along: opening.centerAlongWall - opening.width / 2)
             let offset = planPoint - hinge
             let along = (offset * line.direction).sum()

@@ -461,11 +461,47 @@ extension FloorPlan3DBuilder {
     /// 창문 유리·문짝 자리의 얇은 판. 눌러 고를 수 있고, 벽 그룹이 아니라 너머 라벨은 가리지 않는다.
     /// 문도 유리와 같은 반투명 판으로 그려, 문 너머 방이 가려지지 않게 한다
     private static func openingPanel(_ piece: WallPiece, bottom: Double, top: Double, opening: DoorWindow, selection: PlanSelection?) -> ModelEntity? {
+        if opening.isSlidingDoor {
+            return slidingDoorPanel(piece, bottom: bottom, top: top, opening: opening, selection: selection)
+        }
         let tag = PlanSelection.doorWindow(opening.id)
         let material = tag == selection ? Materials.selectedGlass : Materials.glass
         let glass = box(piece, bottom: bottom, top: top, depth: 0.03, material: material, filter: .default)
         glass?.components.set(PlanSelectionComponent(selection: tag))
         return glass
+    }
+
+    /// 바닥부터 시작하는 두 유리 문짝. 서로 다른 레일에 놓고 가운데 프레임이 겹치게 만든다.
+    private static func slidingDoorPanel(_ piece: WallPiece, bottom: Double, top: Double,
+                                         opening: DoorWindow, selection: PlanSelection?) -> ModelEntity {
+        let root = ModelEntity()
+        let tag = PlanSelection.doorWindow(opening.id)
+        root.components.set(PlanSelectionComponent(selection: tag))
+        let glassMaterial = tag == selection ? Materials.selectedGlass : Materials.glass
+        let frameMaterial = SimpleMaterial(color: UIColor(resource: .gray600), roughness: 0.6, isMetallic: false)
+        let width = piece.to - piece.from
+        let frame = min(0.045, width / 12, (top - bottom) / 12)
+        for (from, to, offset) in [(0.0, 0.56, -0.04), (0.44, 1.0, 0.04)] {
+            let panel = WallPiece(from: piece.from + width * from, to: piece.from + width * to, opening: opening)
+            if let glass = box(panel, bottom: bottom, top: top, depth: 0.025, material: glassMaterial, filter: .default) {
+                glass.position.z = Float(offset)
+                glass.components.set(PlanSelectionComponent(selection: tag))
+                root.addChild(glass)
+            }
+            let edges: [(WallPiece, Double, Double)] = [
+                (WallPiece(from: panel.from, to: panel.from + frame, opening: nil), bottom, top),
+                (WallPiece(from: panel.to - frame, to: panel.to, opening: nil), bottom, top),
+                (panel, bottom, bottom + frame), (panel, top - frame, top)
+            ]
+            for (edge, low, high) in edges {
+                if let rail = box(edge, bottom: low, top: high, depth: 0.045, material: frameMaterial, filter: .default) {
+                    rail.position.z = Float(offset)
+                    rail.components.set(PlanSelectionComponent(selection: tag))
+                    root.addChild(rail)
+                }
+            }
+        }
+        return root
     }
 
     /// 토막 구간에 bottom~top 높이의 상자와 같은 크기의 충돌 모양. 너무 얇으면 만들지 않는다.
