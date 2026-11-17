@@ -39,7 +39,12 @@ struct CaseAlbumView: View {
             RoomAlbumView(
                 title: name,
                 photos: sortedPhotos(inRoom: roomKey(of: name)),
-                onOpenPhoto: openViewer
+                onOpenPhoto: openViewer,
+                onBack: {
+                    withAnimation {
+                        selection = .albumOverview
+                    }
+                }
             )
             // 장소가 바뀌면 "북마크만 보기"를 처음 상태로 돌린다
             .id(name)
@@ -213,6 +218,8 @@ private struct RoomAlbumView: View {
     let title: String
     let photos: [LoadedPhoto]
     let onOpenPhoto: (_ photos: [LoadedPhoto], _ initialID: UUID) -> Void
+    /// 앨범 전체로 돌아간다
+    let onBack: () -> Void
     
     @State private var isBookmarkOnly = false
     
@@ -270,7 +277,19 @@ private struct RoomAlbumView: View {
     }
     
     private var header: some View {
-        HStack {
+        HStack(spacing: Layout.backSpacing) {
+            // 시스템 뒤로가기를 붙이면 왼쪽 위 사건 뒤로가기와 겹쳐서, 제목 줄에 앨범 전체로 돌아가는 버튼을 둔다
+            // TEMP: Figma에 장소 화면의 복귀 버튼이 없어 제목 왼쪽에 임의로 둠 — 디자인이 나오면 맞춘다
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: BarLayout.iconSize, weight: .semibold))
+                    .frame(width: BarLayout.controlSize, height: BarLayout.controlSize)
+                    // plain 버튼은 그려진 선만 눌려서, 원 전체를 누르는 자리로 잡는다 (iPadOS 26.5에서 안 눌리던 문제)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .accessibilityLabel(Copy.backToOverview)
             Text(title)
                 .font(.largeTitle.bold())
             Spacer()
@@ -326,6 +345,7 @@ extension RoomAlbumView {
         static let titleTopPadding: CGFloat = 8
         static let titleSpacing: CGFloat = 16
         static let tileSpacing: CGFloat = 16
+        static let backSpacing: CGFloat = 12
         static let toggleSpacing: CGFloat = 12
         static let toggleSize: CGFloat = 36
         static let monthPadding: CGFloat = 24
@@ -340,6 +360,7 @@ extension RoomAlbumView {
 extension RoomAlbumView {
     private enum Copy {
         static let bookmarkOnly = "북마크만 보기"
+        static let backToOverview = "앨범 전체"
         // TEMP: Figma에 사진이 없는 장소 화면이 없어 임의로 작성한 문구
         static let emptyTitle = "아직 사진이 없어요"
         static let emptyMessage = "위의 사진 추가 버튼으로 촬영하거나, 도면에서 위치 미확인 사진을 이 장소로 옮겨 주세요."
