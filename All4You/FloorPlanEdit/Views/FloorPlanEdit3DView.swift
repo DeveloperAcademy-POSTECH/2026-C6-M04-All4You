@@ -39,12 +39,24 @@ struct FloorPlanEdit3DView: View {
             .overlay(alignment: .top) {
                 noticeCapsule
             }
+            .overlay(alignment: .top) {
+                guideHint
+            }
             .onChange(of: resetToken) { selection = nil }
     }
 }
 
 // 안내
 extension FloorPlanEdit3DView {
+    /// 쇼케이스: 안내 중인 스탬프 도구를 켜 둔 동안 놓는 방법을 알려 준다. 다른 안내가 떠 있으면 겹치지 않게 숨긴다
+    @ViewBuilder
+    private var guideHint: some View {
+        if notice == nil, let tool = selectedTool, tool == planData.nextGuidedStampTool {
+            StampGuideHint(tool: tool, hasPickedOption: stampOption != nil)
+                .padding(.top, Layout.noticeTopPadding)
+        }
+    }
+
     /// 도구 막대와 옵션 줄 아래에 잠깐 보여 주는 안내. 2D 수정 화면의 안내와 같은 모양
     @ViewBuilder
     private var noticeCapsule: some View {
@@ -105,7 +117,7 @@ extension FloorPlanEdit3DView {
 // 서브 뷰
 extension FloorPlanEdit3DView {
     private var toolBar: some View {
-        EditToolBar(selectedTool: $selectedTool, hiddenTools: Self.hiddenTools, stampOption: $stampOption)
+        EditToolBar(selectedTool: $selectedTool, hiddenTools: Self.hiddenTools, stampOption: $stampOption, guidedTool: planData.nextGuidedStampTool)
             .padding(.leading, BarLayout.edgeInset)
             .padding(.top, BarLayout.contentTopInset)
     }

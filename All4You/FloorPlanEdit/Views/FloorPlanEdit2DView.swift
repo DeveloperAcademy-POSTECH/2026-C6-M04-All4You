@@ -232,6 +232,9 @@ extension FloorPlanEdit2DView {
                 .overlay(alignment: .top) {
                     noticeCapsule
                 }
+                .overlay(alignment: .top) {
+                    guideHint
+                }
                 .overlay {
                     penStrokeLine
                 }
@@ -276,7 +279,7 @@ extension FloorPlanEdit2DView {
 
     private var toolBar: some View {
         // 위 도구(스탬프·라벨·창문·문)는 아래 막대가 펜·지우개·손 어느 것이어도 쓸 수 있고, 켜 두면 아래 동작보다 먼저 처리된다
-        EditToolBar(selectedTool: $selectedTool, stampOption: $stampOption)
+        EditToolBar(selectedTool: $selectedTool, stampOption: $stampOption, guidedTool: planData.nextGuidedStampTool)
             .padding(.leading, BarLayout.edgeInset)
             .padding(.top, BarLayout.contentTopInset)
             .onChange(of: selectedTool) {
@@ -865,6 +868,15 @@ extension FloorPlanEdit2DView {
         }
         if let notice = editRemovedNotice { showNotice(notice) }
         editRemovedNotice = nil
+    }
+
+    /// 쇼케이스: 안내 중인 스탬프 도구를 켜 둔 동안 놓는 방법을 알려 준다. 다른 안내가 떠 있으면 겹치지 않게 숨긴다
+    @ViewBuilder
+    private var guideHint: some View {
+        if noticeText == nil, let tool = selectedTool, tool == planData.nextGuidedStampTool {
+            StampGuideHint(tool: tool, hasPickedOption: stampOption != nil)
+                .padding(.top, Layout.noticeTopPadding)
+        }
     }
 
     /// 안내를 위쪽에 잠깐 보여 주는 캡슐

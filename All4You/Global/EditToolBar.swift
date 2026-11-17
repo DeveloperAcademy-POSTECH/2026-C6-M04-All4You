@@ -8,6 +8,8 @@ struct EditToolBar: View {
     var hiddenTools: Set<EditTool> = []
     /// 옵션 줄에서 고른 종류. 받으면 발화지점·전기를 누를 때 버튼 아래로 옵션이 펼쳐지고, 종류를 고르면 옵션이 사라지고 버튼 이름이 고른 종류로 바뀐다. nil이면 다른 도구처럼 눌러 켜고 끄기만 한다
     var stampOption: Binding<StampOption?>? = nil
+    /// 쇼케이스: 다음에 누를 도구. 있으면 그 버튼 둘레에 파동이 퍼진다
+    var guidedTool: EditTool? = nil
 
     @State private var isCollapsed = false
     /// 옵션 글래스에 이름을 붙이는 이름 공간
@@ -118,6 +120,8 @@ extension EditToolBar {
             tapTool(tool)
         } label: {
             toolLabel(for: tool, isSelected: isSelected)
+                // 쇼케이스: 안내 중인 도구를 켜 둔 동안에는 옵션 줄·도면을 누를 차례라 파동을 끈다
+                .guidePulse(isActive: guidedTool == tool && !isSelected, in: Capsule(), color: .brand500)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -159,6 +163,8 @@ extension EditToolBar {
             toggleCollapsed()
         } label: {
             buttonLabel(title: Copy.stamp, iconName: "seal", isSelected: false)
+                // 쇼케이스: 접으면 도구 버튼이 사라지므로, 안내할 도구가 있으면 이 버튼을 펴라는 뜻으로 파동을 준다
+                .guidePulse(isActive: guidedTool != nil, in: Capsule(), color: .brand500)
         }
         .buttonStyle(.plain)
         .accessibilityHint(Copy.expand)
