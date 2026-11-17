@@ -20,6 +20,9 @@ struct FloorPlanExportView: View {
     @State private var isSavedToastVisible = false
     @State private var toastDismissTask: Task<Void, Never>?
     @State private var saveError: String?
+    /// 도면과 함께 내보낸 사진 중 저장하지 못한 사진 안내 (저장한 장수, 못 한 장수)
+    @State private var photoSaveShortfall: PhotoSaveShortfall?
+    @State private var savedMessage = FloorPlanSavedToast.defaultMessage
     /// 미리보기가 화면에 놓인 자리(전역 좌표). 3D는 이 자리를 화면 그대로 찍어 저장한다
     @State private var previewFrame: CGRect = .zero
     
@@ -27,10 +30,13 @@ struct FloorPlanExportView: View {
     let planData: PlanData
     /// 도면에 사진 핀으로 보일 사진 (메인에서 고른 조사 차수의 사진)
     let photos: [LoadedPhoto]
+    /// 사진을 함께 저장할 사진 보관함 앨범 이름 ("사건명 · 1차 조사")
+    let albumTitle: String
     
-    init(planData: PlanData, photos: [LoadedPhoto]) {
+    init(planData: PlanData, photos: [LoadedPhoto], albumTitle: String) {
         self.planData = planData
         self.photos = photos
+        self.albumTitle = albumTitle
         _photoDisplay = State(initialValue: photos.isEmpty ? .hidden : .bookmarked)
     }
     
@@ -99,7 +105,7 @@ struct FloorPlanExportView: View {
         }
         .overlay(alignment: .bottom) {
             if isSavedToastVisible {
-                FloorPlanSavedToast()
+                FloorPlanSavedToast(message: savedMessage)
                     .padding(.bottom, 28)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .zIndex(1)
@@ -112,6 +118,14 @@ struct FloorPlanExportView: View {
             Button("확인", role: .cancel) { saveError = nil }
         } message: {
             Text(saveError ?? "다시 시도해 주세요")
+        }
+        .alert(Text(Copy.shortfallTitle), isPresented: Binding(
+            get: { photoSaveShortfall != nil },
+            set: { if !$0 { photoSaveShortfall = nil } }
+        ), presenting: photoSaveShortfall) { _ in
+            Button("확인", role: .cancel) { photoSaveShortfall = nil }
+        } message: { shortfall in
+            Text(Copy.shortfallMessage(saved: shortfall.saved, failed: shortfall.failed))
         }
         .onDisappear {
             toastDismissTask?.cancel()
@@ -134,8 +148,21 @@ struct FloorPlanExportView: View {
             ? FloorPlanExporter.render2D(content)
             : FloorPlanExporter.captureScreen(in: previewFrame)
             guard let image else { throw FloorPlanExporter.ExportError.imageFailed }
-            try await FloorPlanExporter.saveToPhotoLibrary(image)
-            showSavedToast()
+            // 사진 표시를 켠 경우 그 사진도 함께 저장한다 (표시 안 함이면 도면만)
+            let exportPhotos = FloorPlanExporter.numberedPhotos(photoDisplay.visiblePhotos(from: photos), rooms: planData.rooms)
+            let failedCount = try await FloorPlanExporter.saveToPhotoLibrary(
+                image,
+                fileName: Copy.planFileName(planType),
+                photos: exportPhotos,
+                albumTitle: albumTitle
+            )
+            let savedCount = exportPhotos.count - failedCount
+            if failedCount > 0 {
+                photoSaveShortfall = PhotoSaveShortfall(saved: savedCount, failed: failedCount)
+            } else {
+                savedMessage = savedCount > 0 ? FloorPlanSavedToast.message(photoCount: savedCount) : FloorPlanSavedToast.defaultMessage
+                showSavedToast()
+            }
         } catch {
             saveError = error.localizedDescription
         }
@@ -170,6 +197,27 @@ struct FloorPlanExportView: View {
             showsFurnitureLabels: showsFurnitureLabels,
             showsStamps: showsStamps
         )
+    }
+}
+
+/// 사진 일부를 저장하지 못했을 때 알리는 값
+private struct PhotoSaveShortfall {
+    let saved: Int
+    let failed: Int
+}
+
+extension FloorPlanExportView {
+    private enum Copy {
+        static let shortfallTitle = "사진 일부를 저장하지 못했어요"
+        
+        static func shortfallMessage(saved: Int, failed: Int) -> String {
+            "도면과 사진 \(saved)장은 저장했고, \(failed)장은 저장하지 못했어요"
+        }
+        
+        /// 사진 보관함에 저장하는 도면 이미지의 파일명
+        static func planFileName(_ type: SavedPlanType) -> String {
+            "도면_\(type == .twoD ? "2D" : "3D").png"
+        }
     }
 }
 
@@ -378,7 +426,7 @@ private struct FloorPlanSaveSheetPreviewHost: View {
             isSavePresented = true
         }
         .sheet(isPresented: $isSavePresented) {
-            FloorPlanExportView(planData: DummyFloorPlan.planData, photos: [])
+            FloorPlanExportView(planData: DummyFloorPlan.planData, photos: [], albumTitle: "청암로 77 · 1차 조사")
         }
     }
 }

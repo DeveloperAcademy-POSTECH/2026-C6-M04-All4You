@@ -168,7 +168,7 @@ struct CaseMainView: View {
             .presentationSizing(PhotoLibrarySheetSizing(containerSize: screenSize))
         }
         .sheet(isPresented: $isExportSheetPresented) {
-            FloorPlanExportView(planData: planData, photos: photoStore.photos)
+            FloorPlanExportView(planData: planData, photos: photoStore.photos, albumTitle: "\(fireCase.title) · \(sessionNumber)차 조사")
         }
     }
 }
