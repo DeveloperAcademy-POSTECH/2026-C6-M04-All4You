@@ -18,9 +18,9 @@ import UIKit
 struct FloorPlanMethodSelectionView: View {
     /// 평면도를 만들 사건. 주소는 상단 바 부제로 쓰고, 변환한 도면은 이 사건에 저장한다
     let fireCase: FireCase
-
+    
     @Environment(\.dismiss) private var dismiss
-
+    
     // 선택 상태와 이동 상태를 분리 (항목을 누르는 것만으로 화면이 이동하지 않도록 방지)
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
@@ -52,7 +52,7 @@ struct FloorPlanMethodSelectionView: View {
     private enum ImportMethod {
         case camera, album, file
     }
-
+    
     var body: some View {
         ZStack(alignment: .top) {
             Color(uiColor: .systemGray6)
@@ -120,24 +120,24 @@ struct FloorPlanMethodSelectionView: View {
         .navigationDestination(item: $destination) { sourceType in
             switch sourceType {
             case .roomPlan:
-                RoomPlanScanView(onUseResult: { _, structure, rooms, photos, plan in
+                RoomPlanScanView(onUseResult: { structure, rooms, photos, plan in
                     scannedOriginal = try? RoomPlanOriginal(structure: structure, rooms: rooms).encoded()
                     scannedPhotos = photos
                     scannedPlan = plan
                 })
-                    .navigationDestination(item: $scannedPlan) { plan in
-                        ConversionLoadingView(planData: plan) {
-                            saveScannedPlan(plan)
-                        }
+                .navigationDestination(item: $scannedPlan) { plan in
+                    ConversionLoadingView(planData: plan) {
+                        saveScannedPlan(plan)
                     }
-                    .alert("도면 저장 실패", isPresented: Binding(
-                        get: { scanSaveError != nil },
-                        set: { if !$0 { scanSaveError = nil } }
-                    )) {
-                        Button("확인", role: .cancel) {}
-                    } message: {
-                        Text(scanSaveError ?? "")
-                    }
+                }
+                .alert("도면 저장 실패", isPresented: Binding(
+                    get: { scanSaveError != nil },
+                    set: { if !$0 { scanSaveError = nil } }
+                )) {
+                    Button("확인", role: .cancel) {}
+                } message: {
+                    Text(scanSaveError ?? "")
+                }
             case .iPadDrawing:
                 drawingFlow
             case .externalImport:
@@ -258,7 +258,7 @@ struct FloorPlanMethodSelectionView: View {
             Text(drawingError ?? "")
         }
     }
-
+    
     /// 변환하는 동안 스케치를 흐리게 덮고, 그린 부분 위를 레이저 선이 훑는다 (룸플랜 변환 로딩과 같은 선)
     private var drawingConversionOverlay: some View {
         let bounds = drawingCanvas.drawing.bounds
@@ -269,7 +269,7 @@ struct FloorPlanMethodSelectionView: View {
             .accessibilityElement()
             .accessibilityLabel("도면 변환 중")
     }
-
+    
     /// 스캔한 도면을 사건의 평면도로 저장한다. 쓸 수 없는 도면(스캔된 것이 없음)이거나 저장에 실패하면 저장하지 않고 변환 화면을 닫아 알린다.
     /// 평면도는 "있으면 항상 내용이 있다"여야 하므로 빈 도면은 replaceFloorPlan을 부르지 않는다
     private func saveScannedPlan(_ plan: PlanData) {
@@ -287,13 +287,13 @@ struct FloorPlanMethodSelectionView: View {
         fireCase.addScanPhotos(scannedPhotos, plan: plan)
         scannedPhotos = []
     }
-
+    
     /// 변환 화면(뒤로가기 없음)에 갇히지 않게 닫고 알림을 띄운다. 도면을 저장하지 않으므로 사진도 저장하지 않는다
     private func failScannedPlanSave(_ message: String) {
         scannedPlan = nil
         scanSaveError = message
     }
-
+    
     /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
     /// 평면도가 생기면 사건 목록이 이 화면 대신 2D 수정 화면을 띄운다 (공간 스캔과 같은 길)
     /// sketch가 있으면(직접 그리기) 스케치 위에 놓은 스탬프를 도면에 옮기고, 옮기지 못한 개수를 사건에 남겨 2D 수정 화면이 알리게 한다
@@ -313,7 +313,7 @@ struct FloorPlanMethodSelectionView: View {
             return error.localizedDescription
         }
     }
-
+    
     // 스케치를 흰 배경 이미지로 만들어 기존 변환 API에 보낸다.
     private func convertDrawing() async {
         defer { isConvertingDrawing = false }
@@ -323,7 +323,7 @@ struct FloorPlanMethodSelectionView: View {
             drawingError = "먼저 도면을 그려 주세요."
             return
         }
-
+        
         let paddedBounds = bounds.insetBy(dx: -12, dy: -12)
         let format = UIGraphicsImageRendererFormat()
         format.opaque = true
@@ -335,7 +335,7 @@ struct FloorPlanMethodSelectionView: View {
             context.fill(frame)
             sketch.draw(in: frame)
         }
-
+        
         do {
             let plan = try await FloorPlanConversion.request(image)
             try Task.checkCancellation()
@@ -345,13 +345,13 @@ struct FloorPlanMethodSelectionView: View {
             drawingError = error.localizedDescription
         }
     }
-
+    
     // 외부 가져오기는 세부 방식까지 골라야 계속할 수 있다.
     private var canContinue: Bool {
         guard let selectedSourceType, !isCheckingPhotoPermission else { return false }
         return selectedSourceType != .externalImport || importMethod != nil
     }
-
+    
     // 권한이 허용되면 앨범을 열고, 이전에 거절했으면 설정을 안내한다.
     private func openAlbum() {
         guard !isCheckingPhotoPermission else { return }
@@ -360,7 +360,7 @@ struct FloorPlanMethodSelectionView: View {
             defer { isCheckingPhotoPermission = false }
             let permission = await PermissionService.requestPhotoLibraryPermission()
             guard selectedSourceType == .externalImport, importMethod == .album else { return }
-
+            
             switch permission {
             case .allowed:
                 importedImage = nil
@@ -373,7 +373,7 @@ struct FloorPlanMethodSelectionView: View {
             }
         }
     }
-
+    
     private func importFile(_ result: Result<URL, Error>) {
         do {
             let url = try result.get()
@@ -384,17 +384,17 @@ struct FloorPlanMethodSelectionView: View {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
-
+            
             let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
             let isPDF = contentType?.conforms(to: .pdf) == true
-                || url.pathExtension.lowercased() == "pdf"
+            || url.pathExtension.lowercased() == "pdf"
             let image: UIImage?
             if isPDF {
                 image = firstPDFPage(at: url)
             } else {
                 image = UIImage(data: try Data(contentsOf: url))
             }
-
+            
             guard let image else {
                 showsFileImportError = true
                 return
@@ -406,7 +406,7 @@ struct FloorPlanMethodSelectionView: View {
             showsFileImportError = true
         }
     }
-
+    
     // PDF 첫 페이지를 크롭에 사용할 이미지로 변환한다.
     private func firstPDFPage(at url: URL) -> UIImage? {
         guard let document = PDFDocument(url: url),
@@ -420,7 +420,7 @@ struct FloorPlanMethodSelectionView: View {
             for: .cropBox
         )
     }
-
+    
     private func openCamera() {
         // 카메라가 없는 기기에서는 촬영 화면을 열지 않는다.
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }

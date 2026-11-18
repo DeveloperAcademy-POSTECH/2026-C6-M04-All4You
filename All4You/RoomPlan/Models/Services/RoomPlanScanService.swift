@@ -51,8 +51,11 @@ import RoomPlan
     @Published private(set) var isRelocalizing = false
     @Published private(set) var mergeError: String?
     @Published private(set) var segmentID = UUID()
+    @Published private(set) var interruptionMessage: String?
     /// 스캔 중 찍은 사진 수와 촬영 안내
     @Published private(set) var scanPhotoCount = 0
+    /// 최근 사진을 촬영할 때마다 스캔 UI에 반영하는 썸네일
+    @Published private(set) var latestPhotoThumbnail: Data?
     @Published private(set) var isCapturingPhoto = false
     @Published private(set) var photoMessage: String?
     var arSession: ARSession { tracking.arSession }
@@ -122,6 +125,11 @@ import RoomPlan
         return tracking
     }()
     private let logger = Logger(subsystem: "All4You", category: "RoomPlan")
+#if DEBUG
+    private let diagnosticLogger = Logger(subsystem: "All4You", category: "RoomPlanScanTrace")
+    private var lastRoomUpdateAt: TimeInterval?
+    private var stopRequestedAt: TimeInterval?
+#endif
     private let torch = RoomPlanTorchService()
     // 스캔과 같은 ARSession에서 찍은 사진과 카메라 자세
     private let photoService = RoomPlanPhotoService()
@@ -215,6 +223,7 @@ import RoomPlan
         }
         issue = nil
         isScanLimitReached = false
+        interruptionMessage = nil
         currentRoom = nil
         pausedRoom = nil
         pausedSegmentSaved = false
@@ -237,6 +246,12 @@ import RoomPlan
     // 현재 구간 종료, ARSession 유지, 마지막 방 형상의 즉시 고정
     func pause() {
         guard phase == .scanning, ending == nil, let captureSession else { return }
+#if DEBUG
+        let now = ProcessInfo.processInfo.systemUptime
+        stopRequestedAt = now
+        let updateAge = lastRoomUpdateAt.map { String(format: "%.1f", now - $0) } ?? "none"
+        diagnosticLogger.notice("[ScanTrace] 종료 요청 scan=\(self.store.scanID.uuidString, privacy: .public) segment=\(self.savedSegments.count + 1) lastUpdateAgeSeconds=\(updateAge, privacy: .public) live=\(RoomPlanSegmentService.roomSummary(self.currentRoom), privacy: .public)")
+#endif
         // 비동기 저장 완료 전 마지막 실시간 방의 미리보기 고정
         pausedRoom = currentRoom
         pausedSegmentSaved = false
@@ -269,7 +284,8 @@ import RoomPlan
             guard let self else { return }
             defer { self.isCapturingPhoto = false }
             do {
-                try await self.photoService.capture(from: session, orientation: orientation)
+                let photo = try await self.photoService.capture(from: session, orientation: orientation)
+                self.latestPhotoThumbnail = photo.thumbnailData
                 self.scanPhotoCount = self.photoService.photos.count
             } catch {
                 self.logger.error("스캔 중 사진 촬영 실패: \(error.localizedDescription, privacy: .public)")
@@ -280,12 +296,15 @@ import RoomPlan
     
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
+        let shouldTurnOn = !isTorchOn
         do {
-            try torch.setEnabled(!isTorchOn)
-            isTorchOn.toggle()
+            try torch.setEnabled(shouldTurnOn)
+            isTorchOn = shouldTurnOn
             torchMessage = nil
         } catch {
+            isTorchOn = torch.isEnabled
             torchMessage = error.localizedDescription
+            logger.error("손전등 전환 실패: \(error.localizedDescription, privacy: .public)")
         }
     }
     
@@ -318,7 +337,8 @@ import RoomPlan
         ending = .stop
         // 자동 종료일 때만 즉시 저장 화면으로 전환; 일반 종료는 결과 콜백을 기다림
         tracking.stopMonitoring()
-        // 권장 시간 도달 시 월드맵은 시간 감시기에서 이미 저장함; 일반 종료에는 불필요
+        // 일반 종료 후에도 미리보기에서 이어 촬영할 수 있도록 현재 위치를 보관
+        tracking.checkpointWorldMap()
         if isScanLimitReached { phase = .saving }
         captureSession.stop(pauseARSession: false)
     }
@@ -359,6 +379,26 @@ import RoomPlan
                 self?.isMergingStructure = false
             }
         }
+    }
+    
+    // 미리보기에서 저장된 방을 유지하고, 월드맵으로 위치를 찾은 다음 새 구간 촬영
+    @discardableResult
+    func resumeSavedScan() -> Bool {
+        guard phase == .finished, !completedRooms.isEmpty,
+              !isMergingStructure else { return false }
+        guard tracking.prepareRestart() else { return false }
+        needsRelocalization = true
+        isRelocalizing = true
+        relocalizationStartedAt = ProcessInfo.processInfo.systemUptime
+        issue = nil
+        finalModelURL = nil
+        captureSession?.delegate = nil
+        captureSession = nil
+        currentRoom = nil
+        pausedRoom = nil
+        phase = .segmentSaved
+        segmentID = UUID()
+        return true
     }
     
     // 일반 구간의 연속 촬영 또는 권장 시간·RoomPlan 한계 도달 후 월드맵 relocalization
@@ -412,6 +452,9 @@ import RoomPlan
             guard self.phase == .scanning else { return }
             // RoomCaptureView의 실시간 모형과는 별도로 일시정지·저장 대체용 마지막 결과 보관
             self.currentRoom = room
+#if DEBUG
+            self.lastRoomUpdateAt = ProcessInfo.processInfo.systemUptime
+#endif
         }
     }
     
@@ -425,6 +468,13 @@ import RoomPlan
                 self.logger.warning("사용자 종료 요청 없이 RoomPlan 촬영 종료: \(error?.localizedDescription ?? "오류 정보 없음", privacy: .public)")
             }
             let wasPaused = self.ending?.isPausing == true
+            let wasUnexpectedEnd = self.ending == nil
+#if DEBUG
+            let callbackDelay = self.stopRequestedAt.map {
+                String(format: "%.2f", ProcessInfo.processInfo.systemUptime - $0)
+            } ?? "none"
+            self.diagnosticLogger.notice("[ScanTrace] 종료 콜백 scan=\(self.store.scanID.uuidString, privacy: .public) segment=\(self.savedSegments.count + 1) pause=\(wasPaused) callbackDelaySeconds=\(callbackDelay, privacy: .public) error=\(error?.localizedDescription ?? "none", privacy: .public) lastLive=\(RoomPlanSegmentService.roomSummary(wasPaused ? self.pausedRoom : self.currentRoom), privacy: .public)")
+#endif
             // RoomPlan 원본 콜백에서 구간 저장, 방 누적, 미리보기 병합으로 이어지는 데이터 흐름
             self.ending = wasPaused ? .processingPause : .processingStop
             self.tracking.stopMonitoring()
@@ -436,10 +486,24 @@ import RoomPlan
                     // RoomPlan이 먼저 세션을 끝낸 경우에만 다음 구간용 위치 저장 시도
                     self.tracking.checkpointWorldMap()
                     self.onAutomaticStop?()
+                } else if captureError == .worldTrackingFailure {
+                    // 카메라 추적이 끊겨 RoomPlan이 종료한 경우, 저장된 결과에서 재현지화 가능하도록 표시
+                    self.interruptionMessage = "주변 공간을 인식하지 못해 스캔이 중단되었어요.\n저장된 도면을 확인한 뒤 '스캔 이어하기'를 눌러 주세요."
+                    self.tracking.checkpointWorldMap()
+                    self.onAutomaticStop?()
+                    self.issue = .captureFailed(captureError.localizedDescription)
                 } else {
+                    if wasUnexpectedEnd {
+                        self.interruptionMessage = "스캔 중 문제가 생겨 촬영이 중단되었어요.\n저장된 도면을 확인한 뒤 '스캔 이어하기'를 눌러 주세요."
+                        self.onAutomaticStop?()
+                    }
                     self.issue = .captureFailed(captureError.localizedDescription)
                 }
             } else if let error {
+                if wasUnexpectedEnd {
+                    self.interruptionMessage = "스캔 중 문제가 생겨 촬영이 중단되었어요.\n저장된 도면을 확인한 뒤 '스캔 이어하기'를 눌러 주세요."
+                    self.onAutomaticStop?()
+                }
                 self.issue = .captureFailed(error.localizedDescription)
             }
             let pauseGeneration = self.pauseGeneration
@@ -542,6 +606,7 @@ import RoomPlan
         pendingAction = .none
         issue = nil
         isScanLimitReached = false
+        interruptionMessage = nil
         needsRelocalization = false
         isRelocalizing = false
         relocalizationStartedAt = nil
@@ -675,10 +740,16 @@ import RoomPlan
         wasPaused: Bool,
         pauseGeneration: UUID
     ) {
+#if DEBUG
+        diagnosticLogger.notice("[ScanTrace] 구간 적용 scan=\(self.store.scanID.uuidString, privacy: .public) segment=\(self.savedSegments.count + 1) saved=\(RoomPlanSegmentService.roomSummary(saved.room), privacy: .public)")
+#endif
         savedSegments.append(saved.url)
         if wasPaused { unsavedPauseData = nil }
         guard let room = saved.room else { return }
         completedRooms.append(room)
+#if DEBUG
+        diagnosticLogger.notice("[ScanTrace] 미리보기 입력 scan=\(self.store.scanID.uuidString, privacy: .public) completedRooms=\(self.completedRooms.count) latest=\(RoomPlanSegmentService.roomSummary(room), privacy: .public)")
+#endif
         mergePreview()
         if wasPaused, phase == .paused,
            self.pauseGeneration == pauseGeneration,
