@@ -19,6 +19,9 @@ struct CaseListView: View {
     
     @State private var showsSaveError = false
     @State private var saveErrorMessage = ""
+    @State private var showsDeleteAllConfirmation = false
+    @State private var showsDeleteAllError = false
+    @State private var deleteAllErrorMessage = ""
     
     /// 사이드바(또는 사이드바를 접었을 때 위쪽 탭 막대)에서 고른 목록
     @State private var selection: CaseListSelection? = .filter(.recent)
@@ -62,6 +65,16 @@ struct CaseListView: View {
         
         .onChange(of: selection) {
             selectedCaseID = nil
+        }
+
+        .alert(Copy.deleteAllCasesTitle, isPresented: $showsDeleteAllConfirmation) {
+            Button(Copy.cancel, role: .cancel) {}
+            Button(Copy.delete, role: .destructive, action: deleteAllCases)
+        }
+        .alert("사건 삭제 실패", isPresented: $showsDeleteAllError) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(deleteAllErrorMessage)
         }
         
         // 새 목록 만들기
@@ -238,11 +251,17 @@ extension CaseListView {
             
             // FIRELINE 벡터 로고
             HStack(spacing: 8) {
-                Image("FirelineFlame")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 24)
-                    .offset(x: -6)
+                Button {
+                    showsDeleteAllConfirmation = true
+                } label: {
+                    Image("FirelineFlame")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 34, height: 24)
+                        .offset(x: -6)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Copy.deleteAllCasesTitle)
                 
                 Image("FirelineWordmark")
                     .resizable()
@@ -481,6 +500,24 @@ extension CaseListView {
 // 목록 만들기·바꾸기·지우기
 
 extension CaseListView {
+
+    /// 모든 목록에 속한 사건과 연쇄 삭제 대상 데이터를 지운 뒤 변경 사항 저장
+    private func deleteAllCases() {
+        for fireCase in allCases {
+            modelContext.delete(fireCase)
+        }
+
+        do {
+            try modelContext.save()
+            selectedCaseID = nil
+            pendingFloorPlan = nil
+            unreadablePlanCase = nil
+        } catch {
+            modelContext.rollback()
+            deleteAllErrorMessage = error.localizedDescription
+            showsDeleteAllError = true
+        }
+    }
     
     private var trimmedFolderName: String {
         folderNameInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -768,6 +805,7 @@ extension CaseListView {
         static let cancel = "취소"
         static let save = "저장"
         static let delete = "삭제"
+        static let deleteAllCasesTitle = "모든 사건을 삭제하시겠습니까?"
         static let close = "닫기"
         // TEMP: 도면을 읽지 못했을 때의 알림 문구는 확정 전
         static let unreadablePlanTitle = "이 사건의 도면을 읽지 못했어요"
