@@ -14,6 +14,10 @@ struct DoorWindow: Codable, Hashable, Identifiable {
     var sillHeight: Double
     /// 높이 (m)
     var height: Double
+    /// nil인 기존 문은 여닫이문으로 표시한다.
+    var doorStyle: DoorStyle? = nil
+
+    var isSlidingDoor: Bool { kind == .door && doorStyle == .sliding }
 }
 
 /// 문·창문 종류
@@ -24,4 +28,9 @@ enum DoorWindowKind: String, Codable {
     case window
     /// 문짝 없이 뚫린 출입구(추후 고려 안한다면 삭제 가능성 존재)
     case passage
+}
+
+/// 문 여는 방식. 선택 속성이므로 기존 도면 JSON도 그대로 읽을 수 있다.
+enum DoorStyle: String, Codable {
+    case sliding
 }

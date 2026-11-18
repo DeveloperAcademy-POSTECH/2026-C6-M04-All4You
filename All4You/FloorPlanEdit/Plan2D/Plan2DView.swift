@@ -240,7 +240,7 @@ extension Plan2DView {
         let start = line.point(along: opening.centerAlongWall - opening.width / 2)
         let end = line.point(along: opening.centerAlongWall + opening.width / 2)
         let isSelected = selection == .doorWindow(opening.id)
-        if isSelected && opening.kind == .door {
+        if isSelected && opening.kind == .door && !opening.isSlidingDoor {
             // 문은 문짝이 열리는 자리까지 주황 사각형으로 감싼다 (창문은 아래 띠)
             var box = Path()
             let across = line.leftNormal * opening.width
@@ -260,6 +260,18 @@ extension Plan2DView {
         let style = StrokeStyle(lineWidth: isSelected ? Layout.selectedOpeningLineWidth : Layout.openingLineWidth)
         var path = Path()
         switch opening.kind {
+        case .door where opening.isSlidingDoor:
+            // 두 문짝을 서로 다른 레일에 놓고 가운데에서 조금 겹치게 그린다.
+            let panelDepth = wall.thickness / 3
+            for (from, to, side) in [(0.0, 0.56, -1.0), (0.44, 1.0, 1.0)] {
+                let panelStart = start + line.direction * (opening.width * from)
+                let panelEnd = start + line.direction * (opening.width * to)
+                let offset = line.leftNormal * (side * panelDepth / 2)
+                let halfDepth = line.leftNormal * (panelDepth / 2)
+                path.addLines([panelStart + offset - halfDepth, panelEnd + offset - halfDepth,
+                               panelEnd + offset + halfDepth, panelStart + offset + halfDepth].map(screen.point))
+                path.closeSubpath()
+            }
         case .door:
             // 문짝은 시작 쪽 끝을 축으로 벽의 왼쪽 면으로 열린 모양
             let leafEnd = start + line.leftNormal * opening.width

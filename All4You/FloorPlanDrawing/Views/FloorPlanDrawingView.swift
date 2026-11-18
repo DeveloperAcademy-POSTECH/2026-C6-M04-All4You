@@ -16,7 +16,7 @@ struct FloorPlanDrawingView: View {
     let onConfirm: () -> Void
 
     @Binding var canvasView: PKCanvasView
-    /// 스케치 위에 놓은 스탬프. 변환이 끝나면 도면으로 옮기도록 부모가 들고 있는다
+    /// 스케치 위에 놓은 스탬프를 부모가 들고 있는다
     @Binding var sketchStamps: [SketchStamp]
 
     @State private var selectedTool: DrawingTool = .pen
@@ -25,8 +25,6 @@ struct FloorPlanDrawingView: View {
     @State private var stampOption: StampOption?
     /// PencilKit 기록이 바뀔 때마다 올려, 되돌리기·다시 하기 버튼이 켜졌는지 다시 읽게 한다
     @State private var undoRefresh = 0
-    /// 저장(✓)을 눌러 "이대로 도면을 완성할지" 묻는 알림을 띄우는지
-    @State private var isCompleteAlertShown = false
     /// 키보드에 가리지 않게 스케치(그림·스탬프)를 올린 거리 (pt, 올리면 음수)
     @State private var liftOffset: CGFloat = 0
     /// 스케치 영역 윗변의 기기 화면 기준 높이. 올리지 않는 바닥 층에서 재서, 올려도 값이 변하지 않는다
@@ -60,13 +58,8 @@ struct FloorPlanDrawingView: View {
             barSubtitle: address,
             trailingAccessory: AnyView(undoRedo),
             onBack: onRetake,
-            // ✓는 도면을 확정하는 버튼인데 방금 그린 것을 저장하는 버튼으로 오해하기 쉬워서, 한 번 묻는다
-            onDone: { isCompleteAlertShown = true }
+            onDone: onConfirm
         )
-        .alert(Copy.completeTitle, isPresented: $isCompleteAlertShown) {
-            Button(Copy.cancel, role: .cancel) {}
-            Button(Copy.complete, action: onConfirm)
-        }
         .onReceive(undoChanges) { _ in undoRefresh += 1 }
         .onChange(of: selectedEditTool) {
             // 고른 종류가 지금 도구의 것이 아니면(도구를 바꾸거나 껐거나, 놓아서 도구가 꺼짐) 비워 다시 고르게 한다
@@ -228,16 +221,6 @@ private struct FloorPlanCanvasView: UIViewRepresentable {
         }
         // 직선 보정은 펜일 때만 쓴다
         straightener?.isEnabled = tool is PKInkingTool
-    }
-}
-
-// 문구
-extension FloorPlanDrawingView {
-    private enum Copy {
-        // TEMP: Figma에 알림 버튼 문구가 없어 임의로 작성 — 디자인 확인 필요
-        static let completeTitle = "이대로 도면을 완성하시겠습니까?"
-        static let complete = "완성"
-        static let cancel = "취소"
     }
 }
 
