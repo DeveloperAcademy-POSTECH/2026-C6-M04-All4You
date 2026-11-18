@@ -362,7 +362,7 @@ extension FloorPlan3DView {
                     .position(furnitureLabelPoints[id] ?? labelEditFallbackPoint)
             }
         case .stamp(let id)?:
-            LabelNameField(style: .stamp, placeholder: IgnitionCause.other.title, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale, maxLength: PlanData.kindNoteMaxLength)
+            LabelNameField(style: .stamp, placeholder: ElectricalKind.other.title, text: $labelDraft, isFocused: $isLabelFocused, onSubmit: finishLabelEdit, scale: labelScale, maxLength: PlanData.kindNoteMaxLength)
                 .position(stampLabelPoints[id].map(kindLabelPosition(from:)) ?? labelEditFallbackPoint)
         case nil:
             EmptyView()

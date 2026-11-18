@@ -83,7 +83,7 @@ extension SketchStampLayer {
         return ZStack {
             icon(of: stamp, isSelected: isSelected)
             if editingNoteId == stamp.id {
-                LabelNameField(style: .stamp, placeholder: IgnitionCause.other.title, text: $noteDraft, isFocused: $isNoteFocused, onSubmit: finishNoteEditing, maxLength: PlanData.kindNoteMaxLength)
+                LabelNameField(style: .stamp, placeholder: ElectricalKind.other.title, text: $noteDraft, isFocused: $isNoteFocused, onSubmit: finishNoteEditing, maxLength: PlanData.kindNoteMaxLength)
                     .offset(y: Layout.labelOffset)
             } else if let text = stamp.kindLabel {
                 kindLabel(text, of: stamp, isBoxed: isSelected && stamp.isKindOther)

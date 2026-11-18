@@ -400,10 +400,13 @@ extension FloorPlanEdit2DView {
     private func handleTap(_ tap: PlanTap) {
         selectedRoomId = nil
         selectedFloorId = nil
-        // 펜·지우개이고 위 도구도 꺼져 있으면 스탬프·라벨·창문·문·가구를 고르지 않는다 (지우개로 누르면 tapGesture가 바로 지운다)
+        // 펜·지우개이고 위 도구도 꺼져 있으면 라벨·가구는 고르지 않는다. 펜은 벽·스탬프·창문·문만 고른다 (지우개로 누르면 tapGesture가 바로 지운다)
         guard canUseStamps else {
             // 펜은 이미 있는 벽을 누르면 손 도구처럼 벽을 고른다. 고른 벽은 보여 주기만 하고, 끌기는 새 벽을 긋는다 (벽 옮기기는 손 도구로)
+            // 스탬프·콘센트·창문·문을 누르면 펜일 때도 그것을 고른다 (손 도구로 바꾸지 않아도 ✕·돌리기 손잡이와 끌어 옮기기를 쓸 수 있다)
             if drawingTool == .pen, case .wall = tap {
+                handleHandTap(tap)
+            } else if drawingTool == .pen, case .element = tap {
                 handleHandTap(tap)
             } else {
                 selection = nil
@@ -1276,7 +1279,7 @@ extension FloorPlanEdit2DView {
 extension FloorPlanEdit2DView {
     private enum Copy {
         /// 라벨 글자를 비워 두면 보이는 글자
-        static let otherKind = IgnitionCause.other.title
+        static let otherKind = ElectricalKind.other.title
         // TEMP: Figma에 안내 문구가 없어 임의로 작성 — 디자인 확인 필요
         static let pickKindFirst = "종류를 먼저 골라 주세요"
         static let resizeFloor = "바닥 크기 조절"
