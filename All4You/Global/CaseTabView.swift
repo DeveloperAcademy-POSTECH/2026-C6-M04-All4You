@@ -121,6 +121,7 @@ extension CaseTabView {
             }
         }
         .tabViewStyle(.tabBarOnly)
+        .tint(.black)
         .onChange(of: selection) { _, newSelection in
             lastSelections[tabBarItem(of: newSelection)] = newSelection
         }
