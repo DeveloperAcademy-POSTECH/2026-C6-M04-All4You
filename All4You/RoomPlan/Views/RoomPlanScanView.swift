@@ -57,6 +57,8 @@ private struct RoomPlanScanSessionView: View {
     @State private var scanStartedAt: Date?
     /// 완료 버튼 안내(파동·문구)를 보여 줄 때가 됐는지
     @State private var isFinishHintDue = false
+    /// 사진 촬영 버튼 안내(파동·문구)를 보여 줄 때가 됐는지
+    @State private var isPhotoHintDue = false
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
@@ -231,7 +233,8 @@ private struct RoomPlanScanSessionView: View {
                         photoMessage: scanService.photoMessage,
                         latestPhotoThumbnail: scanService.latestPhotoThumbnail,
                         onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) },
-                        showsFinishHint: isFinishHintDue
+                        showsFinishHint: isFinishHintDue,
+                        showsPhotoHint: isPhotoHintDue
                     )
                     // TODO: 디자인 나오면 수정해야함
                 case .saving:
@@ -378,6 +381,12 @@ private struct RoomPlanScanSessionView: View {
             do { try await Task.sleep(for: Self.finishHintDelay) } catch { return }
             isFinishHintDue = true
         }
+        // 쇼케이스: 같은 기준 시각에서 더 일찍, 사진 촬영 버튼 안내를 켠다
+        .task(id: scanStartedAt) {
+            guard scanStartedAt != nil else { return }
+            do { try await Task.sleep(for: Self.photoHintDelay) } catch { return }
+            isPhotoHintDue = true
+        }
         .onChange(of: scenePhase) { _, phase in
             // 제어 센터를 내리거나 알림이 왔을 경우 및 백그라운드 전환에서는 스캔 단계와 세션 유지
             guard phase == .active else { return }
@@ -391,6 +400,9 @@ private struct RoomPlanScanSessionView: View {
     // 쇼케이스: 스캔을 시작하고 이만큼 지나면 완료 버튼을 안내한다.
     // 박람회 전 실제로 스캔해 보며 바꿀 수 있음 (1~2분 사이에서 조정)
     private static let finishHintDelay: Duration = .seconds(90)
+
+    // 쇼케이스: 스캔을 시작하고 이만큼 지나면 사진 촬영 버튼을 안내한다 (첫 사진을 찍으면 안내는 사라짐)
+    private static let photoHintDelay: Duration = .seconds(20)
     
     // 스캔이 끝난 뒤에만 변환한다. 합치는 중에는 결과가 바뀔 수 있어 기다린다
     private func refreshPreviewPlan() {

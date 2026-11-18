@@ -27,7 +27,14 @@ struct RoomPlanScanOverlay: View {
     var latestPhotoThumbnail: Data?
     var onCapturePhoto: () -> Void = {}
 
+    /// 쇼케이스: 스캔 중 완료 버튼에 파동과 안내 문구를 보일지
     var showsFinishHint = false
+    /// 쇼케이스: 스캔 중 사진 촬영 버튼에 파동과 안내 문구를 보일지. 첫 사진을 찍었거나 버튼을 못 누르는 중이면 보이지 않는다
+    var showsPhotoHint = false
+
+    private var isPhotoHintVisible: Bool {
+        showsPhotoHint && canCapturePhoto && photoCount == 0
+    }
 
     var body: some View {
         ZStack {
@@ -99,13 +106,7 @@ struct RoomPlanScanOverlay: View {
                 // 문구는 버튼 왼쪽에 붙으므로 trailing 정렬인 버튼 자리는 그대로
                 HStack(spacing: 12) {
                     if showsFinishHint {
-                        Text(Copy.finishHint)
-                            .font(.subheadline.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .background(.black.opacity(0.65), in: Capsule())
-                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                        GuideHintText(text: Copy.finishHint)
                     }
 
                     Button(action: onStop) {
@@ -161,32 +162,41 @@ struct RoomPlanScanOverlay: View {
         // 스캔·일시정지 중 사진 촬영. 찍은 장 수를 배지로 보여 줌
         .overlay(alignment: .trailing) {
             if phase == .scanning || phase == .paused {
-                Button(action: onCapturePhoto) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 54, height: 54)
-                        .background(.black.opacity(0.35), in: Circle())
-                        .overlay(Circle().strokeBorder(.white, lineWidth: 3))
-                        .overlay(alignment: .topTrailing) {
-                            if photoCount > 0 {
-                                Text(photoCount, format: .number)
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 6)
-                                    .frame(minWidth: 22, minHeight: 22)
-                                    .background(.red, in: Capsule())
-                                    .offset(x: 6, y: -6)
+                // 문구는 버튼 왼쪽에 붙으므로 trailing 정렬인 버튼 자리는 그대로
+                HStack(spacing: 12) {
+                    if isPhotoHintVisible {
+                        GuideHintText(text: Copy.photoHint)
+                    }
+
+                    Button(action: onCapturePhoto) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 54, height: 54)
+                            .background(.black.opacity(0.35), in: Circle())
+                            .overlay(Circle().strokeBorder(.white, lineWidth: 3))
+                            .guidePulse(isActive: isPhotoHintVisible, in: Circle(), color: .white)
+                            .overlay(alignment: .topTrailing) {
+                                if photoCount > 0 {
+                                    Text(photoCount, format: .number)
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .frame(minWidth: 22, minHeight: 22)
+                                        .background(.red, in: Capsule())
+                                        .offset(x: 6, y: -6)
+                                }
                             }
-                        }
-                        .contentShape(Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canCapturePhoto)
+                    .opacity(canCapturePhoto ? 1 : 0.5)
+                    .sensoryFeedback(.impact(weight: .light), trigger: photoCount)
+                    .accessibilityLabel("사진 촬영")
+                    .accessibilityValue("\(photoCount)장")
                 }
-                .buttonStyle(.plain)
-                .disabled(!canCapturePhoto)
-                .opacity(canCapturePhoto ? 1 : 0.5)
-                .sensoryFeedback(.impact(weight: .light), trigger: photoCount)
-                .accessibilityLabel("사진 촬영")
-                .accessibilityValue("\(photoCount)장")
+                .animation(.easeOut, value: isPhotoHintVisible)
                 .padding(.trailing, 37)
                 .offset(y: -180)
             }
@@ -221,7 +231,23 @@ struct RoomPlanScanOverlay: View {
     }
 }
 
+/// 쇼케이스: 버튼 왼쪽에 띄우는 안내 문구 캡슐 (완료·사진 촬영 버튼이 함께 씀)
+private struct GuideHintText: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.bold())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.black.opacity(0.65), in: Capsule())
+            .transition(.opacity.combined(with: .move(edge: .trailing)))
+    }
+}
+
 private enum Copy {
-    // 쇼케이스: 스캔 시작 후 일정 시간이 지나면 완료 버튼 왼쪽에 띄우는 안내
+    // 쇼케이스: 스캔 시작 후 일정 시간이 지나면 버튼 왼쪽에 띄우는 안내
     static let finishHint = "스캔을 완료하면 완료 버튼을 눌러주세요"
+    static let photoHint = "카메라 버튼을 눌러 현장 증거를 기록하세요"
 }

@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct FloorPlanImportView: View {
-    /// 변환 결과를 평면도로 저장할 곳. 실패하면 알림 문구를 돌려준다
-    var onImport: ((FloorPlanConversion) -> String?)? = nil
     /// 상단 바 부제로 보여 줄 사건 주소
     var address: String
+    /// 고정 결과를 사건에 저장하고, 실패하면 알림 문구를 돌려준다.
+    var onImport: (() -> String?)? = nil
     var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = FloorPlanImportCamera()
@@ -19,8 +19,8 @@ struct FloorPlanImportView: View {
                     image: result,
                     address: address,
                     onBack: { self.result = nil },
-                    onSave: { conversion in
-                        let error = onImport?(conversion)
+                    onSave: {
+                        let error = onImport?()
                         if error == nil { dismiss() }
                         return error
                     }

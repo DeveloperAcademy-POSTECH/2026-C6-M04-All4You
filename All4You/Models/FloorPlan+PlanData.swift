@@ -13,7 +13,17 @@ extension FloorPlan {
 
     /// 저장된 JSON을 도면 값으로 읽는다. 옛 형식(version 1)은 지금 형식으로 바꿔 읽는다. 형식이 맞지 않거나 더 새 버전이면 nil
     func loadPlanData() -> PlanData? {
-        PlanData.decodeStored(planData)
+        guard var plan = PlanData.decodeStored(planData) else { return nil }
+        if sourceType == .iPadDrawing,
+           let index = plan.doorWindows.firstIndex(where: {
+               $0.id == "balconyPassage" && $0.wallId == "balconyDivider" && $0.kind == .window
+           }), plan.vertices.contains(where: { $0.id == "middleBalcony" }) {
+            plan.doorWindows[index].kind = .door
+            plan.doorWindows[index].doorStyle = .sliding
+            plan.doorWindows[index].sillHeight = 0
+            plan.doorWindows[index].height = 2.0
+        }
+        return plan
     }
 
     /// 도면 값을 JSON으로 바꿔 덮어쓴다. 저장돼 있던 JSON이 옛 형식(version 1)이면 바꾸기 전 원본을 파일로 한 번 남긴다

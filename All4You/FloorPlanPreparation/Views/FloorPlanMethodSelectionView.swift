@@ -25,10 +25,11 @@ struct FloorPlanMethodSelectionView: View {
     @State private var selectedSourceType: FloorPlanSourceType?
     @State private var destination: FloorPlanSourceType?
     @State private var drawingCanvas = PKCanvasView()
-    /// 스케치 위에 놓은 스탬프. 변환이 끝나면 도면으로 옮긴다
+    /// 스케치 위에 놓은 스탬프
     @State private var sketchStamps: [SketchStamp] = []
     @State private var isConvertingDrawing = false
-    @State private var drawingError: String?
+    @State private var showsDrawingResult = false
+    @State private var drawingSaveError: String?
     @State private var isImportMenuPresented = false
     @State private var importMethod: ImportMethod?
     @State private var isCheckingPhotoPermission = false
@@ -151,9 +152,7 @@ struct FloorPlanMethodSelectionView: View {
                     image: croppedImage,
                     address: fireCase.address,
                     onBack: { self.croppedImage = nil },
-                    onSave: { conversion in
-                        saveConvertedFloorPlan(conversion, sourceType: .externalImport)
-                    }
+                    onSave: saveImportedResult
                 )
             } else if let importedImage {
                 FloorPlanImportCropView(
@@ -198,8 +197,8 @@ struct FloorPlanMethodSelectionView: View {
         // 기존 도면 촬영 화면에서 촬영과 영역 조정을 이어서 처리한다.
         .fullScreenCover(isPresented: $isCameraPresented) {
             FloorPlanImportView(
-                onImport: { saveConvertedFloorPlan($0, sourceType: .externalImport) },
                 address: fireCase.address,
+                onImport: saveImportedResult,
                 onBack: { isCameraPresented = false }
             )
         }
@@ -231,10 +230,7 @@ struct FloorPlanMethodSelectionView: View {
     private var drawingFlow: some View {
         FloorPlanDrawingView(
             address: fireCase.address,
-            onRetake: {
-                isConvertingDrawing = false
-                destination = nil
-            },
+            onRetake: { destination = nil },
             onConfirm: { isConvertingDrawing = true },
             canvasView: $drawingCanvas,
             sketchStamps: $sketchStamps
@@ -247,29 +243,61 @@ struct FloorPlanMethodSelectionView: View {
         }
         .task(id: isConvertingDrawing) {
             guard isConvertingDrawing else { return }
-            await convertDrawing()
+            do {
+                try await Task.sleep(for: .seconds(3))
+                try Task.checkCancellation()
+            } catch {
+                isConvertingDrawing = false
+                return
+            }
+            isConvertingDrawing = false
+            showsDrawingResult = true
         }
-        .alert("도면 처리 실패", isPresented: Binding(
-            get: { drawingError != nil },
-            set: { if !$0 { drawingError = nil } }
-        )) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(drawingError ?? "")
+        .navigationDestination(isPresented: $showsDrawingResult) {
+            FloorPlanDrawingResultView(
+                address: fireCase.address,
+                onBack: { showsDrawingResult = false },
+                onSave: saveDrawingResult
+            )
+            .alert("도면 저장 실패", isPresented: Binding(
+                get: { drawingSaveError != nil },
+                set: { if !$0 { drawingSaveError = nil } }
+            )) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(drawingSaveError ?? "")
+            }
         }
     }
-    
-    /// 변환하는 동안 스케치를 흐리게 덮고, 그린 부분 위를 레이저 선이 훑는다 (룸플랜 변환 로딩과 같은 선)
+    /// 손그림 위에 기존 레이저 스캔 애니메이션을 보여 준 뒤 고정 결과로 이동한다.
     private var drawingConversionOverlay: some View {
         let bounds = drawingCanvas.drawing.bounds
-        // 그린 것이 없으면 범위를 정하지 않아 화면 전체를 훑는다
-        let sweep: ClosedRange<CGFloat>? = (bounds.isEmpty || bounds.isInfinite) ? nil : bounds.minY...bounds.maxY
+        let sweep: ClosedRange<CGFloat>? = (bounds.isEmpty || bounds.isInfinite)
+            ? nil : bounds.minY...bounds.maxY
         return Color.white.opacity(0.6)
             .overlay { ScanLaserView(range: sweep) }
             .accessibilityElement()
             .accessibilityLabel("도면 변환 중")
     }
-    
+    /// 손그림 내용과 관계없이 고정 결과를 사건에 저장하고 기존 편집 흐름으로 이어 간다.
+    private func saveDrawingResult() {
+        do {
+            try fireCase.replaceFloorPlan(with: DrawingFloorPlanResult.planData, sourceType: .iPadDrawing)
+        } catch {
+            drawingSaveError = error.localizedDescription
+        }
+    }
+
+    /// 외부 도면도 로컬 고정 결과를 사용한다. 성공하면 기존 도면 편집 흐름으로 이동한다.
+    private func saveImportedResult() -> String? {
+        do {
+            try fireCase.replaceFloorPlan(with: DrawingFloorPlanResult.planData, sourceType: .externalImport)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// 스캔한 도면을 사건의 평면도로 저장한다. 쓸 수 없는 도면(스캔된 것이 없음)이거나 저장에 실패하면 저장하지 않고 변환 화면을 닫아 알린다.
     /// 평면도는 "있으면 항상 내용이 있다"여야 하므로 빈 도면은 replaceFloorPlan을 부르지 않는다
     private func saveScannedPlan(_ plan: PlanData) {
@@ -293,59 +321,6 @@ struct FloorPlanMethodSelectionView: View {
         scannedPlan = nil
         scanSaveError = message
     }
-    
-    /// 서버가 돌려준 도면 JSON을 앱 도면(PlanData)으로 바꿔 사건의 평면도로 저장한다. 실패하면 알림 문구를, 성공하면 nil을 돌려준다.
-    /// 평면도가 생기면 사건 목록이 이 화면 대신 2D 수정 화면을 띄운다 (공간 스캔과 같은 길)
-    /// sketch가 있으면(직접 그리기) 스케치 위에 놓은 스탬프를 도면에 옮기고, 옮기지 못한 개수를 사건에 남겨 2D 수정 화면이 알리게 한다
-    private func saveConvertedFloorPlan(_ conversion: FloorPlanConversion, sourceType: FloorPlanSourceType, sketch: SketchImage? = nil) -> String? {
-        do {
-            let server = try ServerFloorPlan.decode(conversion.json)
-            var plan = PlanData(server: server)
-            guard plan.isUsable else { return Copy.noWalls }
-            if let sketch {
-                let transform = SketchToPlan(imageOrigin: sketch.origin, pixelsPerPoint: sketch.pixelsPerPoint, metersPerPixel: server.metersPerPixel)
-                fireCase.unplacedStampCount = plan.addSketchStamps(sketchStamps, using: transform)
-            }
-            try conversion.save()
-            try fireCase.replaceFloorPlan(with: plan, sourceType: sourceType)
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-    
-    // 스케치를 흰 배경 이미지로 만들어 기존 변환 API에 보낸다.
-    private func convertDrawing() async {
-        defer { isConvertingDrawing = false }
-        let drawing = drawingCanvas.drawing
-        let bounds = drawing.bounds
-        guard !bounds.isEmpty, !bounds.isInfinite else {
-            drawingError = "먼저 도면을 그려 주세요."
-            return
-        }
-        
-        let paddedBounds = bounds.insetBy(dx: -12, dy: -12)
-        let format = UIGraphicsImageRendererFormat()
-        format.opaque = true
-        format.scale = min(2, 2400 / max(paddedBounds.width, paddedBounds.height))
-        let sketch = drawing.image(from: paddedBounds, scale: format.scale)
-        let image = UIGraphicsImageRenderer(size: paddedBounds.size, format: format).image { context in
-            let frame = CGRect(origin: .zero, size: paddedBounds.size)
-            UIColor.white.setFill()
-            context.fill(frame)
-            sketch.draw(in: frame)
-        }
-        
-        do {
-            let plan = try await FloorPlanConversion.request(image)
-            try Task.checkCancellation()
-            drawingError = saveConvertedFloorPlan(plan, sourceType: .iPadDrawing, sketch: SketchImage(origin: paddedBounds.origin, pixelsPerPoint: Double(format.scale)))
-        } catch {
-            guard !Task.isCancelled else { return }
-            drawingError = error.localizedDescription
-        }
-    }
-    
     // 외부 가져오기는 세부 방식까지 골라야 계속할 수 있다.
     private var canContinue: Bool {
         guard let selectedSourceType, !isCheckingPhotoPermission else { return false }
@@ -428,19 +403,9 @@ struct FloorPlanMethodSelectionView: View {
     }
 }
 
-/// 서버에 보낸 스케치 이미지가 스케치의 어디를 어떤 배율로 담았는지
-private struct SketchImage {
-    /// 이미지 왼쪽 위의 스케치 점
-    let origin: CGPoint
-    /// 스케치 1pt가 이미지 몇 픽셀인지
-    let pixelsPerPoint: Double
-}
-
 // 문구
 extension FloorPlanMethodSelectionView {
     private enum Copy {
-        // TEMP: Figma에 변환 결과에 벽이 없을 때의 문구가 없어 임의로 작성
-        static let noWalls = "도면에서 벽을 찾지 못했어요. 다시 그리거나 다른 도면으로 시도해 주세요."
         // TEMP: Figma에 없는 화면이라 임의로 작성
         static let emptyScan = "스캔된 것이 없어 도면을 저장하지 못했어요. 바닥이나 벽을 비추며 다시 스캔해 주세요."
     }
