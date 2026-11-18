@@ -1,6 +1,6 @@
 // 북마크 사진을 찍은 자리를 3D 도면에 그린다: 바닥 원판, 바닥에서 올라오는 기둥, 카메라 높이의 작은 구, 바라본 쪽으로 벌어지는 사각뿔
 // PoC 앱(FloorPlanEditPoC)의 사진 표시를 옮겼다. 다른 점은 카메라 상자를 작은 구로 바꾸고, 시야를 접었을 때 앞에 붙던 원뿔과 모서리 선을 뺀 것.
-// 사각뿔은 구 쪽이 진하고 끝으로 갈수록 투명해진다
+// 사각뿔은 구 쪽이 진하고 끝으로 갈수록 옅어진다
 
 import RealityKit
 import UIKit
@@ -92,7 +92,7 @@ extension FloorPlan3DBuilder {
         }
         var descriptor = MeshDescriptor(name: "photoViewFrustum")
         descriptor.positions = MeshBuffers.Positions([.zero] + corners)
-        // 세로 그라데이션 텍스처를 읽을 좌표. 꼭짓점 v = 1(이미지 맨 위, 진함), 밑면 v = 0(이미지 맨 아래, 투명). u는 아무 값
+        // 세로 그라데이션 텍스처를 읽을 좌표. 꼭짓점 v = 1(이미지 맨 위, 진함), 밑면 v = 0(이미지 맨 아래, 옅음). u는 아무 값
         descriptor.textureCoordinates = MeshBuffers.TextureCoordinates([[0, 1], [0, 0], [0, 0], [0, 0], [0, 0]])
         descriptor.primitives = .triangles(indices)
         guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return }
@@ -141,9 +141,12 @@ private enum PhotoMarkerModel {
     /// 사각뿔 길이 (m)
     // TEMP: 실기기에서 보고 조절
     static let frustumLength: Float = 1.2
-    /// 사각뿔 구 쪽의 진하기. 끝은 0이다
     // TEMP: 실기기에서 보고 조절
     static let frustumStartOpacity: CGFloat = 1
+    /// 사각뿔 끝의 진하기. 0이 아니라 남겨서 끝까지 보이게 한다
+    static let frustumEndOpacity: CGFloat = 0.3
+    /// 구에서 끝으로 옅어지는 정도. 1이면 일직선으로 옅어지고, 작을수록 구 쪽 진한 부분이 길게 이어진다
+    static let frustumFadeCurve: CGFloat = 0.6
     /// 그라데이션 이미지의 세로 칸 수
     static let gradientRows = 64
     /// 사각뿔이 벌어질 수 있는 가장 큰 가로 각 (도). 2D 부채꼴과 같다
@@ -158,7 +161,7 @@ private enum PhotoMarkerModel {
     static let tintUnlit = UnlitMaterial(color: tint)
     static let head = SimpleMaterial(color: tint, roughness: 0.6, isMetallic: false)
     static let pole = SimpleMaterial(color: UIColor(resource: .gray500), roughness: 0.6, isMetallic: false)
-    /// 구 쪽(위)은 진하고 끝(아래)은 투명해지는 사각뿔 재질. 한 번만 만들어 모든 사진이 나눠 쓴다.
+    /// 구 쪽(위)은 진하고 끝(아래)은 옅어지는 사각뿔 재질. 한 번만 만들어 모든 사진이 나눠 쓴다.
     /// 텍스처를 못 만들면 nil이고, 그러면 사각뿔만 빼고 구는 그린다
     static let frustum: UnlitMaterial? = {
         guard let image = makeGradientImage(),
@@ -171,15 +174,15 @@ private enum PhotoMarkerModel {
         return material
     }()
 
-    /// 폭 1칸, 높이 gradientRows칸. 첫 줄(위)이 가장 진하고 마지막 줄(아래)이 투명하다. 텍스처 좌표 v는 아래가 0이다
+    /// 폭 1칸, 높이 gradientRows칸. 첫 줄(위)이 가장 진하고 마지막 줄(아래)이 가장 옅다. 텍스처 좌표 v는 아래가 0이다
     private static func makeGradientImage() -> CGImage? {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1, height: gradientRows), format: format)
         let image = renderer.image { context in
             for row in 0..<gradientRows {
-                let fade = 1 - CGFloat(row) / CGFloat(gradientRows - 1)
-                tint.withAlphaComponent(frustumStartOpacity * fade).setFill()
+                let fade = pow(1 - CGFloat(row) / CGFloat(gradientRows - 1), frustumFadeCurve)
+                tint.withAlphaComponent(frustumEndOpacity + (frustumStartOpacity - frustumEndOpacity) * fade).setFill()
                 context.fill(CGRect(x: 0, y: row, width: 1, height: 1))
             }
         }

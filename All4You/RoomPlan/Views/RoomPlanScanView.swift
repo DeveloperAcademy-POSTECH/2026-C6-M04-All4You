@@ -53,6 +53,10 @@ private struct RoomPlanScanSessionView: View {
     @State private var previewPlan: PlanData?
     /// 그 변환을 원본과 맞춰 본 기록. 도면에 옮기지 못한 문·창문·가구가 있으면 미리보기에 알린다
     @State private var previewReport: ScanConversionReport?
+    /// 이 스캔 세션에서 처음 스캔을 시작한 때. 완료 안내 타이머의 기준
+    @State private var scanStartedAt: Date?
+    /// 완료 버튼 안내(파동·문구)를 보여 줄 때가 됐는지
+    @State private var isFinishHintDue = false
     @StateObject private var scanService = RoomPlanScanService()
     let skipsChecklist: Bool
     let initialBackdrop: UIImage?
@@ -225,7 +229,9 @@ private struct RoomPlanScanSessionView: View {
                         photoCount: scanService.scanPhotoCount,
                         canCapturePhoto: scanService.canCapturePhoto,
                         photoMessage: scanService.photoMessage,
-                        onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) }
+                        latestPhotoThumbnail: scanService.latestPhotoThumbnail,
+                        onCapturePhoto: { scanService.capturePhoto(orientation: currentInterfaceOrientation) },
+                        showsFinishHint: isFinishHintDue
                     )
                     // TODO: 디자인 나오면 수정해야함
                 case .saving:
@@ -275,6 +281,22 @@ private struct RoomPlanScanSessionView: View {
             scanService.detach()
             dismiss()
         }
+        // 내비게이션 바가 터치를 가로채지 않도록 손전등을 실제 툴바에 배치
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                if scanService.phase == .scanning || scanService.phase == .paused {
+                    Button(action: scanService.toggleTorch) {
+                        Image(systemName: scanService.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
+                            .font(.system(size: 21, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(scanService.isTorchOn ? "손전등 끄기" : "손전등 켜기")
+                }
+            }
+        }
         .alert(
             RoomPlanSegmentDialog.title,
             isPresented: $isSegmentAlertPresented
@@ -322,6 +344,7 @@ private struct RoomPlanScanSessionView: View {
         }
         .onChange(of: scanService.phase) { _, phase in
             if phase == .ready { finishedCameraSnapshot = nil }
+            if phase == .scanning, scanStartedAt == nil { scanStartedAt = .now }
             if phase == .segmentSaved { presentSegmentAlert() }
             refreshPreviewPlan()
         }
@@ -348,6 +371,13 @@ private struct RoomPlanScanSessionView: View {
         .task {
             await refreshCameraPermission()
         }
+        // 쇼케이스: 처음 스캔을 시작하고 일정 시간이 지나면 완료 버튼 안내를 켠다
+        .task(id: scanStartedAt) {
+            guard scanStartedAt != nil else { return }
+            // try?로 삼키면 화면이 닫혀 취소돼도 아래 줄이 실행되므로 try로 빠져나간다
+            do { try await Task.sleep(for: Self.finishHintDelay) } catch { return }
+            isFinishHintDue = true
+        }
         .onChange(of: scenePhase) { _, phase in
             // 제어 센터를 내리거나 알림이 왔을 경우 및 백그라운드 전환에서는 스캔 단계와 세션 유지
             guard phase == .active else { return }
@@ -357,6 +387,10 @@ private struct RoomPlanScanSessionView: View {
     
     // TEMP: Figma에 없는 화면이라 임시 문구
     private static let emptyPlanMessage = "스캔된 것이 없어요. 바닥이나 벽을 비추며 다시 스캔해 주세요"
+
+    // 쇼케이스: 스캔을 시작하고 이만큼 지나면 완료 버튼을 안내한다.
+    // 박람회 전 실제로 스캔해 보며 바꿀 수 있음 (1~2분 사이에서 조정)
+    private static let finishHintDelay: Duration = .seconds(90)
     
     // 스캔이 끝난 뒤에만 변환한다. 합치는 중에는 결과가 바뀔 수 있어 기다린다
     private func refreshPreviewPlan() {

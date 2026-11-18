@@ -22,6 +22,10 @@ struct FloorPlanExportView: View {
     @State private var saveError: String?
     /// 미리보기가 화면에 놓인 자리(전역 좌표). 3D는 이 자리를 화면 그대로 찍어 저장한다
     @State private var previewFrame: CGRect = .zero
+    /// 2D 미리보기의 확대·회전·이동한 시야. nil이면 처음 시야. 저장하는 2D 그림도 이 시야 그대로다
+    @State private var planScreen: PlanScreen?
+    
+    private static let imageAspect = 4.0 / 3.0
     
     /// 저장할 도면
     let planData: PlanData
@@ -37,8 +41,12 @@ struct FloorPlanExportView: View {
     var body: some View {
         NavigationStack {
             HStack(spacing: 24) {
-                FloorPlanSavePreview(planType: planType, content: content)
+                FloorPlanSavePreview(planType: planType, content: content, planScreen: $planScreen)
+                    // 미리보기를 아이패드 화면과 같은 4:3으로 두어, 저장하는 그림(미리보기와 같은 크기)도 4:3이 되게 한다
+                    .aspectRatio(Self.imageAspect, contentMode: .fit)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { previewFrame = $0 }
+                    // 미리보기 크기가 바뀌면 맞춰 둔 시야가 어긋나므로 처음 시야로 돌린다
+                    .onChange(of: previewFrame.size) { planScreen = nil }
                 FloorPlanSaveOptions(
                     planType: $planType,
                     photoDisplay: $photoDisplay,
@@ -129,9 +137,9 @@ struct FloorPlanExportView: View {
         defer { isSaving = false }
         
         do {
-            // 2D는 같은 그림을 큰 이미지로 다시 그리고, 3D는 미리보기 화면을 그대로 찍는다
+            // 2D는 같은 그림을 같은 시야로 큰 이미지로 다시 그리고, 3D는 미리보기 화면을 그대로 찍는다
             let image = planType == .twoD
-            ? FloorPlanExporter.render2D(content)
+            ? FloorPlanExporter.render2D(content, screen: planScreen, size: previewFrame.size)
             : FloorPlanExporter.captureScreen(in: previewFrame)
             guard let image else { throw FloorPlanExporter.ExportError.imageFailed }
             try await FloorPlanExporter.saveToPhotoLibrary(image)
@@ -185,12 +193,13 @@ private struct FloorPlanSaveSheetSizing: PresentationSizing {
 private struct FloorPlanSavePreview: View {
     let planType: SavedPlanType
     let content: FloorPlanExportContent
+    @Binding var planScreen: PlanScreen?
     
     var body: some View {
         ZStack {
             switch planType {
             case .twoD:
-                FloorPlanExport2DCanvas(content: content)
+                FloorPlanExport2DPreview(content: content, screen: $planScreen)
             case .threeD:
                 // 3D는 돌리고 확대해 원하는 각도를 맞춘 뒤 그 화면 그대로 저장한다
                 FloorPlan3DView(

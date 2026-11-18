@@ -54,6 +54,8 @@ import RoomPlan
     @Published private(set) var interruptionMessage: String?
     /// 스캔 중 찍은 사진 수와 촬영 안내
     @Published private(set) var scanPhotoCount = 0
+    /// 최근 사진을 촬영할 때마다 스캔 UI에 반영하는 썸네일
+    @Published private(set) var latestPhotoThumbnail: Data?
     @Published private(set) var isCapturingPhoto = false
     @Published private(set) var photoMessage: String?
     var arSession: ARSession { tracking.arSession }
@@ -282,7 +284,8 @@ import RoomPlan
             guard let self else { return }
             defer { self.isCapturingPhoto = false }
             do {
-                try await self.photoService.capture(from: session, orientation: orientation)
+                let photo = try await self.photoService.capture(from: session, orientation: orientation)
+                self.latestPhotoThumbnail = photo.thumbnailData
                 self.scanPhotoCount = self.photoService.photos.count
             } catch {
                 self.logger.error("스캔 중 사진 촬영 실패: \(error.localizedDescription, privacy: .public)")
@@ -293,12 +296,15 @@ import RoomPlan
     
     // 후면 카메라 손전등 상태 전환 및 오류 안내 갱신
     func toggleTorch() {
+        let shouldTurnOn = !isTorchOn
         do {
-            try torch.setEnabled(!isTorchOn)
-            isTorchOn.toggle()
+            try torch.setEnabled(shouldTurnOn)
+            isTorchOn = shouldTurnOn
             torchMessage = nil
         } catch {
+            isTorchOn = torch.isEnabled
             torchMessage = error.localizedDescription
+            logger.error("손전등 전환 실패: \(error.localizedDescription, privacy: .public)")
         }
     }
     
