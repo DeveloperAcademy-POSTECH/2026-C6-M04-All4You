@@ -17,7 +17,8 @@ enum IgnitionCause: String, Codable, CaseIterable {
         case .gas: "가스"
         case .mechanical: "기계"
         case .carelessness: "인적 부주의"
-        case .other: "기타"
+        // 쇼케이스: 기타 대신 보조배터리 (저장된 값 other는 그대로 두고 글자만 바꿈). 글자를 직접 적지 않는다
+        case .other: "보조배터리"
         }
     }
 }
@@ -58,7 +59,7 @@ enum StampOption: Hashable {
     /// 기타라 놓은 뒤 라벨 글자를 직접 적을 수 있는 종류인지
     var isOther: Bool {
         switch self {
-        case .ignitionCause(let cause): cause == .other
+        case .ignitionCause: false
         case .electricalKind(let kind): kind == .other
         }
     }

@@ -18,7 +18,7 @@ struct SketchStamp: Identifiable, Equatable {
     /// 종류가 기타라 라벨 글자를 직접 적을 수 있는지
     var isKindOther: Bool {
         switch kind {
-        case .ignitionPoint: ignitionCause == .other
+        case .ignitionPoint: false
         case .outlet: electricalKind == .other
         case .person: false
         }

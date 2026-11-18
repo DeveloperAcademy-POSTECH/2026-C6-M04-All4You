@@ -7,7 +7,8 @@ import SwiftUI
 struct PhotoFilter {
     var isPhotoVisible = true
     /// 전체 사진으로 바꾸면 촬영 방향도 함께 끈다
-    var scope: Scope = .all {
+    // 쇼케이스: 처음 열면 북마크·촬영 방향이 켜져 있다
+    var scope: Scope = .bookmarked {
         didSet {
             if scope == .all {
                 showsDirection = false
@@ -15,7 +16,7 @@ struct PhotoFilter {
         }
     }
     /// 북마크를 골랐을 때만 켤 수 있다
-    var showsDirection = false
+    var showsDirection = true
     
     /// 도면 위에 보여 줄 사진의 범위
     enum Scope {

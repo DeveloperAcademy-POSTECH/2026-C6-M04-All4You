@@ -37,10 +37,10 @@ struct PlanMarker: Codable, Hashable, Identifiable {
         kind == .person ? personTokenScale * personModelEnlargement : 1
     }
 
-    /// 종류가 기타라 라벨 글자를 직접 적을 수 있는지
+    /// 종류가 기타라 라벨 글자를 직접 적을 수 있는지. 발화지점은 기타 자리가 보조배터리로 고정이라 적을 수 없다
     var isKindOther: Bool {
         switch kind {
-        case .ignitionPoint: ignitionCause == .other
+        case .ignitionPoint: false
         case .outlet: electricalKind == .other
         case .person: false
         }

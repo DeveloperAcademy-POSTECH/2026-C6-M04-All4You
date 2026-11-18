@@ -5,7 +5,7 @@ import Foundation
 import OSLog
 
 extension FireCase {
-    /// 스캔 사진을 사건 사진(EvidencePhoto)으로 더한다. 가장 최근 조사 차수에 들어간다.
+    /// 스캔 사진을 사건 사진(EvidencePhoto)으로 더한다. 모두 북마크가 켜진 채로 들어간다. 가장 최근 조사 차수에 들어간다.
     /// 도면에 스캔 변환이 없거나, 추적이 불안정했거나, 방 밖에서 찍힌 사진은 위치 미지정으로 들어간다.
     /// 같은 id가 이미 있으면 건너뛴다
     func addScanPhotos(_ scanPhotos: [ScanPhoto], plan: PlanData) {
@@ -19,6 +19,8 @@ extension FireCase {
             photos.append(EvidencePhoto(
                 id: scanPhoto.id,
                 source: .camera,
+                // 쇼케이스: 스캔하며 찍은 사진은 자동으로 북마크한다
+                isBookmarked: true,
                 roomKey: roomKey,
                 takenAt: scanPhoto.takenAt,
                 imageData: scanPhoto.imageData,
