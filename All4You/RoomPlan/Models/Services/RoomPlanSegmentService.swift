@@ -7,21 +7,31 @@
 
 // CapturedRoomData와 CapturedRoom의 구간별 저장, StructureBuilder 기반 중간·최종 구조 병합을 담당하는 로직
 import Foundation
+import OSLog
 import RoomPlan
 
 struct RoomPlanSegmentService {
     enum SaveError: Error, Equatable {
         case emptyScan
     }
-
+    
     let scanID = UUID()
-
+    
+#if DEBUG
+    private let diagnosticLogger = Logger(subsystem: "All4You", category: "RoomPlanScanTrace")
+    
+    static func roomSummary(_ room: CapturedRoom?) -> String {
+        guard let room else { return "nil" }
+        return "walls=\(room.walls.count) floors=\(room.floors.count) doors=\(room.doors.count) windows=\(room.windows.count) openings=\(room.openings.count) objects=\(room.objects.count)"
+    }
+#endif
+    
     // 실시간 결과와 최종 처리 결과에 동일한 빈 공간 판정 적용
     static func hasScannedContent(_ room: CapturedRoom?) -> Bool {
         guard let room else { return false }
         return !room.walls.isEmpty || !room.floors.isEmpty
-            || !room.objects.isEmpty || !room.doors.isEmpty
-            || !room.windows.isEmpty || !room.openings.isEmpty
+        || !room.objects.isEmpty || !room.doors.isEmpty
+        || !room.windows.isEmpty || !room.openings.isEmpty
     }
     
     private var directory: URL {
@@ -47,8 +57,25 @@ struct RoomPlanSegmentService {
         index: Int,
         fallbackRoom: CapturedRoom?
     ) async throws -> SavedRoomPlanSegment {
-        let room = (try? await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: data))
-            ?? fallbackRoom
+#if DEBUG
+        diagnosticLogger.notice("[ScanTrace] RoomBuilder 시작 scan=\(scanID.uuidString, privacy: .public) segment=\(index) fallback=\(Self.roomSummary(fallbackRoom), privacy: .public)")
+#endif
+        let builtRoom: CapturedRoom?
+        do {
+            builtRoom = try await RoomBuilder(options: [.beautifyObjects]).capturedRoom(from: data)
+#if DEBUG
+            diagnosticLogger.notice("[ScanTrace] RoomBuilder 완료 scan=\(scanID.uuidString, privacy: .public) segment=\(index) built=\(Self.roomSummary(builtRoom), privacy: .public)")
+#endif
+        } catch {
+            builtRoom = nil
+#if DEBUG
+            diagnosticLogger.error("[ScanTrace] RoomBuilder 실패 scan=\(scanID.uuidString, privacy: .public) segment=\(index) error=\(error.localizedDescription, privacy: .public)")
+#endif
+        }
+        let room = builtRoom ?? fallbackRoom
+#if DEBUG
+        diagnosticLogger.notice("[ScanTrace] 저장 대상 scan=\(scanID.uuidString, privacy: .public) segment=\(index) source=\(builtRoom == nil ? "fallback" : "builder", privacy: .public) result=\(Self.roomSummary(room), privacy: .public)")
+#endif
         // RoomBuilder가 빈 결과를 반환해도 원시 데이터만 저장 성공으로 처리하지 않음
         guard let room, Self.hasScannedContent(room) else {
             throw SaveError.emptyScan
@@ -83,14 +110,14 @@ struct RoomPlanSegmentService {
         try await StructureBuilder(options: [.beautifyObjects])
             .capturedStructure(from: rooms)
     }
-
+    
     // 한 구간은 CapturedRoom 자체를, 여러 구간은 병합된 CapturedStructure를 최종 결과로 저장
     func saveFinalModel(from rooms: [CapturedRoom], structure: CapturedStructure? = nil) async throws -> URL {
         if rooms.count == 1, let room = rooms.first {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let dataURL = directory.appendingPathComponent("final-room.json")
             try makeEncoder().encode(room).write(to: dataURL, options: .atomic)
-
+            
             let modelURL = directory.appendingPathComponent("final-room.usdz")
             try room.export(to: modelURL)
             return modelURL

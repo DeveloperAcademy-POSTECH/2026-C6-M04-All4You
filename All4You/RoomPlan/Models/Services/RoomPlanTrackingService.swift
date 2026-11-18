@@ -11,7 +11,6 @@ import Foundation
 import OSLog
 import UIKit
 
-
 @MainActor final class RoomPlanTrackingService: NSObject, ARSessionDelegate {
     private(set) var arSession = ARSession()
     var onScanLimitReached: (() -> Void)?
@@ -27,6 +26,9 @@ import UIKit
     private var didNotifyScanLimit = false
     private var elapsedScanSeconds: TimeInterval = 0
     private var latestWorldMap: ARWorldMap?
+    private var isCheckpointingWorldMap = false
+    private var lastWorldMapCheckpointAt: TimeInterval?
+    private var lastWorldMapCheckpointAttemptAt: TimeInterval?
     private var monitor: Task<Void, Never>?
     private var monitorGeneration = UUID()
     private var restartPending = false
@@ -90,6 +92,12 @@ import UIKit
                 
                 // 백그라운드 복귀 후의 큰 시간 간격과 멈춘 카메라 프레임은 촬영 시간에서 제외
                 self.elapsedScanSeconds += elapsed
+                // 예기치 못한 시점이 ARKit 추적이 종료되어도 이전 좌표계로 돌아갈 수 있도록 촬영 중 월드맵을 주기적으로 보관
+                let checkpointInterval: TimeInterval = self.lastWorldMapCheckpointAt == nil ? 5 : 20
+                if self.elapsedScanSeconds >= 3,
+                   now - (self.lastWorldMapCheckpointAttemptAt ?? -.infinity) >= checkpointInterval {
+                    self.checkpointWorldMap()
+                }
                 if self.elapsedScanSeconds >= self.scanLimitSeconds, !self.didNotifyScanLimit {
                     self.didNotifyScanLimit = true
                     self.checkpointWorldMap()
@@ -108,11 +116,18 @@ import UIKit
     
     // 현재 좌표계를 새 AR 세션 복원용 월드맵으로 저장
     func checkpointWorldMap() {
-        arSession.getCurrentWorldMap { [weak self] map, _ in
-            guard let map else { return }
+        guard !isCheckpointingWorldMap else { return }
+        isCheckpointingWorldMap = true
+        lastWorldMapCheckpointAttemptAt = ProcessInfo.processInfo.systemUptime
+        let session = arSession
+        session.getCurrentWorldMap { [weak self] map, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.isCheckpointingWorldMap = false
+                guard self.arSession === session else { return }
+                guard let map else { return }
                 self.latestWorldMap = map
+                self.lastWorldMapCheckpointAt = ProcessInfo.processInfo.systemUptime
                 let store = self.worldMapStore
                 Task.detached(priority: .utility) {
                     try? await store.save(map)
@@ -143,6 +158,8 @@ import UIKit
         arSession.pause()
         arSession = ARSession()
         latestWorldMap = nil
+        lastWorldMapCheckpointAt = nil
+        lastWorldMapCheckpointAttemptAt = nil
         restartPending = false
         isRelocalizing = false
         relocalizedFrameCount = 0
