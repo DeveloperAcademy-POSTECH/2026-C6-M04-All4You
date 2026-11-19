@@ -156,6 +156,12 @@ struct CaseListView: View {
                 Text(saveErrorMessage)
             }
         }
+        // TEMP: 쇼케이스용. 시트 없이 바로 만들 때의 저장 실패 알림
+        .alert("저장 실패", isPresented: $showsSaveError) {
+            Button("확인", role: .cancel) { }
+        } message: {
+            Text(saveErrorMessage)
+        }
         // 평면도가 있으면 사건 작업 화면, 없으면 평면도를 만드는 화면을 띄운다.
         // 열 때 이미 저장돼 있던 평면도가 쓸 수 없는 것(벽이 없음)이면, 다른 도면으로 바뀌기 전까지 없는 것으로 본다
         .fullScreenCover(item: $openedCase) { opened in
@@ -176,8 +182,27 @@ struct CaseListView: View {
         
     }
     
+    // TEMP: 쇼케이스용. 사건 등록 시트를 띄우지 않고, 정해 둔 사건을 바로 만들어 도면 방식 선택 화면으로 간다.
+    // 쇼케이스 뒤 `isPresentingRegistration = true` 한 줄로 되돌린다 (시트 코드는 그대로 둠)
     private func presentRegistration() {
-        isPresentingRegistration = true
+        let newCase = FireCase(
+            address: "경상북도 포항시 남구 청암로 77",
+            caseName: "청암로 77",
+            occurredAt: .now
+        )
+        // 새 사건은 1차 조사부터 시작한다
+        newCase.addSession()
+        modelContext.insert(newCase)
+
+        do {
+            try modelContext.save()
+            selection = .filter(.inProgress)
+            open(newCase)
+        } catch {
+            modelContext.delete(newCase)
+            saveErrorMessage = "사건 저장 실패: \(error.localizedDescription)"
+            showsSaveError = true
+        }
     }
     
     /// 사건 화면을 닫고 목록으로 돌아온다. 이제 열어 둔 사건이 없다

@@ -18,12 +18,14 @@ struct CaseRegistrationView: View {
     
     @State private var date: Date? = .now
     @State private var time: Date? = .now
-    @State private var address = ""
+    // TEMP: 쇼케이스용 기본값. 주소·사건명을 미리 채워 두고, 쇼케이스 뒤 빈 값("")·false로 되돌린다
+    @State private var address = "경상북도 포항시 남구 청암로 77"
     @State private var detailAddress = ""
     /// 주소·상세 주소로 자동으로 채운다. 사용자가 고칠 수 있다
-    @State private var caseName = ""
+    @State private var caseName = "청암로 77"
     /// 사용자가 사건명을 직접 고쳤는지. 고쳤으면 주소가 바뀌어도 사건명을 덮어쓰지 않는다 (다 지우면 다시 자동)
-    @State private var isCaseNameEdited = false
+    /// TEMP: 쇼케이스 기본 사건명("청암로 77")이 "청암로 77 화재"로 바뀌지 않도록 true로 둔다
+    @State private var isCaseNameEdited = true
     @State private var isDatePickerOpen = false
     @State private var isTimePickerOpen = false
     @State private var addressSearch = AddressSearch()
